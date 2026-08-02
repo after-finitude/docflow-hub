@@ -1,0 +1,12 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-surface: oklch(0.99 0 0);
+  --color-surface-muted: oklch(0.97 0.003 250);
+  --color-border-subtle: oklch(0.9 0.005 250);
+}
+
+body {
+  background-color: var(--color-surface-muted);
+  color: oklch(0.25 0.01 250);
+}

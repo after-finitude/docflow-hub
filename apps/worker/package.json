@@ -1,0 +1,21 @@
+{
+  "name": "@docflow/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "node --env-file-if-exists=../../.env --watch dist/main.js",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@docflow/core": "*",
+    "@docflow/shared": "*",
+    "@nestjs/bullmq": "^11.0.4",
+    "@nestjs/common": "^11.1.28",
+    "@nestjs/core": "^11.1.28",
+    "bullmq": "^5.81.3",
+    "drizzle-orm": "^0.45.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  }
+}

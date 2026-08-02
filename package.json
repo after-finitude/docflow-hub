@@ -1,0 +1,33 @@
+{
+  "name": "docflow-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Docflow Hub — AI Document Operations Hub",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "clean": "tsc -b --clean",
+    "lint": "oxlint",
+    "verify": "bash scripts/verify.sh",
+    "format": "prettier --write .",
+    "db:generate": "npm run db:generate -w @docflow/core",
+    "db:migrate": "npm run db:migrate -w @docflow/core",
+    "db:seed": "npm run db:seed -w @docflow/core",
+    "dev:api": "npm run dev -w @docflow/api",
+    "dev:worker": "npm run dev -w @docflow/worker",
+    "dev:web": "npm run dev -w @docflow/web"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "oxlint": "^1.76.0",
+    "prettier": "^3.6.2",
+    "typescript": "^7.0.2"
+  }
+}

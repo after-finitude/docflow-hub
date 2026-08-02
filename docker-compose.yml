@@ -1,0 +1,151 @@
+name: docflow-hub
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+    volumes:
+      # В PostgreSQL 18 образ переехал: PGDATA теперь /var/lib/postgresql/18/docker,
+      # а точка VOLUME — /var/lib/postgresql. Том, подключённый по старому пути
+      # /var/lib/postgresql/data, остался бы пустым, а данные легли бы
+      # в анонимный том и пропадали при каждом down.
+      - postgres-data:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - '5432:5432'
+    healthcheck:
+      # -h 127.0.0.1 обязателен: во время инициализации кластера entrypoint
+      # поднимает временный сервер без TCP, и проба через unix-сокет сообщила бы
+      # о готовности раньше времени — миграции упали бы на отказе соединения.
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Миграции и seed выполняются под ролью-владельцем, отдельным одноразовым
+  # контейнером: приложение стартует только после успешной миграции.
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/node.Dockerfile
+      args:
+        APP: api
+    env_file: .env
+    # Тот же образ, что и api, но вместо сервера выполняется deploy схемы.
+    command: ['npm', 'run', 'db:deploy', '-w', '@docflow/core']
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/node.Dockerfile
+      args:
+        APP: api
+    env_file: .env
+    environment:
+      # Порт внутри контейнера зафиксирован и не управляется из .env: иначе
+      # приложение слушало бы один порт, а публикация и healthcheck смотрели
+      # бы в другой.
+      API_PORT: 3001
+    ports:
+      - '${API_HOST_PORT}:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Воркеры pipeline — отдельный контейнер (требование ТЗ, раздел «Стек»).
+  worker:
+    build:
+      context: .
+      dockerfile: docker/node.Dockerfile
+      args:
+        APP: worker
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args:
+        # Адрес API попадает в rewrite на этапе сборки: Next вычисляет rewrites
+        # при next build и вмораживает результат в манифест. Задать его только
+        # через environment недостаточно — браузерные запросы к /api ушли бы
+        # на localhost внутри контейнера web.
+        API_INTERNAL_URL: http://api:3001
+    # Без env_file: веб-приложению нужен один адрес, а весь .env отдал бы ему
+    # JWT_SECRET, пароли БД и MinIO без единого сценария использования.
+    environment:
+      API_INTERNAL_URL: http://api:3001
+    ports:
+      - '${WEB_HOST_PORT}:3000'
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:

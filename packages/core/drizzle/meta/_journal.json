@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1785672459477,
+      "tag": "0000_initial_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785672481022,
+      "tag": "0001_audit_immutability",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785674516263,
+      "tag": "0002_audit_origin",
+      "breakpoints": true
+    }
+  ]
+}
