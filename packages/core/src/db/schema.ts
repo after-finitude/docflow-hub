@@ -25,6 +25,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core'
 
 /**
@@ -83,6 +84,11 @@ export const documents = pgTable(
 
     documentType: documentTypeEnum('document_type'),
     typeConfidence: real('type_confidence'),
+    pageCount: integer('page_count'),
+
+    // Дубликат по checksum: документ принимается, но связывается с оригиналом
+    // и повторно не экспортируется (ТЗ §10).
+    duplicateOfId: uuid('duplicate_of_id').references((): AnyPgColumn => documents.id),
 
     status: documentStatusEnum('status').notNull().default('received'),
     statusReason: text('status_reason'),

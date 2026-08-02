@@ -4,6 +4,12 @@ import { ENV } from '../config/config.module'
 import type { Env } from '../config/env'
 import { ALL_QUEUES, defaultJobOptionsFor } from './queues'
 
+// Динамические модули очередей нужны и в imports, и в exports: без реэкспорта
+// @InjectQueue не разрешится в модулях-потребителях.
+const queueModules = ALL_QUEUES.map((name) =>
+  BullModule.registerQueue({ name, defaultJobOptions: defaultJobOptionsFor(name) }),
+)
+
 @Global()
 @Module({
   imports: [
@@ -13,10 +19,8 @@ import { ALL_QUEUES, defaultJobOptionsFor } from './queues'
         connection: { host: env.REDIS_HOST, port: env.REDIS_PORT },
       }),
     }),
-    ...ALL_QUEUES.map((name) =>
-      BullModule.registerQueue({ name, defaultJobOptions: defaultJobOptionsFor(name) }),
-    ),
+    ...queueModules,
   ],
-  exports: [BullModule],
+  exports: [BullModule, ...queueModules],
 })
 export class QueueModule {}

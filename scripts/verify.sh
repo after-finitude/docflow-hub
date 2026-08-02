@@ -183,6 +183,114 @@ else
   fail "после $limit попыток ответ $throttled, ожидался 429"
 fi
 
+# --- Этап 2: приём документов ----------------------------------------------
+
+# Разбор JSON через node: jq в системе может не быть.
+json() {
+  node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const v=$1;console.log(v==null?'':v)}catch{console.log('')}})"
+}
+
+# Повторный вход: предыдущие проверки исчерпали лимит попыток намеренно.
+sleep "$(( ${LOGIN_RATE_WINDOW_SECONDS:-60} + 1 ))"
+curl -s -o /dev/null -c "$COOKIES" -X POST "http://localhost:${WEB_PORT}/api/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d "{\"login\":\"${SEED_OPERATOR_LOGIN}\",\"password\":\"${SEED_OPERATOR_PASSWORD}\"}"
+
+upload_document() {
+  curl -s -b "$COOKIES" -X POST "http://localhost:${WEB_PORT}/api/documents" -F "file=@$1"
+}
+
+await_settled() {
+  local body status
+  for _ in $(seq 1 30); do
+    body=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents/$1")
+    status=$(printf '%s' "$body" | json "o.status")
+    case "$status" in
+      received | processing) sleep 1 ;;
+      *) printf '%s' "$body"; return 0 ;;
+    esac
+  done
+  printf '%s' "$body"
+}
+
+good_id=$(upload_document scripts/fixtures/sample-invoice.pdf | json "o.id")
+if [ -n "$good_id" ]; then
+  pass "PDF принят, документ создан"
+else
+  fail "загрузка PDF не создала документ"
+fi
+
+if [ -n "$good_id" ]; then
+  settled=$(await_settled "$good_id")
+  status=$(printf '%s' "$settled" | json "o.status")
+  thumb=$(printf '%s' "$settled" | json "o.hasThumbnail")
+  pages=$(printf '%s' "$settled" | json "o.pageCount")
+
+  if [ "$status" = "needs_review" ]; then
+    pass "документ прошёл подготовку (статус $status)"
+  else
+    fail "ожидался статус needs_review, получен: $status"
+  fi
+
+  [ "$thumb" = "true" ] && pass "миниатюра сгенерирована" || fail "миниатюра не сгенерирована"
+  [ "$pages" = "1" ] && pass "число страниц определено" || fail "число страниц: $pages"
+
+  thumb_type=$(curl -s -b "$COOKIES" -o /dev/null -w '%{content_type}' \
+    "http://localhost:${WEB_PORT}/api/documents/${good_id}/thumbnail")
+  case "$thumb_type" in
+    image/png*) pass "миниатюра отдаётся как PNG" ;;
+    *) fail "миниатюра отдана с типом: $thumb_type" ;;
+  esac
+
+  signed=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents/${good_id}/file" | json "o.url")
+  if printf '%s' "$signed" | grep -q "X-Amz-Signature"; then
+    pass "ссылка на оригинал подписана"
+  else
+    fail "ссылка на оригинал не подписана: $signed"
+  fi
+fi
+
+# Повреждённый файл: отклонение с причиной, до вызова LLM (ТЗ §9, §10).
+bad_id=$(upload_document scripts/fixtures/corrupted.pdf | json "o.id")
+if [ -n "$bad_id" ]; then
+  settled=$(await_settled "$bad_id")
+  status=$(printf '%s' "$settled" | json "o.status")
+  reason=$(printf '%s' "$settled" | json "o.statusReason")
+  if [ "$status" = "rejected" ] && [ -n "$reason" ]; then
+    pass "повреждённый файл отклонён с причиной"
+    note "$reason"
+  else
+    fail "повреждённый файл: статус $status, причина «$reason»"
+  fi
+else
+  fail "повреждённый файл не был принят на загрузку"
+fi
+
+# Неподдерживаемый тип отсекается до записи в хранилище.
+txt_code=$(printf 'просто текст' > /tmp/docflow-verify.txt && curl -s -o /dev/null -w '%{http_code}' \
+  -b "$COOKIES" -X POST "http://localhost:${WEB_PORT}/api/documents" -F 'file=@/tmp/docflow-verify.txt')
+rm -f /tmp/docflow-verify.txt
+[ "$txt_code" = "400" ] && pass "неподдерживаемый тип отклонён" || fail "текстовый файл принят с кодом $txt_code"
+
+# Дубликат по checksum связывается с оригиналом (ТЗ §10).
+dup_id=$(upload_document scripts/fixtures/sample-invoice.pdf | json "o.id")
+if [ -n "$dup_id" ]; then
+  dup_of=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents/${dup_id}" | json "o.duplicateOfId")
+  [ -n "$dup_of" ] && pass "дубликат связан с оригиналом" || fail "дубликат не связан с оригиналом"
+fi
+
+# Фильтры очереди.
+filtered=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents?status=rejected" | json "o.items.every(i=>i.status==='rejected')")
+[ "$filtered" = "true" ] && pass "фильтр по статусу работает" || fail "фильтр по статусу вернул посторонние записи"
+
+# Поток событий для живого обновления очереди.
+sse_type=$(curl -s -b "$COOKIES" -o /dev/null -w '%{content_type}' --max-time 3 \
+  "http://localhost:${WEB_PORT}/api/events/stream")
+case "$sse_type" in
+  text/event-stream*) pass "поток событий SSE отвечает" ;;
+  *) fail "поток событий вернул тип: $sse_type" ;;
+esac
+
 # --- Итог ------------------------------------------------------------------
 psql_owner "delete from audit_events where action='verify.probe'" >/dev/null 2>&1
 

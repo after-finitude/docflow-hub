@@ -1,5 +1,8 @@
+import type { DocumentListPage } from '@docflow/shared'
 import { redirect } from 'next/navigation'
+import { apiFetch } from '@/lib/api'
 import { readSession } from '@/lib/session'
+import { InboxClient } from './inbox-client'
 import { LogoutButton } from './logout-button'
 
 export default async function InboxPage() {
@@ -7,24 +10,24 @@ export default async function InboxPage() {
   if (session.status === 'anonymous') redirect('/login')
 
   if (session.status === 'unavailable') {
-    // Именно отдельный экран, а не редирект на форму входа: сессия может быть
+    // Отдельный экран, а не редирект на форму входа: сессия может быть
     // полностью валидной, недоступен лишь бэкенд.
-    return (
-      <main className="mx-auto max-w-6xl p-8">
-        <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-12 text-center">
-          <h1 className="text-lg font-semibold">Сервис недоступен</h1>
-          <p className="mt-2 text-sm text-neutral-500">
-            Не удалось связаться с API. Обновите страницу через несколько секунд.
-          </p>
-        </div>
-      </main>
-    )
+    return <Unavailable />
+  }
+
+  let initial: DocumentListPage
+  try {
+    const response = await apiFetch('/documents?page=1')
+    if (!response.ok) return <Unavailable />
+    initial = (await response.json()) as DocumentListPage
+  } catch {
+    return <Unavailable />
   }
 
   const { user } = session
 
   return (
-    <main className="mx-auto max-w-6xl p-8">
+    <main className="mx-auto max-w-7xl p-8">
       <header className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Document Inbox</h1>
@@ -35,8 +38,19 @@ export default async function InboxPage() {
         <LogoutButton />
       </header>
 
-      <div className="rounded-xl border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-12 text-center text-sm text-neutral-500">
-        Очередь документов появится на этапе 2: загрузка, миниатюры, статусы и фильтры.
+      <InboxClient initial={initial} />
+    </main>
+  )
+}
+
+function Unavailable() {
+  return (
+    <main className="mx-auto max-w-6xl p-8">
+      <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-12 text-center">
+        <h1 className="text-lg font-semibold">Сервис недоступен</h1>
+        <p className="mt-2 text-sm text-neutral-500">
+          Не удалось связаться с API. Обновите страницу через несколько секунд.
+        </p>
       </div>
     </main>
   )

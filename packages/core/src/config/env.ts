@@ -40,6 +40,10 @@ const envSchema = z.object({
   MINIO_ROOT_PASSWORD: z.string().min(1),
   MINIO_BUCKET: z.string().min(1),
   SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  // Адрес, по которому хранилище доступно браузеру. Подпись ссылки покрывает
+  // заголовок Host, поэтому подписывать внутренним адресом контейнера нельзя:
+  // ссылка на http://minio:9000 из браузера не открывается.
+  MINIO_PUBLIC_URL: z.string().url().default('http://localhost:9000'),
 
   JWT_SECRET: z.string().min(32, 'JWT_SECRET должен быть не короче 32 символов'),
   JWT_EXPIRES_IN: z.string().default('8h'),
