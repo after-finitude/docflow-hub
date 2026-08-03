@@ -16,3 +16,14 @@ export interface OcrBlock {
   bbox: BoundingBox
   confidence: number
 }
+
+/** Страница документа с результатом OCR — ответ GET /documents/{id}/pages. */
+export interface DocumentPage {
+  pageNumber: number
+  /** null — OCR ещё не выполнялся; пустая строка — страница пустая. */
+  text: string | null
+  confidence: number | null
+  width: number | null
+  height: number | null
+  blocks: OcrBlock[]
+}

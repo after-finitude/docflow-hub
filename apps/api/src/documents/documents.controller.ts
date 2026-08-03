@@ -6,6 +6,7 @@ import {
   type DocumentListItem,
   type DocumentListPage,
   type DocumentListQuery,
+  type DocumentPage,
   type SessionUser,
   type SignedFileLink,
 } from '@docflow/shared'
@@ -76,6 +77,11 @@ export class DocumentsController {
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string): Promise<DocumentDetail> {
     return this.documents.findOne(id)
+  }
+
+  @Get(':id/pages')
+  pages(@Param('id', ParseUUIDPipe) id: string): Promise<DocumentPage[]> {
+    return this.documents.pages(id)
   }
 
   @Get(':id/thumbnail')

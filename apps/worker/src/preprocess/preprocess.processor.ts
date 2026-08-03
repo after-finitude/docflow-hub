@@ -16,9 +16,9 @@ import {
   type Env,
 } from '@docflow/core'
 import type { DocumentStatus, WorkflowState } from '@docflow/shared'
-import { Processor, WorkerHost } from '@nestjs/bullmq'
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq'
 import { Inject, Logger, type OnModuleInit } from '@nestjs/common'
-import type { Job } from 'bullmq'
+import { Queue, type Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { inspect } from './document-inspector'
 
@@ -29,9 +29,7 @@ export interface PreprocessJob {
 
 /**
  * Первый этап pipeline: проверка файла, миниатюра, число страниц.
- *
- * Временно завершает обработку переходом в needs_review — этапы 3–5 вставят
- * перед этим переходом OCR, классификацию, извлечение и валидацию.
+ * Успешно подготовленный документ уходит в очередь OCR.
  */
 @Processor(QUEUE.PREPROCESS, { ...PIPELINE_WORKER_OPTIONS })
 export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
@@ -42,6 +40,7 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
     @Inject(ENV) private readonly env: Env,
     private readonly storage: StorageService,
     private readonly events: DocumentEventsService,
+    @InjectQueue(QUEUE.OCR) private readonly ocrQueue: Queue,
   ) {
     super()
   }
@@ -116,17 +115,13 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
 
       await this.db
         .update(documents)
-        .set({
-          thumbnailKey: key,
-          pageCount: result.pageCount,
-          status: 'needs_review',
-          statusReason: null,
-          processedAt: new Date(),
-        })
+        .set({ thumbnailKey: key, pageCount: result.pageCount, statusReason: null })
         .where(eq(documents.id, documentId))
 
       await finishRun(this.db, runId)
-      await this.updateStatus(documentId, 'needs_review', null, 'succeeded')
+      // Документ остаётся в processing и передаётся следующему этапу.
+      await this.ocrQueue.add('ocr', { documentId, correlationId })
+      await this.updateStatus(documentId, 'processing', null, 'succeeded')
       this.logger.log(`Документ ${documentId} подготовлен, страниц: ${result.pageCount}`)
     } catch (error) {
       await this.handleTransientFailure(job, documentId, runId, 'thumbnail_failed', error)

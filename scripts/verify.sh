@@ -248,6 +248,22 @@ if [ -n "$good_id" ]; then
   else
     fail "ссылка на оригинал не подписана: $signed"
   fi
+
+  # Этап 3: постраничный OCR-результат (mock-провайдер читает текстовый слой PDF).
+  pages_body=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents/${good_id}/pages")
+  page_count=$(printf '%s' "$pages_body" | json "o.length")
+  [ "${page_count:-0}" -ge 1 ] 2>/dev/null && pass "страницы с OCR сохранены ($page_count)" \
+    || fail "страницы не сохранены: $pages_body"
+
+  page_text=$(printf '%s' "$pages_body" | json "o[0].text")
+  case "$page_text" in
+    *Invoice*) pass "текст страницы распознан" ;;
+    *) fail "текст страницы не содержит ожидаемого: «$page_text»" ;;
+  esac
+
+  bbox_ok=$(printf '%s' "$pages_body" | json "o[0].blocks.length>0 && o[0].blocks.every(b=>b.bbox && b.bbox.x>=0 && b.bbox.x<=1 && b.bbox.y>=0 && b.bbox.y<=1)")
+  [ "$bbox_ok" = "true" ] && pass "блоки с нормализованными координатами" \
+    || fail "блоки отсутствуют или координаты вне 0..1"
 fi
 
 # Повреждённый файл: отклонение с причиной, до вызова LLM (ТЗ §9, §10).

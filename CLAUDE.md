@@ -63,9 +63,13 @@ Every `@Processor` must spread `PIPELINE_WORKER_OPTIONS`. BullMQ looks up the
 custom backoff strategy in worker settings; omit it and the 1s/5s/25s policy
 silently does nothing.
 
-Currently `preprocess` is the temporary terminus and moves documents to
-`needs_review`. Stages 3–5 insert OCR → classification → extraction → validation
-before that transition.
+Currently `ocr` is the temporary terminus and moves documents to
+`needs_review`. Stages 4–5 insert classification → extraction → validation
+before that transition. The OCR provider is selected by `OCR_PROVIDER`: `mock`
+(deterministic, reads the PDF text layer via mupdf — no external calls, real
+coordinates) or `google` (rasterizes pages and sends them one by one; blank
+pages are detected and never sent). Permanent provider errors must be thrown
+as BullMQ `UnrecoverableError` so retries are not wasted on them.
 
 ### Session handling
 

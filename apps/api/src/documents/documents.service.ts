@@ -6,6 +6,7 @@ import {
   documents,
   fields,
   originalKey,
+  pages,
   validationIssues,
   workflowRuns,
   writeAudit,
@@ -17,6 +18,7 @@ import {
   type DocumentListItem,
   type DocumentListPage,
   type DocumentListQuery,
+  type DocumentPage,
   type SessionUser,
   type WorkflowState,
   type WorkflowStep,
@@ -206,6 +208,31 @@ export class DocumentsService {
       processedAt: row.processedAt ? row.processedAt.toISOString() : null,
       pageCount: row.pageCount,
     }
+  }
+
+  /** Постраничный OCR-результат: текст, блоки с координатами, уверенность (ТЗ 6.2, §8). */
+  async pages(id: string): Promise<DocumentPage[]> {
+    const [exists_] = await this.db
+      .select({ id: documents.id })
+      .from(documents)
+      .where(eq(documents.id, id))
+      .limit(1)
+    if (!exists_) throw new NotFoundException('Документ не найден')
+
+    const rows = await this.db
+      .select({
+        pageNumber: pages.pageNumber,
+        text: pages.ocrText,
+        confidence: pages.ocrConfidence,
+        width: pages.width,
+        height: pages.height,
+        blocks: pages.blocks,
+      })
+      .from(pages)
+      .where(eq(pages.documentId, id))
+      .orderBy(pages.pageNumber)
+
+    return rows.map((row) => ({ ...row, blocks: row.blocks ?? [] }))
   }
 
   /** Миниатюра отдаётся через API, а не подписанной ссылкой: доступ проверяет guard. */

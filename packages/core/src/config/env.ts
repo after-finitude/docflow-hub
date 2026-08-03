@@ -58,6 +58,16 @@ const envSchema = z.object({
   LOGIN_RATE_LIMIT: z.coerce.number().int().positive().default(10),
   LOGIN_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
 
+  // ─── OCR (ТЗ 6.2) ─────────────────────────────────────────────────────────
+  // mock — детерминированный провайдер без внешних вызовов (текстовый слой PDF
+  // через mupdf); google — Google Cloud Vision.
+  OCR_PROVIDER: z.enum(['mock', 'google']).default('mock'),
+  // Путь к ключу service account; обязателен при OCR_PROVIDER=google.
+  GOOGLE_VISION_KEY_FILE: z.string().optional(),
+  // DPI растеризации страниц PDF перед внешним OCR (GCV рекомендует 150–300).
+  OCR_RENDER_DPI: z.coerce.number().int().min(72).max(600).default(200),
+  OCR_LANGUAGE_HINTS: z.string().default('ru,en'),
+
   SEED_OPERATOR_LOGIN: z.string().default('operator'),
   SEED_OPERATOR_PASSWORD: z.string().default('operator_password'),
   SEED_ADMIN_LOGIN: z.string().default('admin'),
@@ -88,6 +98,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
 
   const env = parsed.data
+  if (env.OCR_PROVIDER === 'google' && !env.GOOGLE_VISION_KEY_FILE) {
+    throw new Error('OCR_PROVIDER=google требует GOOGLE_VISION_KEY_FILE')
+  }
   return {
     ...env,
     DATABASE_URL: postgresUrl(APP_DB_ROLE, env.APP_DB_PASSWORD, env),
