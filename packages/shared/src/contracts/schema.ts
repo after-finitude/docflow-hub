@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { VALUE_TYPES, type DocumentType } from '../enums'
+import { validationRuleSchema, type ValidationRule } from '../validation/rules'
 
 /**
  * Спецификация поля типа документа (ТЗ 6.4): хранится в
@@ -18,8 +19,13 @@ export const fieldSpecSchema = z.object({
 })
 export type FieldSpec = z.infer<typeof fieldSpecSchema>
 
+/**
+ * Содержимое DocumentSchema.json_schema: поля и правила валидации.
+ * Правила версионируются вместе со схемой (ТЗ 6.6).
+ */
 export const schemaFieldsSchema = z.object({
   fields: z.array(fieldSpecSchema).max(15), // до 15 полей на тип (ТЗ §4)
+  rules: z.array(validationRuleSchema).default([]),
 })
 export type SchemaFields = z.infer<typeof schemaFieldsSchema>
 
@@ -39,6 +45,7 @@ export interface DocumentSchemaDto {
   documentType: DocumentType
   version: number
   fields: FieldSpec[]
+  rules: ValidationRule[]
   thresholds: SchemaThresholds
   isActive: boolean
 }

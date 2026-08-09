@@ -5,6 +5,7 @@ import { Pool } from 'pg'
 import { hashPassword } from '../auth/password'
 import { loadEnv } from '../config/env'
 import { documentSchemas, users } from './schema'
+import { SEED_RULES } from './seed-rules'
 import { DEFAULT_THRESHOLDS, SEED_SCHEMAS } from './seed-schemas'
 
 /**
@@ -49,7 +50,7 @@ async function main(): Promise<void> {
     // Версия 1 каждой схемы приводится к коду; пороги при апдейте не трогаются —
     // их правит администратор через API, и seed не должен их откатывать.
     for (const documentType of CLASSIFIABLE_DOCUMENT_TYPES) {
-      const jsonSchema = { fields: SEED_SCHEMAS[documentType] }
+      const jsonSchema = { fields: SEED_SCHEMAS[documentType], rules: SEED_RULES[documentType] }
       const [existing] = await db
         .select({ id: documentSchemas.id })
         .from(documentSchemas)

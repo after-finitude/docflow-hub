@@ -1,0 +1,1 @@
+ALTER TABLE "fields" ADD COLUMN "confidence_signals" jsonb;

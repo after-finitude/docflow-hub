@@ -1,4 +1,4 @@
-import type { BoundingBox, OcrBlock } from '@docflow/shared'
+import type { BoundingBox, ConfidenceSignals, OcrBlock } from '@docflow/shared'
 import {
   ACTOR_TYPES,
   DOCUMENT_STATUSES,
@@ -154,6 +154,9 @@ export const fields = pgTable(
 
     confidence: real('confidence'),
     confidenceReason: text('confidence_reason'),
+    // Сигналы, из которых посчитана уверенность. Хранятся, чтобы перевалидация
+    // пересчитывала confidence заново, а не накладывала штраф поверх штрафа.
+    confidenceSignals: jsonb('confidence_signals').$type<ConfidenceSignals>(),
 
     sourcePage: integer('source_page'),
     sourceBbox: jsonb('source_bbox').$type<BoundingBox>(),

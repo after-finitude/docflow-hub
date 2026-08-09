@@ -34,14 +34,18 @@ export class SchemasController {
       .from(documentSchemas)
       .where(eq(documentSchemas.isActive, true))
 
-    return rows.map((row) => ({
-      id: row.id,
-      documentType: row.documentType,
-      version: row.version,
-      fields: schemaFieldsSchema.parse(row.jsonSchema).fields,
-      thresholds: thresholdsSchema.parse(row.thresholds),
-      isActive: row.isActive,
-    }))
+    return rows.map((row) => {
+      const definition = schemaFieldsSchema.parse(row.jsonSchema)
+      return {
+        id: row.id,
+        documentType: row.documentType,
+        version: row.version,
+        fields: definition.fields,
+        rules: definition.rules,
+        thresholds: thresholdsSchema.parse(row.thresholds),
+        isActive: row.isActive,
+      }
+    })
   }
 
   /**
@@ -75,7 +79,8 @@ export class SchemasController {
         .values({
           documentType,
           version: active.version + 1,
-          jsonSchema: { fields: active.fields },
+          // Поля и правила переносятся как есть: меняются только пороги.
+          jsonSchema: { fields: active.fields, rules: active.rules },
           thresholds,
           isActive: true,
         })
@@ -101,6 +106,7 @@ export class SchemasController {
       documentType: created.documentType,
       version: created.version,
       fields: active.fields,
+      rules: active.rules,
       thresholds,
       isActive: true,
     }

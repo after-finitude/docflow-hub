@@ -1,0 +1,116 @@
+import {
+  DB,
+  DocumentEventsService,
+  ENV,
+  PIPELINE_WORKER_OPTIONS,
+  QUEUE,
+  ValidationRunnerService,
+  documents,
+  failRun,
+  finishRun,
+  queueConcurrency,
+  startRun,
+  type Database,
+  type Env,
+} from '@docflow/core'
+import type { DocumentStatus, WorkflowState } from '@docflow/shared'
+import { Processor, WorkerHost } from '@nestjs/bullmq'
+import { Inject, Logger, type OnModuleInit } from '@nestjs/common'
+import { UnrecoverableError, type Job } from 'bullmq'
+import { eq } from 'drizzle-orm'
+
+export interface ValidateJob {
+  documentId: string
+  correlationId: string
+}
+
+/**
+ * Последний этап автоматической обработки: валидация, пересчёт уверенности
+ * и маршрутизация (ТЗ 6.6, 6.7). Вся логика — в ValidationRunnerService,
+ * который тот же код выполняет и синхронно при правке поля оператором.
+ */
+@Processor(QUEUE.VALIDATE, { ...PIPELINE_WORKER_OPTIONS })
+export class ValidateProcessor extends WorkerHost implements OnModuleInit {
+  private readonly logger = new Logger(ValidateProcessor.name)
+
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    @Inject(ENV) private readonly env: Env,
+    private readonly runner: ValidationRunnerService,
+    private readonly events: DocumentEventsService,
+  ) {
+    super()
+  }
+
+  onModuleInit(): void {
+    this.worker.concurrency = queueConcurrency(this.env, QUEUE.VALIDATE)
+  }
+
+  async process(job: Job<ValidateJob>): Promise<void> {
+    const { documentId, correlationId } = job.data
+
+    const [document] = await this.db
+      .select({ id: documents.id })
+      .from(documents)
+      .where(eq(documents.id, documentId))
+      .limit(1)
+    if (!document) {
+      this.logger.warn(`Документ ${documentId} не найден, задача пропущена`)
+      return
+    }
+
+    const runId = await startRun(this.db, documentId, 'validation', correlationId)
+    await this.publish(documentId, 'processing', 'running')
+
+    try {
+      const outcome = await this.runner.run(documentId, { correlationId, actorType: 'system' })
+      await finishRun(this.db, runId)
+      await this.publish(documentId, outcome.status, 'succeeded')
+    } catch (error) {
+      await this.handleFailure(job, documentId, runId, error)
+      throw error
+    }
+  }
+
+  private async handleFailure(
+    job: Job<ValidateJob>,
+    documentId: string,
+    runId: string,
+    error: unknown,
+  ): Promise<void> {
+    const detail = error instanceof Error ? error.message : String(error)
+    await failRun(this.db, runId, 'validation_failed', detail)
+
+    const unrecoverable = error instanceof UnrecoverableError
+    const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
+    if (!unrecoverable && attemptsLeft > 0) {
+      this.logger.warn(
+        `Документ ${documentId}: валидация не удалась, осталось попыток ${attemptsLeft}`,
+      )
+      return
+    }
+
+    const reason = 'Не удалось проверить документ. Обработку можно повторить вручную'
+    await this.db
+      .update(documents)
+      .set({ status: 'failed', statusReason: reason })
+      .where(eq(documents.id, documentId))
+    await this.publish(documentId, 'failed', 'failed')
+    this.logger.error(`Документ ${documentId}: валидация — ${detail}`)
+  }
+
+  private async publish(
+    documentId: string,
+    status: DocumentStatus,
+    state: WorkflowState,
+  ): Promise<void> {
+    await this.events.publish({
+      type: 'document',
+      documentId,
+      status,
+      step: 'validation',
+      state,
+      at: new Date().toISOString(),
+    })
+  }
+}

@@ -226,10 +226,12 @@ if [ -n "$good_id" ]; then
   thumb=$(printf '%s' "$settled" | json "o.hasThumbnail")
   pages=$(printf '%s' "$settled" | json "o.pageCount")
 
-  if [ "$status" = "needs_review" ]; then
-    pass "документ прошёл подготовку (статус $status)"
+  # Корректный инвойс без blocking и с уверенными критичными полями проходит
+  # автоматически (ТЗ 6.7).
+  if [ "$status" = "approved" ]; then
+    pass "корректный документ прошёл автоматически (статус $status)"
   else
-    fail "ожидался статус needs_review, получен: $status"
+    fail "ожидался статус approved, получен: $status"
   fi
 
   [ "$thumb" = "true" ] && pass "миниатюра сгенерирована" || fail "миниатюра не сгенерирована"
@@ -289,7 +291,33 @@ if [ -n "$good_id" ]; then
   missing_flag=$(printf '%s' "$doc_body" | json "o.fields.find(f=>f.name==='line_items')?.rawValue===null && o.fields.find(f=>f.name==='line_items')?.sourceFound===false")
   [ "$missing_flag" = "true" ] && pass "отсутствующее поле помечено как Missing" \
     || fail "line_items не помечено признаком отсутствия"
+
+  clean_blocking=$(printf '%s' "$doc_body" | json "o.blockingIssues")
+  [ "$clean_blocking" = "0" ] && pass "у корректного документа нет блокирующих ошибок" \
+    || fail "блокирующих ошибок у корректного документа: $clean_blocking"
 fi
+
+# Этап 5: несходящаяся сумма — blocking, документ на проверке (ТЗ критерий 6).
+mismatch_id=$(upload_document scripts/fixtures/invoice-sum-mismatch.pdf | json "o.id")
+if [ -n "$mismatch_id" ]; then
+  settled=$(await_settled "$mismatch_id")
+  status=$(printf '%s' "$settled" | json "o.status")
+  [ "$status" = "needs_review" ] && pass "документ с расхождением сумм отправлен на проверку" \
+    || fail "ожидался needs_review, получен: $status"
+
+  sum_issue=$(printf '%s' "$settled" | json "JSON.stringify(o.issues.find(i=>i.ruleId==='invoice_totals_match')||null)")
+  if printf '%s' "$sum_issue" | grep -q '"severity":"blocking"'; then
+    pass "расхождение сумм даёт blocking-ошибку"
+    note "$(printf '%s' "$settled" | json "o.issues.find(i=>i.ruleId==='invoice_totals_match').message")"
+  else
+    fail "blocking-ошибка по суммам не найдена: $sum_issue"
+  fi
+
+  expected_actual=$(printf '%s' "$settled" | json "o.issues.find(i=>i.ruleId==='invoice_totals_match')?.expected==='1440.00' && o.issues.find(i=>i.ruleId==='invoice_totals_match')?.actual==='1400.00'")
+  [ "$expected_actual" = "true" ] && pass "ошибка содержит ожидаемое и фактическое значение" \
+    || fail "expected/actual в ошибке заполнены неверно"
+fi
+
 
 # Схемы и пороги (ТЗ 6.7, §8; критерий приёмки 13 — права администратора).
 schemas_count=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/schemas" | json "o.length")
@@ -343,6 +371,13 @@ dup_id=$(upload_document scripts/fixtures/sample-invoice.pdf | json "o.id")
 if [ -n "$dup_id" ]; then
   dup_of=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents/${dup_id}" | json "o.duplicateOfId")
   [ -n "$dup_of" ] && pass "дубликат связан с оригиналом" || fail "дубликат не связан с оригиналом"
+
+  # Единственная разрешённая cross-document проверка (ТЗ §9): тот же номер
+  # инвойса у того же поставщика.
+  dup_settled=$(await_settled "$dup_id")
+  unique_issue=$(printf '%s' "$dup_settled" | json "o.issues.some(i=>i.ruleId==='invoice_number_unique' && i.severity==='blocking')")
+  [ "$unique_issue" = "true" ] && pass "повтор номера инвойса даёт blocking-ошибку" \
+    || fail "уникальность invoice_number не проверена"
 fi
 
 # Фильтры очереди.

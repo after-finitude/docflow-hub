@@ -4,6 +4,7 @@ import {
   type DocumentType,
   type FieldSpec,
   type SchemaThresholds,
+  type ValidationRule,
 } from '@docflow/shared'
 import { and, eq } from 'drizzle-orm'
 import type { Database } from './db.module'
@@ -14,6 +15,7 @@ export interface ActiveSchema {
   documentType: DocumentType
   version: number
   fields: FieldSpec[]
+  rules: ValidationRule[]
   thresholds: SchemaThresholds
 }
 
@@ -33,11 +35,13 @@ export async function getActiveSchema(
 
   if (!row) return null
 
+  const definition = schemaFieldsSchema.parse(row.jsonSchema)
   return {
     id: row.id,
     documentType: row.documentType,
     version: row.version,
-    fields: schemaFieldsSchema.parse(row.jsonSchema).fields,
+    fields: definition.fields,
+    rules: definition.rules,
     thresholds: thresholdsSchema.parse(row.thresholds),
   }
 }

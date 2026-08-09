@@ -20,15 +20,16 @@ import {
   matchEvidence,
   normalizeByType,
   scoreConfidence,
+  type ConfidenceSignals,
   type DocumentStatus,
   type EvidencePage,
   type ExtractionResponse,
   type FieldSpec,
   type WorkflowState,
 } from '@docflow/shared'
-import { Processor, WorkerHost } from '@nestjs/bullmq'
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq'
 import { Inject, Logger, type OnModuleInit } from '@nestjs/common'
-import { UnrecoverableError, type Job } from 'bullmq'
+import { Queue, UnrecoverableError, type Job } from 'bullmq'
 import { asc, eq } from 'drizzle-orm'
 import { LLM_PROVIDER, LlmInvalidResponseError, type LlmProvider } from '../llm/llm-provider'
 
@@ -58,6 +59,7 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
     @Inject(ENV) private readonly env: Env,
     @Inject(LLM_PROVIDER) private readonly llm: LlmProvider,
     private readonly events: DocumentEventsService,
+    @InjectQueue(QUEUE.VALIDATE) private readonly validateQueue: Queue,
   ) {
     super()
   }
@@ -143,13 +145,10 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
       await this.db.delete(fields).where(eq(fields.documentId, documentId))
       await this.db.insert(fields).values(rows)
 
-      await this.db
-        .update(documents)
-        .set({ status: 'needs_review', statusReason: null, processedAt: new Date() })
-        .where(eq(documents.id, documentId))
-
       await finishRun(this.db, runId)
-      await this.publish(documentId, 'needs_review', 'succeeded')
+      // Документ остаётся в обработке и уходит на валидацию.
+      await this.validateQueue.add('validate', { documentId, correlationId })
+      await this.publish(documentId, 'processing', 'succeeded')
       const found = rows.filter((row) => row.rawValue !== null).length
       this.logger.log(`Документ ${documentId}: извлечено ${found}/${schema.fields.length} полей`)
     } catch (error) {
@@ -214,12 +213,15 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
       ? matchEvidence(llmField.evidence.text, llmField.evidence.page, evidencePages)
       : ({ found: false } as const)
 
-    const score = scoreConfidence({
+    // Сигналы сохраняются: этап валидации пересчитывает уверенность из них
+    // заново, а не накладывает штраф поверх уже посчитанного значения.
+    const signals: ConfidenceSignals = {
       extraction: EXTRACTION_BASE,
       ocr: match.found ? match.ocrConfidence : null,
       sourceFound: match.found,
       pageMismatch: match.found ? match.pageMismatch : false,
-    })
+    }
+    const score = scoreConfidence(signals)
 
     const reasons = [...score.reasons]
     if (normalizedValue === null && !isArray) {
@@ -230,6 +232,7 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
       ...base,
       rawValue,
       normalizedValue,
+      confidenceSignals: signals,
       confidence: score.confidence,
       confidenceReason: reasons.length ? reasons.join('; ') : null,
       sourcePage: match.found ? match.page : null,

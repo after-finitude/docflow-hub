@@ -50,6 +50,22 @@ writeFileSync(
   ]),
 )
 
+// Тот же инвойс с несходящейся суммой: 1200 + 240 ≠ 1400 (ТЗ критерий 6).
+writeFileSync(
+  join(out, 'invoice-sum-mismatch.pdf'),
+  buildPdf([
+    'INVOICE',
+    'Supplier: Globex Ltd',
+    'Invoice No: DF-2002',
+    'Date: 16.07.2026',
+    'Due Date: 15.08.2026',
+    'Currency: EUR',
+    'Subtotal: 1200.00',
+    'Tax: 240.00',
+    'Total: 1400.00',
+  ]),
+)
+
 writeFileSync(
   join(out, 'corrupted.pdf'),
   Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.from('сломанное содержимое без объектов')]),

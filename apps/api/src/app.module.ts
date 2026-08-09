@@ -1,4 +1,11 @@
-import { ConfigModule, DbModule, EventsModule, QueueModule, StorageModule } from '@docflow/core'
+import {
+  ConfigModule,
+  DbModule,
+  EventsModule,
+  QueueModule,
+  StorageModule,
+  ValidationModule,
+} from '@docflow/core'
 import { Module } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
 import { AuthModule } from './auth/auth.module'
@@ -16,6 +23,7 @@ import { SchemasModule } from './schemas/schemas.module'
     StorageModule,
     QueueModule,
     EventsModule,
+    ValidationModule,
     AuthModule,
     DocumentsModule,
     SchemasModule,

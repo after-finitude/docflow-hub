@@ -68,9 +68,10 @@ Every `@Processor` must spread `PIPELINE_WORKER_OPTIONS`. BullMQ looks up the
 custom backoff strategy in worker settings; omit it and the 1s/5s/25s policy
 silently does nothing.
 
-Currently `extract` is the temporary terminus and moves documents to
-`needs_review`. Stage 5 inserts validation → auto-routing before that
-transition. Providers are config-selected: `OCR_PROVIDER` (`mock` reads the PDF
+The pipeline is complete through `validate`, which routes the document:
+`approved` when there are no blocking issues **and** every critical field is at
+or above the schema threshold, `needs_review` otherwise (ТЗ 6.7). Export
+(stage 7) is the only step still missing. Providers are config-selected: `OCR_PROVIDER` (`mock` reads the PDF
 text layer via mupdf — no external calls, real coordinates; `google` rasterizes
 pages and sends them one by one, blank pages never sent) and `LLM_PROVIDER`
 (`mock` is keyed to the demo-set "Label: value" format; `openai_compatible`
@@ -83,6 +84,23 @@ retrying or failing.
 The LLM must return VERBATIM values; normalization to ISO dates/numbers/
 currencies happens in code (`packages/shared/src/normalize`). A model that
 normalizes values itself breaks evidence→bbox matching.
+
+### Validation
+
+The rule engine (`packages/shared/src/validation`) is pure — `today` is passed
+in so decisions are reproducible and testable. Rules live in the schema's
+`json_schema` and are versioned with it; field requiredness comes from
+`FieldSpec.required` and is not duplicated as a rule. `ValidationRunnerService`
+(in core, used by both the worker and — from stage 6 — the API on field edits)
+orchestrates: run engine, add the one cross-document check
+(`invoice_number` uniqueness per supplier, the only one ТЗ §9 permits),
+replace issues, recompute confidence, route, and audit the decision with the
+schema/rule versions.
+
+Confidence is recomputed from `fields.confidence_signals`, never by applying a
+penalty to the stored value — otherwise re-validation would compound penalties.
+Re-validation replaces only engine-produced issues; ids in `EXTERNAL_RULE_IDS`
+(currently the classifier's multi-document warning) survive.
 
 ### Session handling
 

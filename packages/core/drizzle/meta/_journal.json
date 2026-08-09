@@ -29,6 +29,13 @@
       "when": 1785677285865,
       "tag": "0003_document_preprocess",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786272613103,
+      "tag": "0004_field_confidence_signals",
+      "breakpoints": true
     }
   ]
 }
