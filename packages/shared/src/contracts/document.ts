@@ -13,6 +13,7 @@ import {
   type WorkflowStep,
 } from '../enums'
 import type { FieldDto, IssueDto } from './field'
+import type { SchemaThresholds } from './schema'
 
 /** Ограничения приёма файлов, ТЗ 6.1. */
 export const UPLOAD_MAX_BYTES = 25 * 1024 * 1024
@@ -92,6 +93,13 @@ export interface DocumentDetail extends DocumentListItem {
   /** Извлечённые поля (ТЗ §8: документ с полями и проблемами). */
   fields: FieldDto[]
   issues: IssueDto[]
+  /** Пороги активной схемы: по ним UI красит и сортирует поля (ТЗ 5.2). */
+  thresholds: SchemaThresholds | null
+  /**
+   * Доступность Approve. Обновляется в ответе на правку поля, чтобы кнопка
+   * не требовала отдельного запроса (ТЗ 5.2).
+   */
+  canApprove: boolean
 }
 
 export const changeTypeRequestSchema = z.object({

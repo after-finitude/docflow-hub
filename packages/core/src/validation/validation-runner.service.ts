@@ -24,6 +24,12 @@ export interface ValidationRunOptions {
   /** Кто инициировал перевалидацию: система (pipeline) или оператор (правка поля). */
   actorId?: string
   actorType?: 'system' | 'user'
+  /**
+   * Разрешать автоматический перевод в approved. Истина для pipeline (ТЗ 6.7),
+   * ложь при правке поля оператором: исправив последнюю ошибку, оператор не
+   * должен обнаружить документ уже подтверждённым — Approve нажимает он сам.
+   */
+  autoApprove?: boolean
 }
 
 export interface ValidationOutcome {
@@ -118,7 +124,8 @@ export class ValidationRunnerService {
 
     // Документ проходит автоматически только при отсутствии blocking и всех
     // критичных полях выше порога (ТЗ 6.7).
-    const status = decision.auto ? 'approved' : 'needs_review'
+    const autoApprove = options.autoApprove ?? true
+    const status = decision.auto && autoApprove ? 'approved' : 'needs_review'
 
     // Экспортированный документ не откатывается назад перевалидацией.
     if (document.status !== 'exported') {
@@ -142,7 +149,8 @@ export class ValidationRunnerService {
       objectId: documentId,
       after: {
         status,
-        auto: decision.auto,
+        auto: decision.auto && autoApprove,
+        autoApproveAllowed: autoApprove,
         schemaId: schema.id,
         schemaVersion: schema.version,
         ruleIds: schema.rules.map((rule) => rule.id),

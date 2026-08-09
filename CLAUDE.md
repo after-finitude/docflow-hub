@@ -102,6 +102,21 @@ penalty to the stored value — otherwise re-validation would compound penalties
 Re-validation replaces only engine-produced issues; ids in `EXTERNAL_RULE_IDS`
 (currently the classifier's multi-document warning) survive.
 
+`autoApprove` is true for pipeline runs and **false** when an operator edits a
+field: fixing the last blocking issue must not silently approve the document —
+the operator presses Approve. Approve re-checks blocking issues server-side;
+the disabled button is convenience, not enforcement.
+
+### Review Workspace viewer
+
+Pages are rasterized server-side by mupdf (`GET /documents/:id/pages/:n/image`)
+and shown as `<img>`, deliberately **not** pdfjs-dist in the browser as the spec
+suggests. Source bboxes are normalized against the page size mupdf reported
+during OCR, so rendering with the same engine guarantees the overlays line up;
+a different engine may disagree on CropBox vs MediaBox. The same path serves
+scans — mupdf opens images as documents. Overlays are positioned in percent, so
+they are independent of zoom and render resolution.
+
 ### Session handling
 
 The API is the **only** arbiter of session validity. `apps/web/proxy.ts`

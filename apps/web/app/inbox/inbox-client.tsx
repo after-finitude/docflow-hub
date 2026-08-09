@@ -16,6 +16,7 @@ import {
   type SourceType,
   type StreamEvent,
 } from '@docflow/shared'
+import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Uploader } from './uploader'
 
@@ -175,18 +176,25 @@ function Row({ item, onRetry }: { item: DocumentListItem; onRetry: (id: string) 
     <tr className="border-b border-[var(--color-border-subtle)] last:border-0 align-top">
       <td className="p-3">
         {item.hasThumbnail ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={`/api/documents/${item.id}/thumbnail`}
-            alt=""
-            className="h-16 w-12 rounded border border-[var(--color-border-subtle)] object-cover"
-          />
+          <Link href={`/documents/${item.id}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/documents/${item.id}/thumbnail`}
+              alt=""
+              className="h-16 w-12 rounded border border-[var(--color-border-subtle)] object-cover"
+            />
+          </Link>
         ) : (
           <div className="h-16 w-12 rounded border border-dashed border-[var(--color-border-subtle)]" />
         )}
       </td>
       <td className="p-3">
-        <div className="font-medium">{item.originalFilename}</div>
+        <Link
+          href={`/documents/${item.id}`}
+          className="font-medium underline-offset-2 hover:underline"
+        >
+          {item.originalFilename}
+        </Link>
         <div className="text-xs text-neutral-500">{formatSize(item.sizeBytes)}</div>
         {item.duplicateOfId && (
           <div className="mt-1 text-xs text-amber-700">Дубликат уже принятого документа</div>

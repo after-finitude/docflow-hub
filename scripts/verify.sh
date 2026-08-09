@@ -319,6 +319,75 @@ if [ -n "$mismatch_id" ]; then
 fi
 
 
+# Этап 6: операции Review Workspace.
+if [ -n "$mismatch_id" ]; then
+  # Рендер страницы для просмотрщика.
+  page_type=$(curl -s -b "$COOKIES" -o /dev/null -w '%{content_type}' \
+    "http://localhost:${WEB_PORT}/api/documents/${mismatch_id}/pages/1/image?width=800")
+  case "$page_type" in
+    image/png*) pass "страница отдаётся просмотрщику как PNG" ;;
+    *) fail "рендер страницы вернул тип: $page_type" ;;
+  esac
+
+  # Approve при нерешённой blocking-ошибке невозможен (ТЗ §9, критерий 6).
+  approve_code=$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" \
+    -X POST "http://localhost:${WEB_PORT}/api/documents/${mismatch_id}/approve")
+  [ "$approve_code" = "409" ] && pass "подтверждение заблокировано blocking-ошибкой (409)" \
+    || fail "approve при blocking вернул $approve_code вместо 409"
+
+  can_approve=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents/${mismatch_id}" | json "o.canApprove")
+  [ "$can_approve" = "false" ] && pass "canApprove=false при blocking-ошибке" \
+    || fail "canApprove=$can_approve при наличии blocking"
+
+  # Правка поля синхронно перевалидирует документ (ТЗ 5.2, критерий 8).
+  patched=$(curl -s -b "$COOKIES" -X PATCH \
+    "http://localhost:${WEB_PORT}/api/documents/${mismatch_id}/fields/grand_total" \
+    -H 'Content-Type: application/json' -d '{"value":"1440.00"}')
+  patched_blocking=$(printf '%s' "$patched" | json "o.blockingIssues")
+  [ "$patched_blocking" = "0" ] && pass "правка поля устранила blocking в том же ответе" \
+    || fail "после правки blockingIssues=$patched_blocking"
+
+  patched_edited=$(printf '%s' "$patched" | json "o.fields.find(f=>f.name==='grand_total')?.isEdited")
+  [ "$patched_edited" = "true" ] && pass "поле помечено как исправленное оператором" \
+    || fail "isEdited=$patched_edited после правки"
+
+  patched_can=$(printf '%s' "$patched" | json "o.canApprove")
+  [ "$patched_can" = "true" ] && pass "доступность Approve обновлена в ответе на правку" \
+    || fail "canApprove=$patched_can после устранения ошибки"
+
+  # Правка не подтверждает документ за оператора.
+  patched_status=$(printf '%s' "$patched" | json "o.status")
+  [ "$patched_status" = "needs_review" ] && pass "правка не подтверждает документ автоматически" \
+    || fail "после правки статус $patched_status, ожидался needs_review"
+
+  audit_pair=$(psql_owner "select count(*) from audit_events where action='field.edited' and object_type='field' and before is not null and after is not null")
+  [ "${audit_pair:-0}" -ge 1 ] 2>/dev/null && pass "правка записана в журнал как before/after" \
+    || fail "правка не попала в журнал"
+
+  approve_ok=$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" \
+    -X POST "http://localhost:${WEB_PORT}/api/documents/${mismatch_id}/approve")
+  [ "$approve_ok" = "201" ] || [ "$approve_ok" = "200" ] \
+    && pass "документ подтверждён после устранения ошибки" \
+    || fail "approve вернул $approve_ok"
+fi
+
+# Отклонение с причиной из списка (ТЗ 5.2).
+reject_id=$(upload_document scripts/fixtures/sample-invoice.pdf | json "o.id")
+if [ -n "$reject_id" ]; then
+  await_settled "$reject_id" >/dev/null
+  rejected=$(curl -s -b "$COOKIES" -X POST "http://localhost:${WEB_PORT}/api/documents/${reject_id}/reject" \
+    -H 'Content-Type: application/json' \
+    -d '{"reason":"poor_scan_quality","comment":"проверка"}')
+  rej_status=$(printf '%s' "$rejected" | json "o.status")
+  rej_reason=$(printf '%s' "$rejected" | json "o.statusReason")
+  if [ "$rej_status" = "rejected" ] && [ -n "$rej_reason" ]; then
+    pass "документ отклонён с указанием причины"
+    note "$rej_reason"
+  else
+    fail "отклонение: статус $rej_status, причина «$rej_reason»"
+  fi
+fi
+
 # Схемы и пороги (ТЗ 6.7, §8; критерий приёмки 13 — права администратора).
 schemas_count=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/schemas" | json "o.length")
 [ "$schemas_count" = "4" ] && pass "схемы четырёх типов доступны" || fail "схем: $schemas_count"

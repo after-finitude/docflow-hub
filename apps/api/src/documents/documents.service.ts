@@ -3,6 +3,7 @@ import {
   DocumentEventsService,
   QUEUE,
   StorageService,
+  ValidationRunnerService,
   documents,
   fields,
   getActiveSchema,
@@ -15,8 +16,13 @@ import {
 } from '@docflow/core'
 import {
   DEFAULT_TENANT_ID,
+  REJECT_REASON_LABELS,
+  normalizeByType,
   type ClassifiableDocumentType,
   type DocumentDetail,
+  type DocumentStatus,
+  type RejectRequest,
+  type UpdateFieldRequest,
   type DocumentListItem,
   type DocumentListPage,
   type DocumentListQuery,
@@ -28,7 +34,13 @@ import {
   type WorkflowStep,
 } from '@docflow/shared'
 import { InjectQueue } from '@nestjs/bullmq'
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { Queue } from 'bullmq'
 import { and, desc, eq, exists, gte, inArray, isNull, lte, not, sql, type SQL } from 'drizzle-orm'
 import { createHash, randomUUID } from 'node:crypto'
@@ -86,6 +98,7 @@ export class DocumentsService {
     @Inject(DB) private readonly db: Database,
     private readonly storage: StorageService,
     private readonly events: DocumentEventsService,
+    private readonly validation: ValidationRunnerService,
     @InjectQueue(QUEUE.PREPROCESS) private readonly preprocessQueue: Queue,
     @InjectQueue(QUEUE.EXTRACT) private readonly extractQueue: Queue,
   ) {}
@@ -206,15 +219,209 @@ export class DocumentsService {
 
     if (!row) throw new NotFoundException('Документ не найден')
 
+    const base = this.toListItem(row)
+    const schema =
+      base.documentType && base.documentType !== 'unknown'
+        ? await getActiveSchema(this.db, base.documentType)
+        : null
+
     return {
-      ...this.toListItem(row),
+      ...base,
       checksum: row.checksum,
       sourcePath: row.sourcePath,
       processedAt: row.processedAt ? row.processedAt.toISOString() : null,
       pageCount: row.pageCount,
-      fields: await this.loadFields(id, row.documentType as DocumentListItem['documentType']),
+      fields: await this.loadFields(id, base.documentType),
       issues: await this.loadIssues(id),
+      thresholds: schema?.thresholds ?? null,
+      // Approve заблокирован при любой нерешённой blocking-ошибке (ТЗ §9).
+      canApprove: base.status === 'needs_review' && base.blockingIssues === 0,
     }
+  }
+
+  /**
+   * Правка значения оператором (ТЗ 5.2, §9). Сохраняет before/after в журнал,
+   * синхронно перезапускает валидацию и возвращает документ с обновлённым
+   * списком проблем и доступностью Approve.
+   */
+  async updateField(
+    id: string,
+    name: string,
+    value: UpdateFieldRequest['value'],
+    user: SessionUser,
+    origin: RequestContext,
+  ): Promise<DocumentDetail> {
+    const [document] = await this.db
+      .select({ id: documents.id, status: documents.status })
+      .from(documents)
+      .where(eq(documents.id, id))
+      .limit(1)
+    if (!document) throw new NotFoundException('Документ не найден')
+    if (document.status === 'processing') {
+      throw new BadRequestException('Документ ещё обрабатывается')
+    }
+    if (document.status === 'exported') {
+      throw new BadRequestException('Выгруженный документ не редактируется')
+    }
+
+    const [field] = await this.db
+      .select()
+      .from(fields)
+      .where(and(eq(fields.documentId, id), eq(fields.name, name)))
+      .limit(1)
+    if (!field) throw new NotFoundException(`Поле ${name} не найдено`)
+
+    const isArray = Array.isArray(value)
+    const rawValue = value === null ? null : isArray ? JSON.stringify(value) : value
+    const normalizedValue =
+      value === null ? null : isArray ? value : normalizeByType(value, field.valueType)
+
+    await writeAudit(this.db, {
+      correlationId: origin.correlationId,
+      actorType: 'user',
+      actorId: user.id,
+      action: 'field.edited',
+      objectType: 'field',
+      objectId: field.id,
+      before: { name, rawValue: field.rawValue, normalizedValue: field.normalizedValue },
+      after: { name, rawValue, normalizedValue },
+      result: 'success',
+      ip: origin.ip,
+      userAgent: origin.userAgent,
+    })
+
+    await this.db
+      .update(fields)
+      .set({
+        rawValue,
+        normalizedValue,
+        isEdited: true,
+        // Значение введено человеком: сигналы извлечения к нему неприменимы,
+        // поэтому они очищаются, а перевалидация оставит уверенность как есть.
+        confidenceSignals: null,
+        confidence: value === null ? null : 1,
+        confidenceReason:
+          value === null ? 'Значение удалено оператором' : 'Значение исправлено оператором',
+      })
+      .where(eq(fields.id, field.id))
+
+    await this.validation.run(id, {
+      correlationId: origin.correlationId,
+      actorType: 'user',
+      actorId: user.id,
+      // Правка не подтверждает документ за оператора — Approve нажимает он сам.
+      autoApprove: false,
+    })
+
+    return this.findOne(id)
+  }
+
+  /** Подтверждение оператором (ТЗ 5.2). Проверка blocking выполняется на сервере. */
+  async approve(id: string, user: SessionUser, origin: RequestContext): Promise<DocumentDetail> {
+    const [document] = await this.db
+      .select({ id: documents.id, status: documents.status })
+      .from(documents)
+      .where(eq(documents.id, id))
+      .limit(1)
+    if (!document) throw new NotFoundException('Документ не найден')
+    if (document.status !== 'needs_review') {
+      throw new BadRequestException(
+        `Документ в статусе ${document.status} не требует подтверждения`,
+      )
+    }
+
+    // Состояние проблем перепроверяется здесь, а не берётся из ответа клиента:
+    // блокировка кнопки в интерфейсе — удобство, а не защита (ТЗ §9).
+    const [{ blocking }] = await this.db
+      .select({ blocking: sql<number>`count(*)::int` })
+      .from(validationIssues)
+      .where(
+        and(
+          eq(validationIssues.documentId, id),
+          eq(validationIssues.severity, 'blocking'),
+          isNull(validationIssues.resolvedAt),
+        ),
+      )
+
+    if (blocking > 0) {
+      throw new ConflictException(
+        `Подтверждение невозможно: нерешённых блокирующих ошибок — ${blocking}`,
+      )
+    }
+
+    await this.db
+      .update(documents)
+      .set({ status: 'approved', statusReason: null, processedAt: new Date() })
+      .where(eq(documents.id, id))
+
+    await writeAudit(this.db, {
+      correlationId: origin.correlationId,
+      actorType: 'user',
+      actorId: user.id,
+      action: 'document.approved',
+      objectType: 'document',
+      objectId: id,
+      result: 'success',
+      ip: origin.ip,
+      userAgent: origin.userAgent,
+    })
+
+    await this.publishStatus(id, 'approved')
+    return this.findOne(id)
+  }
+
+  /** Отклонение с причиной из списка и комментарием (ТЗ 5.2). */
+  async reject(
+    id: string,
+    request: RejectRequest,
+    user: SessionUser,
+    origin: RequestContext,
+  ): Promise<DocumentDetail> {
+    const [document] = await this.db
+      .select({ id: documents.id, status: documents.status })
+      .from(documents)
+      .where(eq(documents.id, id))
+      .limit(1)
+    if (!document) throw new NotFoundException('Документ не найден')
+    if (document.status === 'exported') {
+      throw new BadRequestException('Выгруженный документ не отклоняется')
+    }
+
+    const reason = REJECT_REASON_LABELS[request.reason]
+    const statusReason = request.comment ? `${reason}: ${request.comment}` : reason
+
+    await this.db
+      .update(documents)
+      .set({ status: 'rejected', statusReason, processedAt: new Date() })
+      .where(eq(documents.id, id))
+
+    await writeAudit(this.db, {
+      correlationId: origin.correlationId,
+      actorType: 'user',
+      actorId: user.id,
+      action: 'document.rejected',
+      objectType: 'document',
+      objectId: id,
+      before: { status: document.status },
+      after: { reason: request.reason, comment: request.comment ?? null },
+      result: 'success',
+      ip: origin.ip,
+      userAgent: origin.userAgent,
+    })
+
+    await this.publishStatus(id, 'rejected')
+    return this.findOne(id)
+  }
+
+  private async publishStatus(documentId: string, status: DocumentStatus): Promise<void> {
+    await this.events.publish({
+      type: 'document',
+      documentId,
+      status,
+      step: null,
+      state: null,
+      at: new Date().toISOString(),
+    })
   }
 
   /** Смена типа вручную: перезапускает извлечение по новой схеме (ТЗ 6.3, §8). */
@@ -353,6 +560,17 @@ export class DocumentsService {
       .orderBy(pages.pageNumber)
 
     return rows.map((row) => ({ ...row, blocks: row.blocks ?? [] }))
+  }
+
+  /** Исходные данные для рендера страницы просмотрщиком. */
+  async fileLocation(id: string): Promise<{ storageKey: string; mimeType: string }> {
+    const [row] = await this.db
+      .select({ storageKey: documents.storageKey, mimeType: documents.mimeType })
+      .from(documents)
+      .where(eq(documents.id, id))
+      .limit(1)
+    if (!row) throw new NotFoundException('Документ не найден')
+    return row
   }
 
   /** Миниатюра отдаётся через API, а не подписанной ссылкой: доступ проверяет guard. */

@@ -3,7 +3,11 @@ import {
   UPLOAD_MAX_BYTES,
   changeTypeRequestSchema,
   documentListQuerySchema,
+  rejectRequestSchema,
+  updateFieldRequestSchema,
   type ChangeTypeRequest,
+  type RejectRequest,
+  type UpdateFieldRequest,
   type DocumentDetail,
   type DocumentListItem,
   type DocumentListPage,
@@ -18,7 +22,9 @@ import {
   Controller,
   Get,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Res,
@@ -32,12 +38,14 @@ import { Inject } from '@nestjs/common'
 import { ZodValidationPipe } from '../common/zod-validation.pipe'
 import { CurrentUser, Origin, type RequestContext } from '../auth/decorators'
 import { DocumentsService } from './documents.service'
+import { PageRenderService } from './page-render.service'
 import type { MulterFileFilter, UploadedDocument } from './uploaded-document'
 
 @Controller('documents')
 export class DocumentsController {
   constructor(
     private readonly documents: DocumentsService,
+    private readonly pageRender: PageRenderService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -105,6 +113,61 @@ export class DocumentsController {
       url: await this.documents.signedFileUrl(id),
       expiresInSeconds: this.env.SIGNED_URL_TTL_SECONDS,
     }
+  }
+
+  /** Страница документа в PNG для просмотрщика (ТЗ 5.2). */
+  @Get(':id/pages/:page/image')
+  async pageImage(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('page', ParseIntPipe) page: number,
+    @Query('width') width: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    const location = await this.documents.fileLocation(id)
+    // Ширина ограничена: запрос произвольного размера — это управляемая
+    // клиентом нагрузка на рендер.
+    const targetWidth = Math.min(Math.max(Number(width) || 1200, 120), 2400)
+    const png = await this.pageRender.render(
+      location.storageKey,
+      location.mimeType,
+      page,
+      targetWidth,
+    )
+
+    res.setHeader('Content-Type', 'image/png')
+    res.setHeader('Cache-Control', 'private, max-age=600')
+    res.send(png)
+  }
+
+  /** Правка значения оператором: синхронно перевалидирует документ (ТЗ 5.2, §9). */
+  @Patch(':id/fields/:name')
+  updateField(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('name') name: string,
+    @Body(new ZodValidationPipe(updateFieldRequestSchema)) body: UpdateFieldRequest,
+    @CurrentUser() user: SessionUser,
+    @Origin() origin: RequestContext,
+  ): Promise<DocumentDetail> {
+    return this.documents.updateField(id, name, body.value, user, origin)
+  }
+
+  @Post(':id/approve')
+  approve(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: SessionUser,
+    @Origin() origin: RequestContext,
+  ): Promise<DocumentDetail> {
+    return this.documents.approve(id, user, origin)
+  }
+
+  @Post(':id/reject')
+  reject(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(rejectRequestSchema)) body: RejectRequest,
+    @CurrentUser() user: SessionUser,
+    @Origin() origin: RequestContext,
+  ): Promise<DocumentDetail> {
+    return this.documents.reject(id, body, user, origin)
   }
 
   /** Ручная смена типа с перезапуском извлечения по новой схеме (ТЗ 6.3). */
