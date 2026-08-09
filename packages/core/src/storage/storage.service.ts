@@ -18,23 +18,13 @@ export class StorageService implements OnModuleInit {
    * подпись покрывает Host: ссылку, подписанную адресом minio:9000, браузер
    * открыть не сможет.
    */
-  private readonly publicClient: Client
+  private publicClient!: Client
 
   constructor(@Inject(ENV) private readonly env: Env) {
     this.client = new Client({
       endPoint: env.MINIO_ENDPOINT,
       port: env.MINIO_PORT,
       useSSL: env.MINIO_USE_SSL,
-      accessKey: env.MINIO_ROOT_USER,
-      secretKey: env.MINIO_ROOT_PASSWORD,
-    })
-
-    const publicUrl = new URL(env.MINIO_PUBLIC_URL)
-    const useSSL = publicUrl.protocol === 'https:'
-    this.publicClient = new Client({
-      endPoint: publicUrl.hostname,
-      port: Number(publicUrl.port) || (useSSL ? 443 : 80),
-      useSSL,
       accessKey: env.MINIO_ROOT_USER,
       secretKey: env.MINIO_ROOT_PASSWORD,
     })
@@ -46,6 +36,22 @@ export class StorageService implements OnModuleInit {
       await this.client.makeBucket(bucket)
       this.logger.log(`Создан bucket ${bucket}`)
     }
+
+    // Регион спрашивается у внутреннего клиента и передаётся публичному
+    // готовым. Сам он узнать его не может: MINIO_PUBLIC_URL — адрес для
+    // браузера, изнутри контейнера он не открывается, и подпись ссылки
+    // падала бы на попытке определить регион.
+    const region = await this.client.getBucketRegionAsync(bucket)
+    const publicUrl = new URL(this.env.MINIO_PUBLIC_URL)
+    const useSSL = publicUrl.protocol === 'https:'
+    this.publicClient = new Client({
+      endPoint: publicUrl.hostname,
+      port: Number(publicUrl.port) || (useSSL ? 443 : 80),
+      useSSL,
+      region,
+      accessKey: this.env.MINIO_ROOT_USER,
+      secretKey: this.env.MINIO_ROOT_PASSWORD,
+    })
   }
 
   async put(key: string, body: Buffer | Readable, contentType: string): Promise<void> {

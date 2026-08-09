@@ -48,6 +48,16 @@ import type { RequestContext } from '../auth/decorators'
 import { ExportService } from '../export/export.service'
 import type { UploadedDocument } from './uploaded-document'
 
+/**
+ * Ссылка на документ во внешнем запросе. Имя таблицы проставляется явно:
+ * внутри sql-шаблона Drizzle печатает колонки без префикса, и `documents.id`
+ * превратился бы в голое `"id"`, которое подзапрос разрешает в собственный
+ * `id` — условие связи молча становится `document_id = id` и не выполняется
+ * никогда. Счётчики проблем и текущий этап при этом просто остаются пустыми,
+ * без единой ошибки.
+ */
+const documentRef = sql`${sql.identifier('documents')}.${sql.identifier('id')}`
+
 /** Поля, вычисляемые подзапросами: до этапов 4–5 они пустые, но форма ответа уже финальная. */
 const listColumns = {
   id: documents.id,
@@ -66,28 +76,28 @@ const listColumns = {
   receivedAt: documents.receivedAt,
   minCriticalConfidence: sql<number | null>`(
     select min(${fields.confidence}) from ${fields}
-    where ${fields.documentId} = ${documents.id} and ${fields.isCritical}
+    where ${fields.documentId} = ${documentRef} and ${fields.isCritical}
   )`.as('min_critical_confidence'),
   blockingIssues: sql<number>`(
     select count(*)::int from ${validationIssues}
-    where ${validationIssues.documentId} = ${documents.id}
+    where ${validationIssues.documentId} = ${documentRef}
       and ${validationIssues.severity} = 'blocking'
       and ${validationIssues.resolvedAt} is null
   )`.as('blocking_issues'),
   warningIssues: sql<number>`(
     select count(*)::int from ${validationIssues}
-    where ${validationIssues.documentId} = ${documents.id}
+    where ${validationIssues.documentId} = ${documentRef}
       and ${validationIssues.severity} = 'warning'
       and ${validationIssues.resolvedAt} is null
   )`.as('warning_issues'),
   currentStep: sql<WorkflowStep | null>`(
     select ${workflowRuns.step} from ${workflowRuns}
-    where ${workflowRuns.documentId} = ${documents.id}
+    where ${workflowRuns.documentId} = ${documentRef}
     order by ${workflowRuns.startedAt} desc nulls last limit 1
   )`.as('current_step'),
   currentStepState: sql<WorkflowState | null>`(
     select ${workflowRuns.state} from ${workflowRuns}
-    where ${workflowRuns.documentId} = ${documents.id}
+    where ${workflowRuns.documentId} = ${documentRef}
     order by ${workflowRuns.startedAt} desc nulls last limit 1
   )`.as('current_step_state'),
 }

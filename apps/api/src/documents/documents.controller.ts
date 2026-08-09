@@ -100,14 +100,20 @@ export class DocumentsController {
     return this.documents.pages(id)
   }
 
+  /**
+   * Ответ отдаётся потоком, поэтому passthrough здесь недопустим: Nest
+   * завершил бы ответ по возврату из метода, пока поток ещё пишет, — это
+   * ERR_STREAM_WRITE_AFTER_END, необработанное событие error у сокета
+   * и падение процесса целиком.
+   */
   @Get(':id/thumbnail')
-  async thumbnail(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<void> {
+  async thumbnail(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response): Promise<void> {
     const stream = await this.documents.thumbnail(id)
     res.setHeader('Content-Type', 'image/png')
     res.setHeader('Cache-Control', 'private, max-age=300')
+    // Обрыв чтения из хранилища на середине ответа: заголовки уже ушли,
+    // поэтому корректного кода ошибки не существует — соединение рвётся.
+    stream.on('error', () => res.destroy())
     stream.pipe(res)
   }
 

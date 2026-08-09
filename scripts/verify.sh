@@ -45,6 +45,20 @@ if ! docker info >/dev/null 2>&1; then
 fi
 pass "docker-демон отвечает"
 
+# Compose ставится и плагином CLI (`docker compose`), и отдельной командой
+# (`docker-compose` — так его кладёт Homebrew). Требовать конкретный способ
+# установки скрипт не должен.
+if docker compose version >/dev/null 2>&1; then
+  compose() { docker compose "$@"; }
+elif command -v docker-compose >/dev/null 2>&1; then
+  compose() { docker-compose "$@"; }
+else
+  fail "docker compose недоступен"
+  note "установите плагин compose или docker-compose"
+  exit 1
+fi
+pass "docker compose доступен"
+
 if [ ! -f .env ]; then
   fail ".env отсутствует"
   note "выполните: cp example.env .env и задайте пароли и JWT_SECRET"
@@ -57,15 +71,15 @@ WEB_PORT="${WEB_HOST_PORT:-3000}"
 API_PORT_HOST="${API_HOST_PORT:-3001}"
 PROJECT="docflow-hub"
 
-run "docker compose up --build" docker compose up --build -d --wait
+run "compose up --build" compose up --build -d --wait
 
 step "3/3  Проверки на запущенном стеке"
 
 psql_owner() {
-  docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "$1" 2>&1
+  compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "$1" 2>&1
 }
 psql_app() {
-  docker compose exec -T -e PGPASSWORD="$APP_DB_PASSWORD" postgres \
+  compose exec -T -e PGPASSWORD="$APP_DB_PASSWORD" postgres \
     psql -U docflow_app -d "$POSTGRES_DB" -tAc "$1" 2>&1
 }
 
@@ -92,19 +106,24 @@ else
   fail "роль приложения не может писать в журнал"
 fi
 
-if psql_app "update audit_events set result='tampered'" 2>&1 | grep -qi "denied\|отказано"; then
+# Вывод сохраняется в переменную, а не подаётся в grep напрямую: при
+# включённом pipefail код возврата psql (ошибка прав — это ошибка) отменял бы
+# успешное совпадение и проверка читалась бы наоборот.
+denied() { printf '%s' "$1" | grep -qi "denied\|отказано"; }
+
+if denied "$(psql_app "update audit_events set result='tampered'")"; then
   pass "UPDATE по журналу отклонён"
 else
   fail "UPDATE по журналу НЕ отклонён — защита не работает"
 fi
 
-if psql_app "delete from audit_events" 2>&1 | grep -qi "denied\|отказано"; then
+if denied "$(psql_app "delete from audit_events")"; then
   pass "DELETE по журналу отклонён"
 else
   fail "DELETE по журналу НЕ отклонён — защита не работает"
 fi
 
-if psql_app "create table verify_probe (id int)" 2>&1 | grep -qi "denied\|отказано"; then
+if denied "$(psql_app "create table verify_probe (id int)")"; then
   pass "роль приложения не может менять схему"
 else
   fail "роль приложения имеет права на DDL"
@@ -113,7 +132,7 @@ fi
 # --- Персистентность тома PostgreSQL 18 ------------------------------------
 if docker run --rm -v "${PROJECT}_postgres-data:/v" alpine \
      test -f /v/18/docker/PG_VERSION >/dev/null 2>&1; then
-  pass "кластер лежит в именованном томе (переживёт docker compose down)"
+  pass "кластер лежит в именованном томе (переживёт compose down)"
 else
   fail "именованный том пуст — данные в анонимном томе и пропадут при down"
 fi
@@ -530,7 +549,7 @@ fi
 # попытки, задача уходит в DLQ и повторяется вручную из Execution Log.
 if [ -n "$reject_id" ]; then
   storage_key=$(psql_owner "select storage_key from documents where id='${reject_id}'")
-  mc_setup=$(docker compose exec -T minio sh -c \
+  mc_setup=$(compose exec -T minio sh -c \
     "mc alias set probe http://localhost:9000 '${MINIO_ROOT_USER}' '${MINIO_ROOT_PASSWORD}' >/dev/null 2>&1 && \
      mc cp probe/${MINIO_BUCKET}/${storage_key} /tmp/original.bin >/dev/null 2>&1 && \
      mc rm probe/${MINIO_BUCKET}/${storage_key} >/dev/null 2>&1 && echo ok" 2>&1)
@@ -563,7 +582,7 @@ if [ -n "$reject_id" ]; then
     fi
 
     # Файл возвращается на место, чтобы повтор мог завершиться успешно.
-    docker compose exec -T minio sh -c \
+    compose exec -T minio sh -c \
       "mc cp /tmp/original.bin probe/${MINIO_BUCKET}/${storage_key} >/dev/null 2>&1" >/dev/null 2>&1
 
     if [ -n "$failed_run" ]; then
@@ -592,7 +611,7 @@ fi
 # при старте воркера, поэтому проверка перезапускает его вместо ожидания
 # интервала.
 SOURCE_DIR="docker/source-inbox"
-resync() { docker compose restart worker >/dev/null 2>&1; sleep 6; }
+resync() { compose restart worker >/dev/null 2>&1; sleep 6; }
 
 drive_docs() {
   curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents?source=drive&pageSize=50"
@@ -656,16 +675,20 @@ if [ "${SOURCE_PROVIDER:-none}" = "local_folder" ]; then
   # Retention: срок отсчитывается от потери актуальности, поэтому проверка
   # отодвигает дату назад и запускает уборку перезапуском воркера.
   purge_id=$(psql_owner "select id from documents where source_type='drive' and version_number=1 limit 1")
-  psql_owner "update documents set deactivated_at = now() - interval '400 days' where id='${purge_id}'" >/dev/null
-  resync
-  sleep 3
-  purged=$(psql_owner "select count(*) from documents where id='${purge_id}'")
-  [ "$purged" = "0" ] && pass "просроченный документ удалён физически по retention" \
-    || fail "документ с истёкшим retention остался в базе"
+  if [ -n "$purge_id" ]; then
+    psql_owner "update documents set deactivated_at = now() - interval '400 days' where id='${purge_id}'" >/dev/null
+    resync
+    sleep 3
+    purged=$(psql_owner "select count(*) from documents where id='${purge_id}'")
+    [ "$purged" = "0" ] && pass "просроченный документ удалён физически по retention" \
+      || fail "документ с истёкшим retention остался в базе"
 
-  purge_audit=$(psql_owner "select count(*) from audit_events where action='document.purged' and object_id='${purge_id}'")
-  [ "${purge_audit:-0}" -ge 1 ] 2>/dev/null && pass "физическое удаление записано в журнал" \
-    || fail "физическое удаление не попало в журнал"
+    purge_audit=$(psql_owner "select count(*) from audit_events where action='document.purged' and object_id='${purge_id}'")
+    [ "${purge_audit:-0}" -ge 1 ] 2>/dev/null && pass "физическое удаление записано в журнал" \
+      || fail "физическое удаление не попало в журнал"
+  else
+    fail "нет документа из источника — retention проверить не на чем"
+  fi
 else
   note "второй источник отключён (SOURCE_PROVIDER=${SOURCE_PROVIDER:-none}) — проверки пропущены"
 fi
@@ -687,5 +710,5 @@ if [ "$FAILED" -eq 0 ]; then
 else
   printf '\033[31mЕсть непройденные проверки — см. отметки выше.\033[0m\n'
 fi
-printf 'Веб-приложение: http://localhost:%s   Остановить: docker compose down\n' "$WEB_PORT"
+printf 'Веб-приложение: http://localhost:%s   Остановить: compose down\n' "$WEB_PORT"
 exit "$FAILED"
