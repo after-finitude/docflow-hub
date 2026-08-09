@@ -1,0 +1,525 @@
+{
+  "baseDate": "2026-06-01",
+  "documents": [
+    {
+      "file": "invoice-001.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "Umbrella SA",
+        "invoice_number": "INV-2026-1000",
+        "invoice_date": "2026-07-10",
+        "currency": "EUR",
+        "subtotal": 3142.32,
+        "grand_total": 3739.36
+      },
+      "eval": true
+    },
+    {
+      "file": "invoice-002.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "Hooli Inc",
+        "invoice_number": "INV-2026-1001",
+        "invoice_date": "2026-07-06",
+        "currency": "EUR",
+        "subtotal": 1023.45,
+        "grand_total": 1228.14
+      },
+      "eval": true
+    },
+    {
+      "file": "invoice-003.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "Acme GmbH",
+        "invoice_number": "INV-2026-1002",
+        "invoice_date": "2026-07-05",
+        "currency": "USD",
+        "subtotal": 8437.32,
+        "grand_total": 10040.41
+      },
+      "eval": true
+    },
+    {
+      "file": "invoice-004.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "ООО «Вектор»",
+        "invoice_number": "INV-2026-1003",
+        "invoice_date": "2026-07-05",
+        "currency": "GBP",
+        "subtotal": 3035.33,
+        "grand_total": 3035.33
+      },
+      "eval": true
+    },
+    {
+      "file": "invoice-005.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "Stark Industries",
+        "invoice_number": "INV-2026-1004",
+        "invoice_date": "2026-06-20",
+        "currency": "GBP",
+        "subtotal": 5860.67,
+        "grand_total": 6270.92
+      },
+      "eval": true
+    },
+    {
+      "file": "invoice-006.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "Acme GmbH",
+        "invoice_number": "INV-2026-1005",
+        "invoice_date": "2026-06-14",
+        "currency": "EUR",
+        "subtotal": 4878.81,
+        "grand_total": 5854.57
+      },
+      "eval": true
+    },
+    {
+      "file": "invoice-007.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "ООО «Мегастрой»",
+        "invoice_number": "INV-2026-1006",
+        "invoice_date": "2026-06-14",
+        "currency": "USD",
+        "subtotal": 2779.15,
+        "grand_total": 2779.15
+      },
+      "eval": true
+    },
+    {
+      "file": "invoice-008.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "Initech BV",
+        "invoice_number": "INV-2026-1007",
+        "invoice_date": "2026-06-05",
+        "currency": "EUR",
+        "subtotal": 8262.46,
+        "grand_total": 8262.46
+      },
+      "eval": true
+    },
+    {
+      "file": "invoice-009.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "Globex Ltd",
+        "invoice_number": "INV-2026-1008",
+        "invoice_date": "2026-07-03",
+        "currency": "EUR",
+        "subtotal": 1948.78,
+        "grand_total": 2319.05
+      },
+      "eval": true
+    },
+    {
+      "file": "invoice-010.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "Stark Industries",
+        "invoice_number": "INV-2026-1009",
+        "invoice_date": "2026-06-15",
+        "currency": "EUR",
+        "subtotal": 1690.61,
+        "grand_total": 2011.83
+      },
+      "eval": true
+    },
+    {
+      "file": "invoice-011.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "ООО «Вектор»",
+        "invoice_number": "INV-2026-1010",
+        "invoice_date": "2026-06-11",
+        "currency": "USD",
+        "subtotal": 8775.66,
+        "grand_total": 9389.96
+      },
+      "eval": true
+    },
+    {
+      "file": "invoice-012.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "ООО «Мегастрой»",
+        "invoice_number": "INV-2026-1011",
+        "invoice_date": "2026-06-02",
+        "currency": "GBP",
+        "subtotal": 1331.62,
+        "grand_total": 1597.94
+      },
+      "eval": true
+    },
+    {
+      "file": "bank_statement-001.pdf",
+      "expectedType": "bank_statement",
+      "criticalFields": {
+        "bank_name": "Alpha Banking",
+        "account_number": "DE9781426099",
+        "period_start": "2026-06-15",
+        "period_end": "2026-07-15",
+        "opening_balance": 5192.26,
+        "closing_balance": 4989.5
+      },
+      "eval": true
+    },
+    {
+      "file": "bank_statement-002.pdf",
+      "expectedType": "bank_statement",
+      "criticalFields": {
+        "bank_name": "Meridian Trust",
+        "account_number": "DE6988367265",
+        "period_start": "2026-06-13",
+        "period_end": "2026-07-13",
+        "opening_balance": 6738.72,
+        "closing_balance": 6943.94
+      },
+      "eval": true
+    },
+    {
+      "file": "bank_statement-003.pdf",
+      "expectedType": "bank_statement",
+      "criticalFields": {
+        "bank_name": "Nordbank AG",
+        "account_number": "DE7063106785",
+        "period_start": "2026-06-21",
+        "period_end": "2026-07-21",
+        "opening_balance": 2134.08,
+        "closing_balance": 1855.94
+      },
+      "eval": true
+    },
+    {
+      "file": "bank_statement-004.pdf",
+      "expectedType": "bank_statement",
+      "criticalFields": {
+        "bank_name": "Alpha Banking",
+        "account_number": "DE6570907381",
+        "period_start": "2026-06-10",
+        "period_end": "2026-07-10",
+        "opening_balance": 5875.99,
+        "closing_balance": 5559.11
+      },
+      "eval": false
+    },
+    {
+      "file": "bank_statement-005.pdf",
+      "expectedType": "bank_statement",
+      "criticalFields": {
+        "bank_name": "Nordbank AG",
+        "account_number": "DE9067595863",
+        "period_start": "2026-06-07",
+        "period_end": "2026-07-07",
+        "opening_balance": 4356.68,
+        "closing_balance": 4833.09
+      },
+      "eval": false
+    },
+    {
+      "file": "bank_statement-006.pdf",
+      "expectedType": "bank_statement",
+      "criticalFields": {
+        "bank_name": "ПАО «Первый Банк»",
+        "account_number": "DE1867509744",
+        "period_start": "2026-06-04",
+        "period_end": "2026-07-04",
+        "opening_balance": 5115.3,
+        "closing_balance": 5346.26
+      },
+      "eval": false
+    },
+    {
+      "file": "bank_statement-007.pdf",
+      "expectedType": "bank_statement",
+      "criticalFields": {
+        "bank_name": "Nordbank AG",
+        "account_number": "DE8656457377",
+        "period_start": "2026-06-04",
+        "period_end": "2026-07-04",
+        "opening_balance": 5361.15,
+        "closing_balance": 5740.11
+      },
+      "eval": false
+    },
+    {
+      "file": "bank_statement-008.pdf",
+      "expectedType": "bank_statement",
+      "criticalFields": {
+        "bank_name": "ПАО «Первый Банк»",
+        "account_number": "DE1937565038",
+        "period_start": "2026-06-16",
+        "period_end": "2026-07-16",
+        "opening_balance": 8309.13,
+        "closing_balance": 8464.11
+      },
+      "eval": false
+    },
+    {
+      "file": "bank_statement-009.pdf",
+      "expectedType": "bank_statement",
+      "criticalFields": {
+        "bank_name": "Alpha Banking",
+        "account_number": "DE7755482251",
+        "period_start": "2026-06-08",
+        "period_end": "2026-07-08",
+        "opening_balance": 6122.72,
+        "closing_balance": 6133.73
+      },
+      "eval": false
+    },
+    {
+      "file": "tax_letter-001.pdf",
+      "expectedType": "tax_letter",
+      "criticalFields": {
+        "authority_name": "Federal Tax Office",
+        "letter_number": "TX-0500",
+        "letter_date": "2026-06-09",
+        "taxpayer_name": "Soylent Corp"
+      },
+      "eval": false
+    },
+    {
+      "file": "tax_letter-002.pdf",
+      "expectedType": "tax_letter",
+      "criticalFields": {
+        "authority_name": "ИФНС № 12 по г. Москве",
+        "letter_number": "TX-0501",
+        "letter_date": "2026-06-13",
+        "taxpayer_name": "Wayne Enterprises"
+      },
+      "eval": false
+    },
+    {
+      "file": "tax_letter-003.pdf",
+      "expectedType": "tax_letter",
+      "criticalFields": {
+        "authority_name": "HM Revenue & Customs",
+        "letter_number": "TX-0502",
+        "letter_date": "2026-06-13",
+        "taxpayer_name": "Initech BV"
+      },
+      "eval": false
+    },
+    {
+      "file": "tax_letter-004.pdf",
+      "expectedType": "tax_letter",
+      "criticalFields": {
+        "authority_name": "HM Revenue & Customs",
+        "letter_number": "TX-0503",
+        "letter_date": "2026-06-11",
+        "taxpayer_name": "Acme GmbH"
+      },
+      "eval": false
+    },
+    {
+      "file": "tax_letter-005.pdf",
+      "expectedType": "tax_letter",
+      "criticalFields": {
+        "authority_name": "ИФНС № 12 по г. Москве",
+        "letter_number": "TX-0504",
+        "letter_date": "2026-06-17",
+        "taxpayer_name": "Soylent Corp"
+      },
+      "eval": false
+    },
+    {
+      "file": "tax_letter-006.pdf",
+      "expectedType": "tax_letter",
+      "criticalFields": {
+        "authority_name": "Federal Tax Office",
+        "letter_number": "TX-0505",
+        "letter_date": "2026-06-21",
+        "taxpayer_name": "ООО «Мегастрой»"
+      },
+      "eval": false
+    },
+    {
+      "file": "tax_letter-007.pdf",
+      "expectedType": "tax_letter",
+      "criticalFields": {
+        "authority_name": "Federal Tax Office",
+        "letter_number": "TX-0506",
+        "letter_date": "2026-06-05",
+        "taxpayer_name": "Acme GmbH"
+      },
+      "eval": false
+    },
+    {
+      "file": "tax_letter-008.pdf",
+      "expectedType": "tax_letter",
+      "criticalFields": {
+        "authority_name": "Federal Tax Office",
+        "letter_number": "TX-0507",
+        "letter_date": "2026-06-22",
+        "taxpayer_name": "Globex Ltd"
+      },
+      "eval": false
+    },
+    {
+      "file": "tax_letter-009.pdf",
+      "expectedType": "tax_letter",
+      "criticalFields": {
+        "authority_name": "Federal Tax Office",
+        "letter_number": "TX-0508",
+        "letter_date": "2026-06-23",
+        "taxpayer_name": "Soylent Corp"
+      },
+      "eval": false
+    },
+    {
+      "file": "contract-001.pdf",
+      "expectedType": "contract",
+      "criticalFields": {
+        "contract_number": "CT-0300",
+        "contract_date": "2026-06-22",
+        "party_a": "ООО «Мегастрой»",
+        "party_b": "Umbrella SA"
+      },
+      "eval": false
+    },
+    {
+      "file": "contract-002.pdf",
+      "expectedType": "contract",
+      "criticalFields": {
+        "contract_number": "CT-0301",
+        "contract_date": "2026-06-17",
+        "party_a": "Globex Ltd",
+        "party_b": "ООО «Мегастрой»"
+      },
+      "eval": false
+    },
+    {
+      "file": "contract-003.pdf",
+      "expectedType": "contract",
+      "criticalFields": {
+        "contract_number": "CT-0302",
+        "contract_date": "2026-06-10",
+        "party_a": "Globex Ltd",
+        "party_b": "ООО «Мегастрой»"
+      },
+      "eval": false
+    },
+    {
+      "file": "contract-004.pdf",
+      "expectedType": "contract",
+      "criticalFields": {
+        "contract_number": "CT-0303",
+        "contract_date": "2026-06-18",
+        "party_a": "Globex Ltd",
+        "party_b": "Hooli Inc"
+      },
+      "eval": false
+    },
+    {
+      "file": "contract-005.pdf",
+      "expectedType": "contract",
+      "criticalFields": {
+        "contract_number": "CT-0304",
+        "contract_date": "2026-06-02",
+        "party_a": "Wayne Enterprises",
+        "party_b": "Initech BV"
+      },
+      "eval": false
+    },
+    {
+      "file": "contract-006.pdf",
+      "expectedType": "contract",
+      "criticalFields": {
+        "contract_number": "CT-0305",
+        "contract_date": "2026-06-27",
+        "party_a": "Acme GmbH",
+        "party_b": "Soylent Corp"
+      },
+      "eval": false
+    },
+    {
+      "file": "contract-007.pdf",
+      "expectedType": "contract",
+      "criticalFields": {
+        "contract_number": "CT-0306",
+        "contract_date": "2026-06-08",
+        "party_a": "Stark Industries",
+        "party_b": "ООО «Мегастрой»"
+      },
+      "eval": false
+    },
+    {
+      "file": "contract-008.pdf",
+      "expectedType": "contract",
+      "criticalFields": {
+        "contract_number": "CT-0307",
+        "contract_date": "2026-06-22",
+        "party_a": "ООО «Вектор»",
+        "party_b": "ООО «Мегастрой»"
+      },
+      "eval": false
+    },
+    {
+      "file": "contract-009.pdf",
+      "expectedType": "contract",
+      "criticalFields": {
+        "contract_number": "CT-0308",
+        "contract_date": "2026-06-28",
+        "party_a": "ООО «Вектор»",
+        "party_b": "Soylent Corp"
+      },
+      "eval": false
+    },
+    {
+      "file": "scan-low-quality.jpg",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "Hooli Inc",
+        "invoice_number": "INV-2026-1900",
+        "invoice_date": "2026-06-26",
+        "currency": "USD",
+        "subtotal": 2391.03,
+        "grand_total": 2391.03
+      },
+      "eval": false,
+      "note": "Скан низкого качества: поворот, шум, снижение контраста, рукописная пометка"
+    },
+    {
+      "file": "duplicate-invoice.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "Umbrella SA",
+        "invoice_number": "INV-2026-1000",
+        "invoice_date": "2026-07-10",
+        "currency": "EUR",
+        "subtotal": 3142.32,
+        "grand_total": 3739.36
+      },
+      "eval": false,
+      "note": "Дубликат invoice-001.pdf по checksum"
+    },
+    {
+      "file": "corrupted.pdf",
+      "expectedType": null,
+      "criticalFields": {},
+      "eval": false,
+      "note": "Повреждённый файл: ожидается отклонение до вызова LLM"
+    },
+    {
+      "file": "multi-document.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "Initech BV",
+        "invoice_number": "INV-2026-1901",
+        "invoice_date": "2026-06-25",
+        "currency": "EUR",
+        "subtotal": 703.96,
+        "grand_total": 844.75
+      },
+      "eval": false,
+      "note": "Два документа в одном файле: ожидается предупреждение"
+    }
+  ]
+}

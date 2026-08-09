@@ -17,10 +17,7 @@ import {
   type Env,
 } from '@docflow/core'
 import {
-  matchEvidence,
-  normalizeByType,
-  scoreConfidence,
-  type ConfidenceSignals,
+  buildExtractedField,
   type DocumentStatus,
   type EvidencePage,
   type ExtractionResponse,
@@ -38,17 +35,11 @@ export interface ExtractJob {
   correlationId: string
 }
 
-/** Базовая уверенность извлечения; полный расчёт сигналов — scoreConfidence. */
-const EXTRACTION_BASE = 0.9
-
 type LlmField = ExtractionResponse['fields'][number]
 
 /**
  * Извлечение полей по активной схеме типа (ТЗ 6.4) и связывание значений
- * с источниками через evidence → bbox (ТЗ 6.5).
- *
- * Временный терминус pipeline: после извлечения — needs_review. Этап 5
- * вставит валидацию и маршрутизацию до этого перехода.
+ * с источниками через evidence → bbox (ТЗ 6.5). Дальше — валидация.
  */
 @Processor(QUEUE.EXTRACT, { ...PIPELINE_WORKER_OPTIONS })
 export class ExtractProcessor extends WorkerHost implements OnModuleInit {
@@ -172,6 +163,7 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
     }
   }
 
+  /** Строка БД из общей функции сборки поля: тот же код измеряет `npm run eval`. */
   private buildFieldRow(
     documentId: string,
     schemaVersionId: string,
@@ -179,66 +171,8 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
     llmField: LlmField | undefined,
     evidencePages: EvidencePage[],
   ) {
-    const base = {
-      documentId,
-      schemaVersionId,
-      name: spec.name,
-      valueType: spec.type,
-      isCritical: spec.critical,
-      isEdited: false,
-    }
-
-    // Отсутствующее поле — null с признаком Missing, не догадка (ТЗ §9).
-    if (!llmField || llmField.value === null) {
-      return {
-        ...base,
-        rawValue: null,
-        normalizedValue: null,
-        confidence: null,
-        confidenceReason: 'Значение отсутствует в документе',
-        sourcePage: null,
-        sourceBbox: null,
-        sourceFound: false,
-      }
-    }
-
-    const isArray = Array.isArray(llmField.value)
-    const rawValue = isArray ? JSON.stringify(llmField.value) : (llmField.value as string)
-    const normalizedValue = isArray
-      ? llmField.value
-      : normalizeByType(llmField.value as string, spec.type)
-
-    // Поле без evidence — поле без источника (ТЗ 6.4).
-    const match = llmField.evidence
-      ? matchEvidence(llmField.evidence.text, llmField.evidence.page, evidencePages)
-      : ({ found: false } as const)
-
-    // Сигналы сохраняются: этап валидации пересчитывает уверенность из них
-    // заново, а не накладывает штраф поверх уже посчитанного значения.
-    const signals: ConfidenceSignals = {
-      extraction: EXTRACTION_BASE,
-      ocr: match.found ? match.ocrConfidence : null,
-      sourceFound: match.found,
-      pageMismatch: match.found ? match.pageMismatch : false,
-    }
-    const score = scoreConfidence(signals)
-
-    const reasons = [...score.reasons]
-    if (normalizedValue === null && !isArray) {
-      reasons.push(`Не удалось привести значение к типу ${spec.type}`)
-    }
-
-    return {
-      ...base,
-      rawValue,
-      normalizedValue,
-      confidenceSignals: signals,
-      confidence: score.confidence,
-      confidenceReason: reasons.length ? reasons.join('; ') : null,
-      sourcePage: match.found ? match.page : null,
-      sourceBbox: match.found ? match.bbox : null,
-      sourceFound: match.found,
-    }
+    const field = buildExtractedField(spec, llmField, evidencePages)
+    return { ...field, documentId, schemaVersionId, isEdited: false }
   }
 
   private async handleFailure(

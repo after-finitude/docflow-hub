@@ -17,6 +17,11 @@ export interface RoutingField {
 export interface RoutingIssue {
   severity: IssueSeverity
   resolved: boolean
+  /**
+   * Проблема требует участия оператора независимо от уровня серьёзности.
+   * Так помечается подозрение на несколько документов в одном файле (ТЗ 6.3).
+   */
+  forcesReview?: boolean
 }
 
 export interface RoutingDecision {
@@ -46,9 +51,14 @@ export function decideRouting(
     .filter((field) => (field.confidence ?? 0) < thresholds.criticalFieldConfidence)
     .map((field) => ({ name: field.name, confidence: field.confidence }))
 
+  const forcedReview = unresolved.some((issue) => issue.forcesReview === true)
+
   const reasons: string[] = []
   if (blockingCount > 0) {
     reasons.push(`Блокирующих ошибок: ${blockingCount}`)
+  }
+  if (forcedReview) {
+    reasons.push('Документ требует ручного разбора')
   }
   if (lowConfidenceFields.length > 0) {
     const names = fields
@@ -59,7 +69,7 @@ export function decideRouting(
   }
 
   return {
-    auto: blockingCount === 0 && lowConfidenceFields.length === 0,
+    auto: blockingCount === 0 && lowConfidenceFields.length === 0 && !forcedReview,
     blockingCount,
     warningCount,
     lowConfidenceFields,

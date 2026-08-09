@@ -25,7 +25,17 @@ compiled output, so keep `npm run build` in watch mode or rebuild before restart
 
 ```bash
 npm test               # tsc -b, then node:test over packages/shared/dist/**/*.test.js
+npm run dataset        # regenerate the demo corpus (deterministic, seeded)
+npm run eval           # quality report over the labelled set → evaluation/last-run.md
 ```
+
+`npm run eval` deliberately runs the **same modules as production** — providers,
+`buildExtractedField` (evidence→bbox matching), the validation engine and
+routing — with only the DB and queues left out. Anything that measures a
+reimplementation measures nothing, so keep shared pipeline logic in
+`packages/shared/src/pipeline` rather than inlining it into processors.
+With `LLM_PROVIDER=mock` the numbers reflect pipeline health, not model quality;
+the report says so itself.
 
 Unit tests live next to their modules in `packages/shared/src` as `*.test.ts`
 (node:test + node:assert, no test framework dependency) and run compiled.

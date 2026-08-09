@@ -47,6 +47,25 @@ describe('decideRouting', () => {
     assert.equal(decision.warningCount, 1)
   })
 
+  it('предупреждение с forcesReview останавливает автопроход (ТЗ 6.3)', () => {
+    const decision = decideRouting(
+      [critical('grand_total', 0.95)],
+      [{ severity: 'warning', resolved: false, forcesReview: true }],
+      THRESHOLDS,
+    )
+    assert.equal(decision.auto, false)
+    assert.ok(decision.reasons.some((reason) => reason.includes('ручного разбора')))
+  })
+
+  it('решённоеforcesReview-предупреждение автопроходу не мешает', () => {
+    const decision = decideRouting(
+      [critical('grand_total', 0.95)],
+      [{ severity: 'warning', resolved: true, forcesReview: true }],
+      THRESHOLDS,
+    )
+    assert.equal(decision.auto, true)
+  })
+
   it('критичное поле ниже порога отправляет на проверку', () => {
     const decision = decideRouting([critical('supplier_name', 0.5)], [], THRESHOLDS)
     assert.equal(decision.auto, false)

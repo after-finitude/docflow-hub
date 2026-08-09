@@ -15,6 +15,8 @@
     "typecheck": "tsc -b",
     "clean": "tsc -b --clean",
     "lint": "oxlint",
+    "dataset": "node scripts/generate-dataset.mjs",
+    "eval": "tsc -b && node scripts/eval.mjs",
     "test": "tsc -b && node --test 'packages/shared/dist/**/*.test.js'",
     "verify": "bash scripts/verify.sh",
     "format": "prettier --write .",
@@ -26,8 +28,11 @@
     "dev:web": "npm run dev -w @docflow/web"
   },
   "devDependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
     "@types/node": "^24.13.3",
+    "dejavu-fonts-ttf": "^2.37.3",
     "oxlint": "^1.76.0",
+    "pdf-lib": "^1.17.1",
     "prettier": "^3.6.2",
     "typescript": "^7.0.2"
   }

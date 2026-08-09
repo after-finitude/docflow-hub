@@ -1,5 +1,6 @@
 import {
   EXTERNAL_RULE_IDS,
+  FORCE_REVIEW_RULE_IDS,
   INVOICE_NUMBER_UNIQUE_RULE,
   decideRouting,
   scoreConfidence,
@@ -9,7 +10,7 @@ import {
   type ValidationIssueResult,
 } from '@docflow/shared'
 import { Inject, Injectable, Logger } from '@nestjs/common'
-import { and, eq, ne, notInArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull, ne, notInArray } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { ENV } from '../config/config.module'
@@ -111,6 +112,32 @@ export class ValidationRunnerService {
     await this.replaceIssues(documentId, issues)
     const confidenceByField = await this.recomputeConfidence(fieldRows, issues)
 
+    // Чужие проблемы (например, предупреждение классификации о нескольких
+    // документах в одном файле) тоже влияют на маршрутизацию.
+    const externalIssues = await this.db
+      .select({ ruleId: validationIssues.ruleId, severity: validationIssues.severity })
+      .from(validationIssues)
+      .where(
+        and(
+          eq(validationIssues.documentId, documentId),
+          inArray(validationIssues.ruleId, [...EXTERNAL_RULE_IDS]),
+          isNull(validationIssues.resolvedAt),
+        ),
+      )
+
+    const routingIssues = [
+      ...issues.map((issue) => ({
+        severity: issue.severity,
+        resolved: false,
+        forcesReview: FORCE_REVIEW_RULE_IDS.includes(issue.ruleId),
+      })),
+      ...externalIssues.map((issue) => ({
+        severity: issue.severity,
+        resolved: false,
+        forcesReview: FORCE_REVIEW_RULE_IDS.includes(issue.ruleId),
+      })),
+    ]
+
     const decision = decideRouting(
       validationFields.map((field) => ({
         name: field.name,
@@ -118,7 +145,7 @@ export class ValidationRunnerService {
         isCritical: field.isCritical,
         confidence: confidenceByField.get(field.name) ?? null,
       })),
-      issues.map((issue) => ({ severity: issue.severity, resolved: false })),
+      routingIssues,
       schema.thresholds,
     )
 

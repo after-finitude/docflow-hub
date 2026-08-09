@@ -77,3 +77,10 @@ export const INVOICE_NUMBER_UNIQUE_RULE = 'invoice_number_unique'
  * которое ставит классификация (ТЗ 6.3).
  */
 export const EXTERNAL_RULE_IDS = ['multi_document_suspected'] as const
+
+/**
+ * Правила, наличие которых само по себе отправляет документ на проверку,
+ * даже если это предупреждение. ТЗ 6.3: подозрение на несколько документов
+ * в одном файле «создаёт warning и отправляет документ на проверку».
+ */
+export const FORCE_REVIEW_RULE_IDS: readonly string[] = ['multi_document_suspected']
