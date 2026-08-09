@@ -46,6 +46,7 @@ import { and, desc, eq, exists, gte, inArray, isNull, lte, not, sql, type SQL } 
 import { createHash, randomUUID } from 'node:crypto'
 import type { Readable } from 'node:stream'
 import type { RequestContext } from '../auth/decorators'
+import { ExportService } from '../export/export.service'
 import type { UploadedDocument } from './uploaded-document'
 
 /** Поля, вычисляемые подзапросами: до этапов 4–5 они пустые, но форма ответа уже финальная. */
@@ -99,6 +100,7 @@ export class DocumentsService {
     private readonly storage: StorageService,
     private readonly events: DocumentEventsService,
     private readonly validation: ValidationRunnerService,
+    private readonly exports: ExportService,
     @InjectQueue(QUEUE.PREPROCESS) private readonly preprocessQueue: Queue,
     @InjectQueue(QUEUE.EXTRACT) private readonly extractQueue: Queue,
   ) {}
@@ -234,6 +236,7 @@ export class DocumentsService {
       fields: await this.loadFields(id, base.documentType),
       issues: await this.loadIssues(id),
       thresholds: schema?.thresholds ?? null,
+      exports: await this.exports.listForDocument(id),
       // Approve заблокирован при любой нерешённой blocking-ошибке (ТЗ §9).
       canApprove: base.status === 'needs_review' && base.blockingIssues === 0,
     }

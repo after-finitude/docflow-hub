@@ -12,6 +12,7 @@ import {
   type WorkflowState,
   type WorkflowStep,
 } from '../enums'
+import type { ExportDto } from './export'
 import type { FieldDto, IssueDto } from './field'
 import type { SchemaThresholds } from './schema'
 
@@ -95,6 +96,8 @@ export interface DocumentDetail extends DocumentListItem {
   issues: IssueDto[]
   /** Пороги активной схемы: по ним UI красит и сортирует поля (ТЗ 5.2). */
   thresholds: SchemaThresholds | null
+  /** Выгрузки документа: статус и возможность повтора (ТЗ 6.8). */
+  exports: ExportDto[]
   /**
    * Доступность Approve. Обновляется в ответе на правку поля, чтобы кнопка
    * не требовала отдельного запроса (ТЗ 5.2).

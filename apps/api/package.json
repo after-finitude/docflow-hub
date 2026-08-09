@@ -10,6 +10,7 @@
   "dependencies": {
     "@docflow/core": "*",
     "@docflow/shared": "*",
+    "@googleapis/sheets": "^14.0.0",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.1.28",
     "@nestjs/core": "^11.1.28",

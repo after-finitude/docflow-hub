@@ -77,6 +77,13 @@ const envSchema = z.object({
   LLM_MODEL: z.string().optional(),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
 
+  // ─── Экспорт (ТЗ 6.8) ─────────────────────────────────────────────────────
+  EXPORT_DEFAULT_DESTINATION: z.enum(['file_json', 'google_sheets']).default('file_json'),
+  // Ключ service account; обязателен при экспорте в Google Sheets.
+  GOOGLE_SHEETS_KEY_FILE: z.string().optional(),
+  GOOGLE_SHEETS_SPREADSHEET_ID: z.string().optional(),
+  GOOGLE_SHEETS_SHEET_NAME: z.string().default('Documents'),
+
   SEED_OPERATOR_LOGIN: z.string().default('operator'),
   SEED_OPERATOR_PASSWORD: z.string().default('operator_password'),
   SEED_ADMIN_LOGIN: z.string().default('admin'),
@@ -115,6 +122,14 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     (!env.LLM_BASE_URL || !env.LLM_API_KEY || !env.LLM_MODEL)
   ) {
     throw new Error('LLM_PROVIDER=openai_compatible требует LLM_BASE_URL, LLM_API_KEY и LLM_MODEL')
+  }
+  if (
+    env.EXPORT_DEFAULT_DESTINATION === 'google_sheets' &&
+    (!env.GOOGLE_SHEETS_KEY_FILE || !env.GOOGLE_SHEETS_SPREADSHEET_ID)
+  ) {
+    throw new Error(
+      'Экспорт в Google Sheets требует GOOGLE_SHEETS_KEY_FILE и GOOGLE_SHEETS_SPREADSHEET_ID',
+    )
   }
   return {
     ...env,

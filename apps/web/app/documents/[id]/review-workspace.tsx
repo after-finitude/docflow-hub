@@ -4,12 +4,16 @@ import {
   CLASSIFIABLE_DOCUMENT_TYPES,
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_TYPE_LABELS,
+  EXPORT_DESTINATIONS,
+  EXPORT_DESTINATION_LABELS,
   FIELD_FILTERS,
   FIELD_FILTER_LABELS,
   REJECT_REASONS,
   REJECT_REASON_LABELS,
   type ClassifiableDocumentType,
   type DocumentDetail,
+  type ExportDestination,
+  type ExportDto,
   type FieldDto,
   type FieldFilter,
   type LineItem,
@@ -128,6 +132,37 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
     ) {
       // Извлечение перезапускается в фоне — список полей появится после него.
       router.refresh()
+    }
+  }
+
+  /**
+   * Ответ на экспорт — сама выгрузка, а не документ, поэтому состояние
+   * перечитывается отдельно: у документа мог смениться статус на exported.
+   */
+  async function runExport(destination: ExportDestination) {
+    setBusy(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/documents/${document.id}/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destination }),
+      })
+      if (!response.ok) {
+        const detail = (await response.json().catch(() => null)) as { message?: string } | null
+        setError(detail?.message ?? `Ошибка ${response.status}`)
+        return
+      }
+      const result = (await response.json()) as ExportDto
+      if (result.status === 'failed') {
+        setError(`Выгрузка не удалась (${result.errorCode}). Повтор доступен`)
+      }
+      const refreshed = await fetch(`/api/documents/${document.id}`)
+      if (refreshed.ok) setDocument((await refreshed.json()) as DocumentDetail)
+    } catch {
+      setError('Сервис недоступен')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -260,6 +295,14 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
             </div>
 
             {rejecting && <RejectForm onCancel={() => setRejecting(false)} onSubmit={reject} />}
+
+            {(document.status === 'approved' || document.status === 'exported') && (
+              <ExportPanel
+                exports={document.exports}
+                busy={busy}
+                onExport={(destination) => void runExport(destination)}
+              />
+            )}
           </div>
 
           <div className="mb-3 flex flex-wrap gap-1">
@@ -313,6 +356,63 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
       </div>
     </main>
   )
+}
+
+function ExportPanel({
+  exports,
+  busy,
+  onExport,
+}: {
+  exports: ExportDto[]
+  busy: boolean
+  onExport: (destination: ExportDestination) => void
+}) {
+  return (
+    <div className="mt-4 border-t border-[var(--color-border-subtle)] pt-3">
+      <h3 className="text-xs font-medium text-neutral-600">Выгрузка</h3>
+
+      {exports.map((item) => (
+        <p key={item.id} className="mt-1 text-xs">
+          {EXPORT_DESTINATION_LABELS[item.destination]}:{' '}
+          {item.status === 'succeeded' ? (
+            <span className="text-green-700">выполнена {formatWhen(item.exportedAt)}</span>
+          ) : item.status === 'failed' ? (
+            <span className="text-red-600">
+              ошибка ({item.errorCode}), попыток {item.attempts}
+            </span>
+          ) : (
+            <span className="text-neutral-500">ожидает</span>
+          )}
+        </p>
+      ))}
+
+      <div className="mt-2 flex flex-wrap gap-2">
+        {EXPORT_DESTINATIONS.map((destination) => {
+          const existing = exports.find((item) => item.destination === destination)
+          const done = existing?.status === 'succeeded'
+          return (
+            <button
+              key={destination}
+              type="button"
+              disabled={busy || done}
+              onClick={() => onExport(destination)}
+              title={done ? 'Уже выгружено: повторный запрос не создаёт дубликат' : undefined}
+              className="rounded-md border border-[var(--color-border-subtle)] px-3 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40"
+            >
+              {existing?.status === 'failed' ? 'Повторить: ' : 'Выгрузить в '}
+              {EXPORT_DESTINATION_LABELS[destination]}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function formatWhen(iso: string | null): string {
+  return iso
+    ? new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
+    : ''
 }
 
 function RejectForm({

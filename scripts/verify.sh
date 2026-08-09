@@ -371,6 +371,52 @@ if [ -n "$mismatch_id" ]; then
     || fail "approve вернул $approve_ok"
 fi
 
+# Этап 7: экспорт подтверждённого документа (ТЗ 6.8, критерии 10 и 11).
+if [ -n "$mismatch_id" ]; then
+  export_1=$(curl -s -b "$COOKIES" -X POST "http://localhost:${WEB_PORT}/api/documents/${mismatch_id}/export" \
+    -H 'Content-Type: application/json' -d '{"destination":"file_json"}')
+  exp_status=$(printf '%s' "$export_1" | json "o.status")
+  exp_id=$(printf '%s' "$export_1" | json "o.id")
+  exp_ref=$(printf '%s' "$export_1" | json "o.payloadRef")
+  if [ "$exp_status" = "succeeded" ] && [ -n "$exp_ref" ]; then
+    pass "документ выгружен в JSON ($exp_ref)"
+  else
+    fail "экспорт: статус $exp_status, payloadRef «$exp_ref»"
+  fi
+
+  doc_after=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents/${mismatch_id}" | json "o.status")
+  [ "$doc_after" = "exported" ] && pass "статус документа стал exported" \
+    || fail "после экспорта статус $doc_after"
+
+  # Повторный запрос с тем же ключом не создаёт второй объект (критерий 10).
+  export_2=$(curl -s -b "$COOKIES" -X POST "http://localhost:${WEB_PORT}/api/documents/${mismatch_id}/export" \
+    -H 'Content-Type: application/json' -d '{"destination":"file_json"}')
+  exp_id_2=$(printf '%s' "$export_2" | json "o.id")
+  [ "$exp_id" = "$exp_id_2" ] && pass "повторный экспорт вернул ту же запись" \
+    || fail "повторный экспорт создал другую запись: $exp_id vs $exp_id_2"
+
+  export_rows=$(psql_owner "select count(*) from exports where document_id='${mismatch_id}'")
+  [ "$export_rows" = "1" ] && pass "в базе ровно одна запись экспорта" \
+    || fail "записей экспорта: $export_rows"
+
+  # Недоступное назначение: документ остаётся выгруженным, экспорт — failed,
+  # повтор доступен (критерий 11). Google Sheets без ключа не настроен.
+  bad_dest=$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" \
+    -X POST "http://localhost:${WEB_PORT}/api/documents/${mismatch_id}/export" \
+    -H 'Content-Type: application/json' -d '{"destination":"google_sheets"}')
+  [ "$bad_dest" = "400" ] && pass "ненастроенное назначение отклонено с понятным кодом" \
+    || fail "экспорт в ненастроенный Sheets вернул $bad_dest"
+fi
+
+# Неподтверждённый документ не экспортируется.
+if [ -n "$good_id" ]; then
+  early=$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" \
+    -X POST "http://localhost:${WEB_PORT}/api/documents/${dup_id}/export" \
+    -H 'Content-Type: application/json' -d '{}')
+  [ "$early" = "400" ] && pass "неподтверждённый документ не экспортируется" \
+    || fail "экспорт неподтверждённого вернул $early"
+fi
+
 # Отклонение с причиной из списка (ТЗ 5.2).
 reject_id=$(upload_document scripts/fixtures/sample-invoice.pdf | json "o.id")
 if [ -n "$reject_id" ]; then

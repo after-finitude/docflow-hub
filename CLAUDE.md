@@ -70,8 +70,10 @@ silently does nothing.
 
 The pipeline is complete through `validate`, which routes the document:
 `approved` when there are no blocking issues **and** every critical field is at
-or above the schema threshold, `needs_review` otherwise (ТЗ 6.7). Export
-(stage 7) is the only step still missing. Providers are config-selected: `OCR_PROVIDER` (`mock` reads the PDF
+or above the schema threshold, `needs_review` otherwise (ТЗ 6.7). Export runs
+synchronously in the API (see below), not through the `export` queue — that
+queue stays registered for future batch export and the stage-9 DLQ. Providers
+are config-selected: `OCR_PROVIDER` (`mock` reads the PDF
 text layer via mupdf — no external calls, real coordinates; `google` rasterizes
 pages and sends them one by one, blank pages never sent) and `LLM_PROVIDER`
 (`mock` is keyed to the demo-set "Label: value" format; `openai_compatible`
@@ -106,6 +108,21 @@ Re-validation replaces only engine-produced issues; ids in `EXTERNAL_RULE_IDS`
 field: fixing the last blocking issue must not silently approve the document —
 the operator presses Approve. Approve re-checks blocking issues server-side;
 the disabled button is convenience, not enforcement.
+
+### Export
+
+`buildCanonicalDocument` (shared) produces the destination-agnostic payload;
+`generatedAt` is passed in, like `today` in validation, so the output is
+reproducible. Adapters receive the canonical document plus a mapping from
+`EXPORT_MAPPINGS` — the file adapter ignores the mapping because the canonical
+form *is* the file.
+
+Idempotency keys on `export_key`, defaulting to `<documentId>:<destination>`:
+a repeat request returns the existing succeeded export without sending again
+(ТЗ §9), and retries a failed one with an incremented attempt count. A failing
+destination never rolls the document back — it stays approved/exported with the
+export row marked `failed`, and retry is manual only (no automatic retries,
+ТЗ 6.10).
 
 ### Review Workspace viewer
 

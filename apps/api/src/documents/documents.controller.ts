@@ -5,7 +5,10 @@ import {
   documentListQuerySchema,
   rejectRequestSchema,
   updateFieldRequestSchema,
+  exportRequestSchema,
   type ChangeTypeRequest,
+  type ExportDto,
+  type ExportRequest,
   type RejectRequest,
   type UpdateFieldRequest,
   type DocumentDetail,
@@ -38,6 +41,7 @@ import { Inject } from '@nestjs/common'
 import { ZodValidationPipe } from '../common/zod-validation.pipe'
 import { CurrentUser, Origin, type RequestContext } from '../auth/decorators'
 import { DocumentsService } from './documents.service'
+import { ExportService } from '../export/export.service'
 import { PageRenderService } from './page-render.service'
 import type { MulterFileFilter, UploadedDocument } from './uploaded-document'
 
@@ -46,6 +50,7 @@ export class DocumentsController {
   constructor(
     private readonly documents: DocumentsService,
     private readonly pageRender: PageRenderService,
+    private readonly exports: ExportService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -179,6 +184,17 @@ export class DocumentsController {
     @Origin() origin: RequestContext,
   ): Promise<DocumentDetail> {
     return this.documents.changeType(id, body.type, user, origin)
+  }
+
+  /** Экспорт подтверждённого документа; идемпотентен по export_key (ТЗ 6.8, §9). */
+  @Post(':id/export')
+  exportDocument(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(exportRequestSchema)) body: ExportRequest,
+    @CurrentUser() user: SessionUser,
+    @Origin() origin: RequestContext,
+  ): Promise<ExportDto> {
+    return this.exports.export(id, body, user, origin)
   }
 
   @Post(':id/reprocess')
