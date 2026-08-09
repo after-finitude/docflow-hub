@@ -5,6 +5,7 @@ import {
   StorageService,
   documents,
   fields,
+  getActiveSchema,
   originalKey,
   pages,
   validationIssues,
@@ -14,11 +15,14 @@ import {
 } from '@docflow/core'
 import {
   DEFAULT_TENANT_ID,
+  type ClassifiableDocumentType,
   type DocumentDetail,
   type DocumentListItem,
   type DocumentListPage,
   type DocumentListQuery,
   type DocumentPage,
+  type FieldDto,
+  type IssueDto,
   type SessionUser,
   type WorkflowState,
   type WorkflowStep,
@@ -83,6 +87,7 @@ export class DocumentsService {
     private readonly storage: StorageService,
     private readonly events: DocumentEventsService,
     @InjectQueue(QUEUE.PREPROCESS) private readonly preprocessQueue: Queue,
+    @InjectQueue(QUEUE.EXTRACT) private readonly extractQueue: Queue,
   ) {}
 
   async upload(
@@ -207,7 +212,122 @@ export class DocumentsService {
       sourcePath: row.sourcePath,
       processedAt: row.processedAt ? row.processedAt.toISOString() : null,
       pageCount: row.pageCount,
+      fields: await this.loadFields(id, row.documentType as DocumentListItem['documentType']),
+      issues: await this.loadIssues(id),
     }
+  }
+
+  /** Смена типа вручную: перезапускает извлечение по новой схеме (ТЗ 6.3, §8). */
+  async changeType(
+    id: string,
+    type: ClassifiableDocumentType,
+    user: SessionUser,
+    origin: RequestContext,
+  ): Promise<DocumentDetail> {
+    const [row] = await this.db
+      .select({ id: documents.id, status: documents.status, documentType: documents.documentType })
+      .from(documents)
+      .where(eq(documents.id, id))
+      .limit(1)
+
+    if (!row) throw new NotFoundException('Документ не найден')
+    if (row.status === 'processing') throw new BadRequestException('Документ ещё обрабатывается')
+
+    const [{ pagesCount }] = await this.db
+      .select({ pagesCount: sql<number>`count(*)::int` })
+      .from(pages)
+      .where(eq(pages.documentId, id))
+    if (!pagesCount) {
+      throw new BadRequestException('Документ ещё не распознан: смена типа недоступна')
+    }
+
+    await this.db
+      .update(documents)
+      // Ручной выбор — достоверность максимальная (ТЗ 6.3).
+      .set({ documentType: type, typeConfidence: 1, status: 'processing', statusReason: null })
+      .where(eq(documents.id, id))
+
+    await writeAudit(this.db, {
+      correlationId: origin.correlationId,
+      actorType: 'user',
+      actorId: user.id,
+      action: 'document.type_changed',
+      objectType: 'document',
+      objectId: id,
+      before: { documentType: row.documentType },
+      after: { documentType: type },
+      result: 'success',
+      ip: origin.ip,
+      userAgent: origin.userAgent,
+    })
+
+    const correlationId = origin.correlationId ?? randomUUID()
+    await this.extractQueue.add('extract', { documentId: id, correlationId })
+    await this.events.publish({
+      type: 'document',
+      documentId: id,
+      status: 'processing',
+      step: 'extraction',
+      state: 'pending',
+      at: new Date().toISOString(),
+    })
+
+    return this.findOne(id)
+  }
+
+  private async loadFields(
+    documentId: string,
+    documentType: DocumentListItem['documentType'],
+  ): Promise<FieldDto[]> {
+    const rows = await this.db
+      .select()
+      .from(fields)
+      .where(eq(fields.documentId, documentId))
+      .orderBy(fields.name)
+    if (rows.length === 0) return []
+
+    // Метки и обязательность — косметика из активной схемы типа; поля документа
+    // при этом остаются привязанными к версии схемы, по которой извлекались.
+    const schema =
+      documentType && documentType !== 'unknown'
+        ? await getActiveSchema(this.db, documentType)
+        : null
+    const specs = new Map((schema?.fields ?? []).map((spec) => [spec.name, spec]))
+
+    return rows.map((row) => ({
+      name: row.name,
+      label: specs.get(row.name)?.label ?? row.name,
+      valueType: row.valueType,
+      rawValue: row.rawValue,
+      normalizedValue: row.normalizedValue,
+      confidence: row.confidence,
+      confidenceReason: row.confidenceReason,
+      sourcePage: row.sourcePage,
+      sourceBbox: row.sourceBbox,
+      sourceFound: row.sourceFound,
+      isCritical: row.isCritical,
+      isRequired: specs.get(row.name)?.required ?? false,
+      isEdited: row.isEdited,
+    }))
+  }
+
+  private async loadIssues(documentId: string): Promise<IssueDto[]> {
+    const rows = await this.db
+      .select()
+      .from(validationIssues)
+      .where(eq(validationIssues.documentId, documentId))
+      .orderBy(desc(validationIssues.severity), validationIssues.createdAt)
+
+    return rows.map((row) => ({
+      id: row.id,
+      fieldName: row.fieldName,
+      ruleId: row.ruleId,
+      severity: row.severity,
+      message: row.message,
+      expected: row.expected,
+      actual: row.actual,
+      resolvedAt: row.resolvedAt ? row.resolvedAt.toISOString() : null,
+    }))
   }
 
   /** Постраничный OCR-результат: текст, блоки с координатами, уверенность (ТЗ 6.2, §8). */

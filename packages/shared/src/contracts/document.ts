@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import {
+  CLASSIFIABLE_DOCUMENT_TYPES,
   DOCUMENT_STATUSES,
   DOCUMENT_TYPES,
   SOURCE_TYPES,
@@ -11,6 +12,7 @@ import {
   type WorkflowState,
   type WorkflowStep,
 } from '../enums'
+import type { FieldDto, IssueDto } from './field'
 
 /** Ограничения приёма файлов, ТЗ 6.1. */
 export const UPLOAD_MAX_BYTES = 25 * 1024 * 1024
@@ -87,7 +89,15 @@ export interface DocumentDetail extends DocumentListItem {
   sourcePath: string | null
   processedAt: string | null
   pageCount: number | null
+  /** Извлечённые поля (ТЗ §8: документ с полями и проблемами). */
+  fields: FieldDto[]
+  issues: IssueDto[]
 }
+
+export const changeTypeRequestSchema = z.object({
+  type: z.enum(CLASSIFIABLE_DOCUMENT_TYPES),
+})
+export type ChangeTypeRequest = z.infer<typeof changeTypeRequestSchema>
 
 export interface SignedFileLink {
   url: string

@@ -23,9 +23,14 @@ Local development without Docker needs Postgres, Redis and MinIO running, plus
 compiled output, so keep `npm run build` in watch mode or rebuild before restart:
 `npm run dev:api`, `npm run dev:worker`, `npm run dev:web`.
 
-There is **no test runner configured yet**. Unit, integration and E2E tests are
-planned in PLAN.md §3 and land alongside the modules they cover; do not invent
-test commands until one is set up.
+```bash
+npm test               # tsc -b, then node:test over packages/shared/dist/**/*.test.js
+```
+
+Unit tests live next to their modules in `packages/shared/src` as `*.test.ts`
+(node:test + node:assert, no test framework dependency) and run compiled.
+Integration and E2E tests are still pending (PLAN.md §3); `npm run verify`
+covers live-stack behaviour meanwhile.
 
 `npm run verify` is the closest thing to a test suite today: it type-checks,
 lints, checks formatting, builds the web app, brings up the stack, and then
@@ -63,13 +68,21 @@ Every `@Processor` must spread `PIPELINE_WORKER_OPTIONS`. BullMQ looks up the
 custom backoff strategy in worker settings; omit it and the 1s/5s/25s policy
 silently does nothing.
 
-Currently `ocr` is the temporary terminus and moves documents to
-`needs_review`. Stages 4–5 insert classification → extraction → validation
-before that transition. The OCR provider is selected by `OCR_PROVIDER`: `mock`
-(deterministic, reads the PDF text layer via mupdf — no external calls, real
-coordinates) or `google` (rasterizes pages and sends them one by one; blank
-pages are detected and never sent). Permanent provider errors must be thrown
-as BullMQ `UnrecoverableError` so retries are not wasted on them.
+Currently `extract` is the temporary terminus and moves documents to
+`needs_review`. Stage 5 inserts validation → auto-routing before that
+transition. Providers are config-selected: `OCR_PROVIDER` (`mock` reads the PDF
+text layer via mupdf — no external calls, real coordinates; `google` rasterizes
+pages and sends them one by one, blank pages never sent) and `LLM_PROVIDER`
+(`mock` is keyed to the demo-set "Label: value" format; `openai_compatible`
+works with any chat-completions endpoint, e.g. DeepSeek). Permanent provider
+errors must be thrown as BullMQ `UnrecoverableError`; an LLM response that
+fails zod validation after 2 repair attempts throws `LlmInvalidResponseError`,
+which sends the document to `needs_review` (manual handling) instead of
+retrying or failing.
+
+The LLM must return VERBATIM values; normalization to ISO dates/numbers/
+currencies happens in code (`packages/shared/src/normalize`). A model that
+normalizes values itself breaks evidence→bbox matching.
 
 ### Session handling
 

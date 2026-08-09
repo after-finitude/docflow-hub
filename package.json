@@ -15,6 +15,7 @@
     "typecheck": "tsc -b",
     "clean": "tsc -b --clean",
     "lint": "oxlint",
+    "test": "tsc -b && node --test 'packages/shared/dist/**/*.test.js'",
     "verify": "bash scripts/verify.sh",
     "format": "prettier --write .",
     "db:generate": "npm run db:generate -w @docflow/core",

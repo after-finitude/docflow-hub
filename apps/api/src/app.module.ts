@@ -7,6 +7,7 @@ import { RolesGuard } from './auth/roles.guard'
 import { DocumentsModule } from './documents/documents.module'
 import { EventsController } from './events/events.controller'
 import { HealthController } from './health/health.controller'
+import { SchemasModule } from './schemas/schemas.module'
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { HealthController } from './health/health.controller'
     EventsModule,
     AuthModule,
     DocumentsModule,
+    SchemasModule,
   ],
   controllers: [HealthController, EventsController],
   providers: [

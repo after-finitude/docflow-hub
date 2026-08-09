@@ -1,7 +1,9 @@
 import {
   ACCEPTED_MIME_TYPES,
   UPLOAD_MAX_BYTES,
+  changeTypeRequestSchema,
   documentListQuerySchema,
+  type ChangeTypeRequest,
   type DocumentDetail,
   type DocumentListItem,
   type DocumentListPage,
@@ -12,6 +14,7 @@ import {
 } from '@docflow/shared'
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   Param,
@@ -102,6 +105,17 @@ export class DocumentsController {
       url: await this.documents.signedFileUrl(id),
       expiresInSeconds: this.env.SIGNED_URL_TTL_SECONDS,
     }
+  }
+
+  /** Ручная смена типа с перезапуском извлечения по новой схеме (ТЗ 6.3). */
+  @Post(':id/type')
+  changeType(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(changeTypeRequestSchema)) body: ChangeTypeRequest,
+    @CurrentUser() user: SessionUser,
+    @Origin() origin: RequestContext,
+  ): Promise<DocumentDetail> {
+    return this.documents.changeType(id, body.type, user, origin)
   }
 
   @Post(':id/reprocess')

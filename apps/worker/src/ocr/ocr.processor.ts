@@ -16,9 +16,9 @@ import {
   type Env,
 } from '@docflow/core'
 import type { DocumentStatus, WorkflowState } from '@docflow/shared'
-import { Processor, WorkerHost } from '@nestjs/bullmq'
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq'
 import { Inject, Logger, type OnModuleInit } from '@nestjs/common'
-import { UnrecoverableError, type Job } from 'bullmq'
+import { Queue, UnrecoverableError, type Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { OCR_PROVIDER, type OcrProvider } from './ocr-provider'
 
@@ -29,10 +29,7 @@ export interface OcrJob {
 
 /**
  * Второй этап pipeline: распознавание и постраничное сохранение текста
- * с координатами блоков (ТЗ 6.2).
- *
- * Временный терминус: после OCR документ переходит в needs_review. Этапы 4–5
- * вставят классификацию, извлечение и валидацию перед этим переходом.
+ * с координатами блоков (ТЗ 6.2). Дальше — классификация.
  */
 @Processor(QUEUE.OCR, { ...PIPELINE_WORKER_OPTIONS })
 export class OcrProcessor extends WorkerHost implements OnModuleInit {
@@ -44,6 +41,7 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
     @Inject(OCR_PROVIDER) private readonly provider: OcrProvider,
     private readonly storage: StorageService,
     private readonly events: DocumentEventsService,
+    @InjectQueue(QUEUE.CLASSIFY) private readonly classifyQueue: Queue,
   ) {
     super()
   }
@@ -105,11 +103,12 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
 
       await this.db
         .update(documents)
-        .set({ pageCount: result.pages.length, status: 'needs_review', processedAt: new Date() })
+        .set({ pageCount: result.pages.length })
         .where(eq(documents.id, documentId))
 
       await finishRun(this.db, runId)
-      await this.publish(documentId, 'needs_review', 'succeeded')
+      await this.classifyQueue.add('classify', { documentId, correlationId })
+      await this.publish(documentId, 'processing', 'succeeded')
       this.logger.log(
         `Документ ${documentId}: OCR (${this.provider.name}) выполнен, страниц ${result.pages.length}`,
       )

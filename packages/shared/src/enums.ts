@@ -28,6 +28,15 @@ export const DOCUMENT_TYPES = [
 ] as const
 export type DocumentType = (typeof DOCUMENT_TYPES)[number]
 
+/** Типы, которые может назначить классификация; unknown — только фолбэк. */
+export const CLASSIFIABLE_DOCUMENT_TYPES = [
+  'invoice',
+  'bank_statement',
+  'tax_letter',
+  'contract',
+] as const
+export type ClassifiableDocumentType = (typeof CLASSIFIABLE_DOCUMENT_TYPES)[number]
+
 export const SOURCE_TYPES = ['upload', 'email', 'drive'] as const
 export type SourceType = (typeof SOURCE_TYPES)[number]
 

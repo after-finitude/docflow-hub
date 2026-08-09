@@ -264,6 +264,56 @@ if [ -n "$good_id" ]; then
   bbox_ok=$(printf '%s' "$pages_body" | json "o[0].blocks.length>0 && o[0].blocks.every(b=>b.bbox && b.bbox.x>=0 && b.bbox.x<=1 && b.bbox.y>=0 && b.bbox.y<=1)")
   [ "$bbox_ok" = "true" ] && pass "блоки с нормализованными координатами" \
     || fail "блоки отсутствуют или координаты вне 0..1"
+
+  # Этап 4: классификация и извлечение с источниками (mock-LLM).
+  doc_body=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents/${good_id}")
+  doc_type=$(printf '%s' "$doc_body" | json "o.documentType")
+  [ "$doc_type" = "invoice" ] && pass "документ классифицирован как invoice" \
+    || fail "тип документа: $doc_type"
+
+  fields_count=$(printf '%s' "$doc_body" | json "o.fields.length")
+  [ "${fields_count:-0}" -ge 8 ] 2>/dev/null && pass "поля извлечены ($fields_count)" \
+    || fail "полей извлечено: $fields_count"
+
+  supplier=$(printf '%s' "$doc_body" | json "JSON.stringify(o.fields.find(f=>f.name==='supplier_name')?.normalizedValue)")
+  [ "$supplier" = '"Acme GmbH"' ] && pass "supplier_name нормализован" \
+    || fail "supplier_name: $supplier"
+
+  total=$(printf '%s' "$doc_body" | json "o.fields.find(f=>f.name==='grand_total')?.normalizedValue")
+  [ "$total" = "1440" ] && pass "grand_total приведён к числу" || fail "grand_total: $total"
+
+  sourced=$(printf '%s' "$doc_body" | json "o.fields.filter(f=>f.sourceFound && f.sourceBbox && f.sourcePage===1).length")
+  [ "${sourced:-0}" -ge 6 ] 2>/dev/null && pass "источники найдены (bbox у $sourced полей)" \
+    || fail "полей с найденным источником: $sourced"
+
+  missing_flag=$(printf '%s' "$doc_body" | json "o.fields.find(f=>f.name==='line_items')?.rawValue===null && o.fields.find(f=>f.name==='line_items')?.sourceFound===false")
+  [ "$missing_flag" = "true" ] && pass "отсутствующее поле помечено как Missing" \
+    || fail "line_items не помечено признаком отсутствия"
+fi
+
+# Схемы и пороги (ТЗ 6.7, §8; критерий приёмки 13 — права администратора).
+schemas_count=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/schemas" | json "o.length")
+[ "$schemas_count" = "4" ] && pass "схемы четырёх типов доступны" || fail "схем: $schemas_count"
+
+thresholds_body='{"autoClassify":0.7,"criticalFieldConfidence":0.8,"fieldConfidence":0.6}'
+operator_put=$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" \
+  -X PUT "http://localhost:${WEB_PORT}/api/schemas/invoice/thresholds" \
+  -H 'Content-Type: application/json' -d "$thresholds_body")
+[ "$operator_put" = "403" ] && pass "оператору настройка порогов запрещена (403)" \
+  || fail "оператор получил $operator_put вместо 403"
+
+ADMIN_COOKIES="$(mktemp)"
+curl -s -o /dev/null -c "$ADMIN_COOKIES" -X POST "http://localhost:${WEB_PORT}/api/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d "{\"login\":\"${SEED_ADMIN_LOGIN}\",\"password\":\"${SEED_ADMIN_PASSWORD}\"}"
+admin_version=$(curl -s -b "$ADMIN_COOKIES" \
+  -X PUT "http://localhost:${WEB_PORT}/api/schemas/invoice/thresholds" \
+  -H 'Content-Type: application/json' -d "$thresholds_body" | json "o.version")
+rm -f "$ADMIN_COOKIES"
+if [ -n "$admin_version" ] && [ "$admin_version" -ge 2 ] 2>/dev/null; then
+  pass "администратор обновил пороги (новая версия $admin_version)"
+else
+  fail "обновление порогов администратором: version=$admin_version"
 fi
 
 # Повреждённый файл: отклонение с причиной, до вызова LLM (ТЗ §9, §10).

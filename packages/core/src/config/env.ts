@@ -68,6 +68,15 @@ const envSchema = z.object({
   OCR_RENDER_DPI: z.coerce.number().int().min(72).max(600).default(200),
   OCR_LANGUAGE_HINTS: z.string().default('ru,en'),
 
+  // ─── LLM (ТЗ 6.3, 6.4) ────────────────────────────────────────────────────
+  // mock — детерминированный провайдер под формат демо-набора; openai_compatible —
+  // любой OpenAI-совместимый endpoint (DeepSeek, OpenAI и т.п.).
+  LLM_PROVIDER: z.enum(['mock', 'openai_compatible']).default('mock'),
+  LLM_BASE_URL: z.string().optional(),
+  LLM_API_KEY: z.string().optional(),
+  LLM_MODEL: z.string().optional(),
+  LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+
   SEED_OPERATOR_LOGIN: z.string().default('operator'),
   SEED_OPERATOR_PASSWORD: z.string().default('operator_password'),
   SEED_ADMIN_LOGIN: z.string().default('admin'),
@@ -100,6 +109,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const env = parsed.data
   if (env.OCR_PROVIDER === 'google' && !env.GOOGLE_VISION_KEY_FILE) {
     throw new Error('OCR_PROVIDER=google требует GOOGLE_VISION_KEY_FILE')
+  }
+  if (
+    env.LLM_PROVIDER === 'openai_compatible' &&
+    (!env.LLM_BASE_URL || !env.LLM_API_KEY || !env.LLM_MODEL)
+  ) {
+    throw new Error('LLM_PROVIDER=openai_compatible требует LLM_BASE_URL, LLM_API_KEY и LLM_MODEL')
   }
   return {
     ...env,

@@ -1,12 +1,15 @@
+import { CLASSIFIABLE_DOCUMENT_TYPES } from '@docflow/shared'
+import { and, eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import { hashPassword } from '../auth/password'
 import { loadEnv } from '../config/env'
-import { users } from './schema'
+import { documentSchemas, users } from './schema'
+import { DEFAULT_THRESHOLDS, SEED_SCHEMAS } from './seed-schemas'
 
 /**
- * Seed обязательного объёма (ТЗ 3.1): ровно два пользователя.
- * Регистрация и управление пользователями в объём не входят.
+ * Seed обязательного объёма: два пользователя (ТЗ 3.1) и схемы четырёх
+ * типов документов (ТЗ 6.4).
  */
 async function main(): Promise<void> {
   const env = loadEnv()
@@ -41,6 +44,34 @@ async function main(): Promise<void> {
         .returning({ login: users.login, role: users.role })
 
       console.log(`Пользователь ${saved.login} (${saved.role}) актуализирован`)
+    }
+
+    // Версия 1 каждой схемы приводится к коду; пороги при апдейте не трогаются —
+    // их правит администратор через API, и seed не должен их откатывать.
+    for (const documentType of CLASSIFIABLE_DOCUMENT_TYPES) {
+      const jsonSchema = { fields: SEED_SCHEMAS[documentType] }
+      const [existing] = await db
+        .select({ id: documentSchemas.id })
+        .from(documentSchemas)
+        .where(and(eq(documentSchemas.documentType, documentType), eq(documentSchemas.version, 1)))
+        .limit(1)
+
+      if (existing) {
+        await db
+          .update(documentSchemas)
+          .set({ jsonSchema })
+          .where(eq(documentSchemas.id, existing.id))
+        console.log(`Схема ${documentType} v1 актуализирована`)
+      } else {
+        await db.insert(documentSchemas).values({
+          documentType,
+          version: 1,
+          jsonSchema,
+          thresholds: DEFAULT_THRESHOLDS,
+          isActive: true,
+        })
+        console.log(`Схема ${documentType} v1 создана`)
+      }
     }
   } finally {
     await pool.end()
