@@ -97,6 +97,39 @@ The LLM must return VERBATIM values; normalization to ISO dates/numbers/
 currencies happens in code (`packages/shared/src/normalize`). A model that
 normalizes values itself breaks evidence→bbox matching.
 
+### Ingestion, sources and versions
+
+Both the upload endpoint and the folder/Drive sync go through
+`IngestService` (`packages/core/src/ingest`). Keep them on one path: a second
+implementation would make duplicates and versions behave differently depending
+on where the file came from. Versioning keys on `(source_type, source_path)` —
+a new content hash there supersedes the previous row (`is_active=false`,
+`deactivated_at=now()`), it does not overwrite it. Uploads have no source path,
+so they never produce versions.
+
+`SOURCE_PROVIDER` selects the second source the same way `OCR_PROVIDER` does:
+`local_folder` returns a full snapshot (deletions are inferred by `diffSnapshot`
+in shared), `google_drive` returns increments and stores the `changes` API page
+token as its cursor. The cursor lives in `source_cursors` in the database, not
+in Redis — flushing the queue must not rewind the source — and it only advances
+after a pass with no failures.
+
+Periodic work is a BullMQ queue (`maintenance`), not an in-process timer: with
+several workers the job must still run once. Retention counts from
+`deactivated_at`, never from `received_at`, and the 24-hour TTL applies to
+storage objects no document references — the consequence of writing the file
+before inserting the row.
+
+### Dead letters and Execution Log
+
+A job that exhausts its attempts writes to `dead_letters` with its payload,
+message and stack; permanent defects (corrupted file) never go there, because
+retrying them is pointless. `GET /runs` joins `workflow_runs` with the latest
+dead letter per run, and `POST /runs/:id/retry` re-enqueues the step under a
+**new** correlation id — a retry is its own attempt and must be traceable
+separately. Ingestion and export are deliberately not retryable from that
+screen.
+
 ### Validation
 
 The rule engine (`packages/shared/src/validation`) is pure — `today` is passed

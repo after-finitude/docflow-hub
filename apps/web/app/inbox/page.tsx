@@ -1,4 +1,5 @@
 import type { DocumentListPage } from '@docflow/shared'
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 import { readSession } from '@/lib/session'
@@ -35,7 +36,12 @@ export default async function InboxPage() {
             {user.login} · {user.role === 'admin' ? 'администратор' : 'оператор'}
           </p>
         </div>
-        <LogoutButton />
+        <div className="flex items-center gap-4">
+          <Link href="/runs" className="text-sm underline underline-offset-2">
+            Execution Log
+          </Link>
+          <LogoutButton />
+        </div>
       </header>
 
       <InboxClient initial={initial} />

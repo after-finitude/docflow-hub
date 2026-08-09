@@ -12,6 +12,14 @@ export const QUEUE = {
   EXTRACT: 'extract',
   VALIDATE: 'validate',
   EXPORT: 'export',
+  /** Периодические задачи: синхронизация источника и retention (ТЗ 6.1, 6.9). */
+  MAINTENANCE: 'maintenance',
+} as const
+
+/** Имена повторяющихся задач очереди maintenance. */
+export const MAINTENANCE_JOB = {
+  SYNC: 'sync',
+  RETENTION: 'retention',
 } as const
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE]
@@ -55,12 +63,28 @@ export const EXPORT_JOB_OPTIONS: JobsOptions = {
   removeOnFail: false,
 }
 
+/**
+ * Периодические задачи не повторяются: следующий запуск придёт по расписанию.
+ * Упавшие хранятся ограниченное время — иначе бесконечно повторяющаяся
+ * задача копила бы записи в Redis.
+ */
+export const MAINTENANCE_JOB_OPTIONS: JobsOptions = {
+  attempts: 1,
+  removeOnComplete: { age: 86_400, count: 50 },
+  removeOnFail: { age: 604_800, count: 50 },
+}
+
 export function defaultJobOptionsFor(queue: QueueName): JobsOptions {
-  return queue === QUEUE.EXPORT ? EXPORT_JOB_OPTIONS : PIPELINE_JOB_OPTIONS
+  if (queue === QUEUE.EXPORT) return EXPORT_JOB_OPTIONS
+  if (queue === QUEUE.MAINTENANCE) return MAINTENANCE_JOB_OPTIONS
+  return PIPELINE_JOB_OPTIONS
 }
 
 export function queueConcurrency(env: Env, queue: QueueName): number {
   if (queue === QUEUE.OCR && env.QUEUE_CONCURRENCY_OCR) return env.QUEUE_CONCURRENCY_OCR
   if (queue === QUEUE.EXTRACT && env.QUEUE_CONCURRENCY_EXTRACT) return env.QUEUE_CONCURRENCY_EXTRACT
+  // Синхронизация и retention выполняются строго по одной: два параллельных
+  // прохода по одному источнику приняли бы один файл дважды.
+  if (queue === QUEUE.MAINTENANCE) return 1
   return env.QUEUE_CONCURRENCY_DEFAULT
 }

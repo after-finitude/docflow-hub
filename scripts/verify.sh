@@ -408,15 +408,6 @@ if [ -n "$mismatch_id" ]; then
     || fail "экспорт в ненастроенный Sheets вернул $bad_dest"
 fi
 
-# Неподтверждённый документ не экспортируется.
-if [ -n "$good_id" ]; then
-  early=$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" \
-    -X POST "http://localhost:${WEB_PORT}/api/documents/${dup_id}/export" \
-    -H 'Content-Type: application/json' -d '{}')
-  [ "$early" = "400" ] && pass "неподтверждённый документ не экспортируется" \
-    || fail "экспорт неподтверждённого вернул $early"
-fi
-
 # Отклонение с причиной из списка (ТЗ 5.2).
 reject_id=$(upload_document scripts/fixtures/sample-invoice.pdf | json "o.id")
 if [ -n "$reject_id" ]; then
@@ -493,11 +484,191 @@ if [ -n "$dup_id" ]; then
   unique_issue=$(printf '%s' "$dup_settled" | json "o.issues.some(i=>i.ruleId==='invoice_number_unique' && i.severity==='blocking')")
   [ "$unique_issue" = "true" ] && pass "повтор номера инвойса даёт blocking-ошибку" \
     || fail "уникальность invoice_number не проверена"
+
+  # Дубликат остаётся неподтверждённым, поэтому на нём же проверяется запрет
+  # экспорта до подтверждения (ТЗ §9).
+  early=$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" \
+    -X POST "http://localhost:${WEB_PORT}/api/documents/${dup_id}/export" \
+    -H 'Content-Type: application/json' -d '{}')
+  [ "$early" = "400" ] && pass "неподтверждённый документ не экспортируется" \
+    || fail "экспорт неподтверждённого вернул $early"
 fi
 
 # Фильтры очереди.
 filtered=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents?status=rejected" | json "o.items.every(i=>i.status==='rejected')")
 [ "$filtered" = "true" ] && pass "фильтр по статусу работает" || fail "фильтр по статусу вернул посторонние записи"
+
+# --- Этап 9: журнал выполнения, DLQ, второй источник, версии, retention ----
+
+runs_body=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/runs?page=1")
+runs_total=$(printf '%s' "$runs_body" | json "o.total")
+[ "${runs_total:-0}" -ge 5 ] 2>/dev/null && pass "журнал выполнения заполнен ($runs_total записей)" \
+  || fail "записей в журнале: $runs_total"
+
+runs_shape=$(printf '%s' "$runs_body" | json "o.items.every(r=>r.correlationId && r.step && r.state) && o.items.some(r=>r.step==='ingestion') && o.items.some(r=>r.durationMs!==null)")
+[ "$runs_shape" = "true" ] && pass "запись журнала содержит этап, попытки, длительность и correlation_id" \
+  || fail "структура записи журнала неполная"
+
+errors_only=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/runs?onlyErrors=true" \
+  | json "o.items.every(r=>r.state==='failed')")
+[ "$errors_only" = "true" ] && pass "фильтр «только ошибки» работает" \
+  || fail "фильтр «только ошибки» вернул посторонние записи"
+
+step_filter=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/runs?step=ocr" \
+  | json "o.items.every(r=>r.step==='ocr')")
+[ "$step_filter" = "true" ] && pass "фильтр по этапу работает" || fail "фильтр по этапу неточен"
+
+# Повреждённый файл — постоянный дефект: повторять его бессмысленно, поэтому
+# в DLQ он не попадает (ТЗ 6.10).
+if [ -n "$bad_id" ]; then
+  dl_permanent=$(psql_owner "select count(*) from dead_letters where document_id='${bad_id}'")
+  [ "${dl_permanent:-1}" = "0" ] && pass "постоянный дефект файла в DLQ не попадает" \
+    || fail "повреждённый файл создал записей в DLQ: $dl_permanent"
+fi
+
+# Транзиентный отказ: объект удаляется из хранилища, повтор обработки исчерпывает
+# попытки, задача уходит в DLQ и повторяется вручную из Execution Log.
+if [ -n "$reject_id" ]; then
+  storage_key=$(psql_owner "select storage_key from documents where id='${reject_id}'")
+  mc_setup=$(docker compose exec -T minio sh -c \
+    "mc alias set probe http://localhost:9000 '${MINIO_ROOT_USER}' '${MINIO_ROOT_PASSWORD}' >/dev/null 2>&1 && \
+     mc cp probe/${MINIO_BUCKET}/${storage_key} /tmp/original.bin >/dev/null 2>&1 && \
+     mc rm probe/${MINIO_BUCKET}/${storage_key} >/dev/null 2>&1 && echo ok" 2>&1)
+  if [ "$mc_setup" = "ok" ]; then
+    curl -s -o /dev/null -b "$COOKIES" -X POST "http://localhost:${WEB_PORT}/api/documents/${reject_id}/reprocess"
+
+    dl_id=""
+    for _ in $(seq 1 30); do
+      dl_id=$(psql_owner "select id from dead_letters where document_id='${reject_id}' limit 1")
+      [ -n "$dl_id" ] && break
+      sleep 1
+    done
+
+    if [ -n "$dl_id" ]; then
+      pass "исчерпавшая попытки задача попала в DLQ"
+    else
+      fail "задача не попала в DLQ после исчерпания попыток"
+    fi
+
+    dl_detail=$(psql_owner "select (payload is not null and error_message <> '' and stack is not null) from dead_letters where document_id='${reject_id}' limit 1")
+    [ "$dl_detail" = "t" ] && pass "в DLQ сохранены вход задачи, текст ошибки и стек" \
+      || fail "запись DLQ неполная (payload/error/stack)"
+
+    failed_run=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/runs?onlyErrors=true" \
+      | json "o.items.find(r=>r.documentId==='${reject_id}' && r.deadLetter)?.id")
+    if [ -n "$failed_run" ]; then
+      pass "упавший этап виден в Execution Log вместе с записью DLQ"
+    else
+      fail "упавший этап не найден в Execution Log"
+    fi
+
+    # Файл возвращается на место, чтобы повтор мог завершиться успешно.
+    docker compose exec -T minio sh -c \
+      "mc cp /tmp/original.bin probe/${MINIO_BUCKET}/${storage_key} >/dev/null 2>&1" >/dev/null 2>&1
+
+    if [ -n "$failed_run" ]; then
+      retry_code=$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" \
+        -X POST "http://localhost:${WEB_PORT}/api/runs/${failed_run}/retry")
+      case "$retry_code" in
+        200 | 201) pass "повтор этапа из Execution Log принят" ;;
+        *) fail "повтор этапа вернул $retry_code" ;;
+      esac
+
+      retried=$(psql_owner "select count(*) from dead_letters where document_id='${reject_id}' and retried_at is not null")
+      [ "${retried:-0}" -ge 1 ] 2>/dev/null && pass "запись DLQ помечена повторённой" \
+        || fail "запись DLQ не помечена повторённой"
+
+      await_settled "$reject_id" >/dev/null
+      after_retry=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents/${reject_id}" | json "o.status")
+      [ "$after_retry" != "failed" ] && pass "после повтора документ обработан (статус $after_retry)" \
+        || fail "после повтора документ остался в статусе failed"
+    fi
+  else
+    fail "не удалось подготовить проверку DLQ через mc"
+  fi
+fi
+
+# Второй источник: наблюдаемая папка. Первый прогон синхронизации выполняется
+# при старте воркера, поэтому проверка перезапускает его вместо ожидания
+# интервала.
+SOURCE_DIR="docker/source-inbox"
+resync() { docker compose restart worker >/dev/null 2>&1; sleep 6; }
+
+drive_docs() {
+  curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents?source=drive&pageSize=50"
+}
+
+if [ "${SOURCE_PROVIDER:-none}" = "local_folder" ]; then
+  cp scripts/fixtures/sample-invoice.pdf "${SOURCE_DIR}/synced.pdf"
+  resync
+
+  synced_id=""
+  for _ in $(seq 1 20); do
+    synced_id=$(drive_docs | json "o.items.find(i=>i.sourceType==='drive')?.id")
+    [ -n "$synced_id" ] && break
+    sleep 1
+  done
+
+  if [ -n "$synced_id" ]; then
+    pass "файл из папки-источника принят"
+    await_settled "$synced_id" >/dev/null
+
+    # Дубликаты ищутся по всем источникам: тот же файл уже загружался вручную.
+    cross_dup=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents/${synced_id}" | json "o.duplicateOfId")
+    [ -n "$cross_dup" ] && pass "дубликат распознан между источниками" \
+      || fail "дубликат из другого источника не связан с оригиналом"
+  else
+    fail "файл из папки-источника не принят"
+  fi
+
+  # Повторная синхронизация без изменений не создаёт второй документ.
+  resync
+  same_count=$(drive_docs | json "o.total")
+  [ "$same_count" = "1" ] && pass "повторная синхронизация не дублирует документ" \
+    || fail "после повторной синхронизации документов из источника: $same_count"
+
+  # Изменившийся файл по тому же пути даёт новую версию (ТЗ 6.9).
+  cp scripts/fixtures/invoice-sum-mismatch.pdf "${SOURCE_DIR}/synced.pdf"
+  resync
+  sleep 4
+  versions=$(drive_docs | json "o.total")
+  v2_active=$(drive_docs | json "o.items.some(i=>i.versionNumber===2 && i.isActive)")
+  v1_inactive=$(drive_docs | json "o.items.some(i=>i.versionNumber===1 && !i.isActive)")
+  [ "$versions" = "2" ] && pass "изменение файла создало новую версию" \
+    || fail "версий документа из источника: $versions"
+  [ "$v2_active" = "true" ] && pass "актуальной считается последняя версия" \
+    || fail "вторая версия не активна"
+  [ "$v1_inactive" = "true" ] && pass "прежняя версия сохранена и неактуальна" \
+    || fail "первая версия не помечена неактуальной"
+
+  # Удаление в источнике помечает документ неактивным, но не удаляет его.
+  rm -f "${SOURCE_DIR}/synced.pdf"
+  resync
+  sleep 2
+  all_inactive=$(drive_docs | json "o.items.every(i=>!i.isActive) && o.total===2")
+  [ "$all_inactive" = "true" ] && pass "удаление в источнике помечает документ неактивным" \
+    || fail "после удаления в источнике документы остались активными"
+
+  deact_audit=$(psql_owner "select count(*) from audit_events where action='document.deactivated'")
+  [ "${deact_audit:-0}" -ge 1 ] 2>/dev/null && pass "удаление в источнике записано в журнал" \
+    || fail "удаление в источнике не попало в журнал"
+
+  # Retention: срок отсчитывается от потери актуальности, поэтому проверка
+  # отодвигает дату назад и запускает уборку перезапуском воркера.
+  purge_id=$(psql_owner "select id from documents where source_type='drive' and version_number=1 limit 1")
+  psql_owner "update documents set deactivated_at = now() - interval '400 days' where id='${purge_id}'" >/dev/null
+  resync
+  sleep 3
+  purged=$(psql_owner "select count(*) from documents where id='${purge_id}'")
+  [ "$purged" = "0" ] && pass "просроченный документ удалён физически по retention" \
+    || fail "документ с истёкшим retention остался в базе"
+
+  purge_audit=$(psql_owner "select count(*) from audit_events where action='document.purged' and object_id='${purge_id}'")
+  [ "${purge_audit:-0}" -ge 1 ] 2>/dev/null && pass "физическое удаление записано в журнал" \
+    || fail "физическое удаление не попало в журнал"
+else
+  note "второй источник отключён (SOURCE_PROVIDER=${SOURCE_PROVIDER:-none}) — проверки пропущены"
+fi
 
 # Поток событий для живого обновления очереди.
 sse_type=$(curl -s -b "$COOKIES" -o /dev/null -w '%{content_type}' --max-time 3 \

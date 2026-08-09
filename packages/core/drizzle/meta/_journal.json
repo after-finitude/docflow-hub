@@ -36,6 +36,13 @@
       "when": 1786272613103,
       "tag": "0004_field_confidence_signals",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786278623068,
+      "tag": "0005_source_sync_and_dlq",
+      "breakpoints": true
     }
   ]
 }

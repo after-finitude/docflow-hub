@@ -9,6 +9,7 @@ import {
   failRun,
   finishRun,
   queueConcurrency,
+  recordDeadLetter,
   startRun,
   type Database,
   type Env,
@@ -89,6 +90,20 @@ export class ValidateProcessor extends WorkerHost implements OnModuleInit {
       )
       return
     }
+
+    // Сама задача больше не повторится: она уходит в dead-letter queue,
+    // откуда её повторяет оператор из Execution Log (ТЗ 6.10).
+    await recordDeadLetter(this.db, {
+      documentId,
+      runId,
+      step: 'validation',
+      queue: QUEUE.VALIDATE,
+      jobId: job.id ?? null,
+      payload: job.data,
+      errorCode: 'validation_failed',
+      error,
+      attempts: job.attemptsMade + 1,
+    })
 
     const reason = 'Не удалось проверить документ. Обработку можно повторить вручную'
     await this.db

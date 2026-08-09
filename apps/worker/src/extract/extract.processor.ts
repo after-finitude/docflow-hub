@@ -11,6 +11,7 @@ import {
   getActiveSchema,
   pages,
   queueConcurrency,
+  recordDeadLetter,
   startRun,
   writeAudit,
   type Database,
@@ -192,6 +193,20 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
       )
       return
     }
+
+    // Сама задача больше не повторится: она уходит в dead-letter queue,
+    // откуда её повторяет оператор из Execution Log (ТЗ 6.10).
+    await recordDeadLetter(this.db, {
+      documentId,
+      runId,
+      step: 'extraction',
+      queue: QUEUE.EXTRACT,
+      jobId: job.id ?? null,
+      payload: job.data,
+      errorCode: 'extraction_failed',
+      error,
+      attempts: job.attemptsMade + 1,
+    })
 
     const reason = 'Не удалось извлечь поля. Обработку можно повторить вручную'
     await this.db

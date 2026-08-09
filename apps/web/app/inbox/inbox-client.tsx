@@ -199,6 +199,14 @@ function Row({ item, onRetry }: { item: DocumentListItem; onRetry: (id: string) 
         {item.duplicateOfId && (
           <div className="mt-1 text-xs text-amber-700">Дубликат уже принятого документа</div>
         )}
+        {item.versionNumber > 1 && (
+          <div className="mt-1 text-xs text-neutral-500">версия {item.versionNumber}</div>
+        )}
+        {!item.isActive && (
+          <div className="mt-1 text-xs text-neutral-500">
+            неактуален: удалён в источнике или заменён новой версией
+          </div>
+        )}
       </td>
       <td className="p-3 text-neutral-600">{SOURCE_TYPE_LABELS[item.sourceType]}</td>
       <td className="p-3">

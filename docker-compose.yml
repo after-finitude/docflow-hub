@@ -115,6 +115,11 @@ services:
       args:
         APP: worker
     env_file: .env
+    volumes:
+      # Наблюдаемая папка второго источника (SOURCE_PROVIDER=local_folder).
+      # Только для чтения: система принимает файлы, но никогда не меняет
+      # содержимое источника.
+      - ./docker/source-inbox:/data/source:ro
     depends_on:
       postgres:
         condition: service_healthy

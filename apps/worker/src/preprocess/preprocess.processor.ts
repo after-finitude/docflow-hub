@@ -9,6 +9,7 @@ import {
   failRun,
   finishRun,
   queueConcurrency,
+  recordDeadLetter,
   startRun,
   thumbnailKeyFor,
   writeAudit,
@@ -149,6 +150,20 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
       this.logger.warn(`Документ ${documentId}: ${code}, осталось попыток ${attemptsLeft}`)
       return
     }
+
+    // Сама задача больше не повторится: она уходит в dead-letter queue,
+    // откуда её повторяет оператор из Execution Log (ТЗ 6.10).
+    await recordDeadLetter(this.db, {
+      documentId,
+      runId,
+      step: 'preprocess',
+      queue: QUEUE.PREPROCESS,
+      jobId: job.id ?? null,
+      payload: job.data,
+      errorCode: code,
+      error,
+      attempts: job.attemptsMade + 1,
+    })
 
     const reason = 'Не удалось подготовить документ. Обработку можно повторить вручную'
     await this.db

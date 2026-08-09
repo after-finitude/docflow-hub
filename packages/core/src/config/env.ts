@@ -84,6 +84,23 @@ const envSchema = z.object({
   GOOGLE_SHEETS_SPREADSHEET_ID: z.string().optional(),
   GOOGLE_SHEETS_SHEET_NAME: z.string().default('Documents'),
 
+  // ─── Второй источник (ТЗ 6.1, 6.9) ────────────────────────────────────────
+  // none — работает только загрузка через интерфейс; local_folder —
+  // наблюдаемая папка (полный снимок при каждом проходе); google_drive —
+  // папка Диска с курсором changes API.
+  SOURCE_PROVIDER: z.enum(['none', 'local_folder', 'google_drive']).default('none'),
+  SOURCE_SYNC_INTERVAL_SECONDS: z.coerce.number().int().positive().default(300),
+  LOCAL_SOURCE_DIR: z.string().optional(),
+  GOOGLE_DRIVE_KEY_FILE: z.string().optional(),
+  GOOGLE_DRIVE_FOLDER_ID: z.string().optional(),
+
+  // ─── Хранение и удаление (ТЗ 6.9, §11) ────────────────────────────────────
+  // Через сколько дней после потери актуальности документ удаляется физически.
+  RETENTION_DAYS: z.coerce.number().int().positive().default(90),
+  // TTL объектов в хранилище, на которые не ссылается ни один документ.
+  ORPHAN_TTL_HOURS: z.coerce.number().int().positive().default(24),
+  RETENTION_INTERVAL_SECONDS: z.coerce.number().int().positive().default(3600),
+
   SEED_OPERATOR_LOGIN: z.string().default('operator'),
   SEED_OPERATOR_PASSWORD: z.string().default('operator_password'),
   SEED_ADMIN_LOGIN: z.string().default('admin'),
@@ -129,6 +146,17 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   ) {
     throw new Error(
       'Экспорт в Google Sheets требует GOOGLE_SHEETS_KEY_FILE и GOOGLE_SHEETS_SPREADSHEET_ID',
+    )
+  }
+  if (env.SOURCE_PROVIDER === 'local_folder' && !env.LOCAL_SOURCE_DIR) {
+    throw new Error('SOURCE_PROVIDER=local_folder требует LOCAL_SOURCE_DIR')
+  }
+  if (
+    env.SOURCE_PROVIDER === 'google_drive' &&
+    (!env.GOOGLE_DRIVE_KEY_FILE || !env.GOOGLE_DRIVE_FOLDER_ID)
+  ) {
+    throw new Error(
+      'SOURCE_PROVIDER=google_drive требует GOOGLE_DRIVE_KEY_FILE и GOOGLE_DRIVE_FOLDER_ID',
     )
   }
   return {

@@ -77,4 +77,21 @@ export class StorageService implements OnModuleInit {
   async remove(key: string): Promise<void> {
     await this.client.removeObject(this.env.MINIO_BUCKET, key)
   }
+
+  /** Перечисление объектов под префиксом — для retention-задачи (ТЗ 6.9). */
+  async list(prefix: string): Promise<{ key: string; lastModified: Date }[]> {
+    const stream = this.client.listObjectsV2(this.env.MINIO_BUCKET, prefix, true)
+    const items: { key: string; lastModified: Date }[] = []
+    for await (const item of stream) {
+      if (item.name) items.push({ key: item.name, lastModified: item.lastModified })
+    }
+    return items
+  }
+
+  /** Все файлы документа лежат под общим префиксом и удаляются одним вызовом. */
+  async removePrefix(prefix: string): Promise<number> {
+    const keys = (await this.list(prefix)).map((item) => item.key)
+    if (keys.length) await this.client.removeObjects(this.env.MINIO_BUCKET, keys)
+    return keys.length
+  }
 }

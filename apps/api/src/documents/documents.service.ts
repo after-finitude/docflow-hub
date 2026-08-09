@@ -1,13 +1,13 @@
 import {
   DB,
   DocumentEventsService,
+  IngestService,
   QUEUE,
   StorageService,
   ValidationRunnerService,
   documents,
   fields,
   getActiveSchema,
-  originalKey,
   pages,
   validationIssues,
   workflowRuns,
@@ -15,7 +15,6 @@ import {
   type Database,
 } from '@docflow/core'
 import {
-  DEFAULT_TENANT_ID,
   REJECT_REASON_LABELS,
   normalizeByType,
   type ClassifiableDocumentType,
@@ -43,7 +42,7 @@ import {
 } from '@nestjs/common'
 import { Queue } from 'bullmq'
 import { and, desc, eq, exists, gte, inArray, isNull, lte, not, sql, type SQL } from 'drizzle-orm'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import type { Readable } from 'node:stream'
 import type { RequestContext } from '../auth/decorators'
 import { ExportService } from '../export/export.service'
@@ -62,6 +61,8 @@ const listColumns = {
   statusReason: documents.statusReason,
   thumbnailKey: documents.thumbnailKey,
   duplicateOfId: documents.duplicateOfId,
+  versionNumber: documents.versionNumber,
+  isActive: documents.isActive,
   receivedAt: documents.receivedAt,
   minCriticalConfidence: sql<number | null>`(
     select min(${fields.confidence}) from ${fields}
@@ -100,6 +101,7 @@ export class DocumentsService {
     private readonly storage: StorageService,
     private readonly events: DocumentEventsService,
     private readonly validation: ValidationRunnerService,
+    private readonly ingest: IngestService,
     private readonly exports: ExportService,
     @InjectQueue(QUEUE.PREPROCESS) private readonly preprocessQueue: Queue,
     @InjectQueue(QUEUE.EXTRACT) private readonly extractQueue: Queue,
@@ -110,53 +112,25 @@ export class DocumentsService {
     user: SessionUser,
     origin: RequestContext,
   ): Promise<DocumentListItem> {
-    const checksum = createHash('sha256').update(file.buffer).digest('hex')
-    const storageKey = originalKey(randomUUID(), file.mimetype)
-
-    // Файл кладётся в хранилище до создания записи: строка документа никогда
-    // не должна указывать на отсутствующий объект. Осиротевший объект при
-    // отказе вставки безвреден и вычищается retention-задачей.
-    await this.storage.put(storageKey, file.buffer, file.mimetype)
-
-    // Дубликат по checksum: документ принимается, но связывается с оригиналом
-    // и повторно не экспортируется (ТЗ §10).
-    const [duplicateOf] = await this.db
-      .select({ id: documents.id })
-      .from(documents)
-      .where(and(eq(documents.checksum, checksum), eq(documents.isActive, true)))
-      .orderBy(documents.receivedAt)
-      .limit(1)
-
-    const [created] = await this.db
-      .insert(documents)
-      .values({
-        tenantId: DEFAULT_TENANT_ID,
-        sourceType: 'upload',
-        originalFilename: file.originalname,
-        mimeType: file.mimetype,
-        sizeBytes: file.size,
-        checksum,
-        storageKey,
-        status: 'received',
-        duplicateOfId: duplicateOf?.id ?? null,
-      })
-      .returning({ id: documents.id })
-
-    await writeAudit(this.db, {
-      correlationId: origin.correlationId,
+    // Приём общий с синхронизацией источника: checksum, дубликаты и версии
+    // не должны зависеть от того, каким путём файл попал в систему.
+    const result = await this.ingest.ingest({
+      buffer: file.buffer,
+      filename: file.originalname,
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      sourceType: 'upload',
       actorType: 'user',
       actorId: user.id,
-      action: 'document.upload',
-      objectType: 'document',
-      objectId: created.id,
-      after: { filename: file.originalname, sizeBytes: file.size, checksum },
-      result: 'success',
+      auditAction: 'document.upload',
+      correlationId: origin.correlationId ?? randomUUID(),
       ip: origin.ip,
       userAgent: origin.userAgent,
     })
 
-    await this.enqueuePreprocess(created.id, origin.correlationId ?? randomUUID())
-    return this.findOne(created.id)
+    // Загрузка через интерфейс не имеет пути источника, поэтому приём всегда
+    // создаёт документ: ветка skipped недостижима.
+    return this.findOne(result.documentId!)
   }
 
   async list(query: DocumentListQuery): Promise<DocumentListPage> {
@@ -659,6 +633,8 @@ export class DocumentsService {
       statusReason: string | null
       thumbnailKey: string | null
       duplicateOfId: string | null
+      versionNumber: number
+      isActive: boolean
       receivedAt: Date
       minCriticalConfidence: number | null
       blockingIssues: number
@@ -682,6 +658,8 @@ export class DocumentsService {
       warningIssues: value.warningIssues,
       hasThumbnail: Boolean(value.thumbnailKey),
       duplicateOfId: value.duplicateOfId,
+      versionNumber: value.versionNumber,
+      isActive: value.isActive,
       currentStep: value.currentStep,
       currentStepState: value.currentStepState,
       receivedAt: value.receivedAt.toISOString(),

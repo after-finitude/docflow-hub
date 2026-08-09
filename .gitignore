@@ -22,3 +22,7 @@ npm-debug.log*
 secrets/
 *.pem
 *-service-account.json
+
+# Содержимое наблюдаемой папки второго источника (сама папка нужна для монтирования)
+docker/source-inbox/*
+!docker/source-inbox/README.md

@@ -94,6 +94,11 @@ export const documents = pgTable(
     statusReason: text('status_reason'),
     versionNumber: integer('version_number').notNull().default(1),
     isActive: boolean('is_active').notNull().default(true),
+    // Момент, когда документ перестал быть актуальным: удалён в источнике или
+    // вытеснен новой версией. От него, а не от даты приёма, отсчитывается
+    // retention policy (ТЗ 6.9) — иначе давно принятый и только что удалённый
+    // файл стирался бы сразу.
+    deactivatedAt: timestamp('deactivated_at', { withTimezone: true }),
 
     receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
     processedAt: timestamp('processed_at', { withTimezone: true }),
@@ -103,7 +108,26 @@ export const documents = pgTable(
     index('documents_checksum_idx').on(t.checksum),
     index('documents_received_at_idx').on(t.receivedAt),
     index('documents_type_idx').on(t.documentType),
+    // Поиск текущей версии по пути источника — горячий путь синхронизации.
+    index('documents_source_path_idx').on(t.sourceType, t.sourcePath),
   ],
+)
+
+/**
+ * Состояние синхронизации источника (ТЗ 6.1, второй этап). Курсор хранится
+ * в БД, а не в Redis: очередь можно очистить, а точка, с которой источник
+ * читается дальше, переживать это обязана.
+ */
+export const sourceCursors = pgTable(
+  'source_cursors',
+  {
+    id: id(),
+    source: text('source').notNull(),
+    cursor: text('cursor'),
+    lastSyncAt: timestamp('last_sync_at', { withTimezone: true }),
+    lastError: text('last_error'),
+  },
+  (t) => [uniqueIndex('source_cursors_source_key').on(t.source)],
 )
 
 export const pages = pgTable(
@@ -236,6 +260,38 @@ export const workflowRuns = pgTable(
     index('workflow_runs_document_idx').on(t.documentId),
     index('workflow_runs_correlation_idx').on(t.correlationId),
     index('workflow_runs_state_idx').on(t.state),
+  ],
+)
+
+/**
+ * Dead-letter queue: задачи, исчерпавшие попытки (ТЗ 6.10, второй этап).
+ * Хранит вход задачи и полный текст ошибки — по ним строится раскрытие
+ * строки в Execution Log и ручной повтор.
+ */
+export const deadLetters = pgTable(
+  'dead_letters',
+  {
+    id: id(),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    runId: uuid('run_id').references(() => workflowRuns.id, { onDelete: 'cascade' }),
+    step: workflowStepEnum('step').notNull(),
+    queue: text('queue').notNull(),
+    jobId: text('job_id'),
+    payload: jsonb('payload'),
+    errorCode: text('error_code').notNull(),
+    errorMessage: text('error_message').notNull(),
+    stack: text('stack'),
+    attempts: integer('attempts').notNull().default(0),
+    failedAt: timestamp('failed_at', { withTimezone: true }).notNull().defaultNow(),
+    retriedAt: timestamp('retried_at', { withTimezone: true }),
+    retriedBy: text('retried_by'),
+  },
+  (t) => [
+    index('dead_letters_document_idx').on(t.documentId),
+    index('dead_letters_run_idx').on(t.runId),
+    index('dead_letters_failed_at_idx').on(t.failedAt),
   ],
 )
 

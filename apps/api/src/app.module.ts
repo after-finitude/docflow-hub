@@ -2,6 +2,7 @@ import {
   ConfigModule,
   DbModule,
   EventsModule,
+  IngestModule,
   QueueModule,
   StorageModule,
   ValidationModule,
@@ -14,6 +15,7 @@ import { RolesGuard } from './auth/roles.guard'
 import { DocumentsModule } from './documents/documents.module'
 import { EventsController } from './events/events.controller'
 import { HealthController } from './health/health.controller'
+import { RunsModule } from './runs/runs.module'
 import { SchemasModule } from './schemas/schemas.module'
 
 @Module({
@@ -24,9 +26,11 @@ import { SchemasModule } from './schemas/schemas.module'
     QueueModule,
     EventsModule,
     ValidationModule,
+    IngestModule,
     AuthModule,
     DocumentsModule,
     SchemasModule,
+    RunsModule,
   ],
   controllers: [HealthController, EventsController],
   providers: [
