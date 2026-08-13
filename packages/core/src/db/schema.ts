@@ -93,6 +93,12 @@ export const documents = pgTable(
     status: documentStatusEnum('status').notNull().default('received'),
     statusReason: text('status_reason'),
     versionNumber: integer('version_number').notNull().default(1),
+    // Предыдущая версия того же документа. Для файлов из источника цепочку
+    // можно было бы вывести из source_path, но у загруженных вручную его нет,
+    // а заменённый оператором файл обязан оставаться связанным с прежним.
+    previousVersionId: uuid('previous_version_id').references((): AnyPgColumn => documents.id, {
+      onDelete: 'set null',
+    }),
     isActive: boolean('is_active').notNull().default(true),
     // Момент, когда документ перестал быть актуальным: удалён в источнике или
     // вытеснен новой версией. От него, а не от даты приёма, отсчитывается

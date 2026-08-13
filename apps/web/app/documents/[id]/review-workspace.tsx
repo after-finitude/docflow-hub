@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  ACCEPTED_MIME_TYPES,
   CLASSIFIABLE_DOCUMENT_TYPES,
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_TYPE_LABELS,
@@ -21,7 +22,7 @@ import {
 } from '@docflow/shared'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { DocumentViewer, type SourceHighlight } from './document-viewer'
 import { FieldCard } from './field-card'
 import { LineItemsEditor } from './line-items-editor'
@@ -185,6 +186,27 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
             ← К очереди
           </Link>
           <h1 className="truncate text-lg font-semibold">{document.originalFilename}</h1>
+          {document.versionNumber > 1 && (
+            <p className="text-xs text-neutral-500">
+              версия {document.versionNumber}
+              {document.previousVersionId && (
+                <>
+                  {' · '}
+                  <Link
+                    href={`/documents/${document.previousVersionId}`}
+                    className="underline hover:text-neutral-800"
+                  >
+                    предыдущая
+                  </Link>
+                </>
+              )}
+            </p>
+          )}
+          {!document.isActive && (
+            <p className="text-xs text-amber-700">
+              Версия неактуальна: заменена новой или удалена в источнике
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2 text-sm">
           <span className="rounded bg-neutral-100 px-2 py-1 text-xs">
@@ -292,6 +314,39 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
               >
                 Переобработать
               </button>
+              {/* Замена оригинала (ТЗ §10). Для документа из источника файл
+                  меняется в самом источнике, поэтому кнопки здесь нет. */}
+              {document.sourceType === 'upload' && document.isActive && (
+                <ReplaceFileButton
+                  disabled={busy || readOnly}
+                  onSelect={async (file) => {
+                    const body = new FormData()
+                    body.append('file', file)
+                    setBusy(true)
+                    setError(null)
+                    try {
+                      const response = await fetch(`/api/documents/${document.id}/file`, {
+                        method: 'POST',
+                        body,
+                      })
+                      const detail = (await response.json().catch(() => null)) as {
+                        id?: string
+                        message?: string
+                      } | null
+                      if (!response.ok || !detail?.id) {
+                        setError(detail?.message ?? `Ошибка ${response.status}`)
+                        return
+                      }
+                      // Замена создаёт новую версию — это другой документ.
+                      router.push(`/documents/${detail.id}`)
+                    } catch {
+                      setError('Сервис недоступен')
+                    } finally {
+                      setBusy(false)
+                    }
+                  }}
+                />
+              )}
             </div>
 
             {rejecting && <RejectForm onCancel={() => setRejecting(false)} onSubmit={reject} />}
@@ -413,6 +468,47 @@ function formatWhen(iso: string | null): string {
   return iso
     ? new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
     : ''
+}
+
+/**
+ * Замена оригинала: скрытый input, потому что нативный вид кнопки выбора
+ * файла не совпадает с остальными действиями панели.
+ */
+function ReplaceFileButton({
+  disabled,
+  onSelect,
+}: {
+  disabled: boolean
+  onSelect: (file: File) => void | Promise<void>
+}) {
+  const input = useRef<HTMLInputElement>(null)
+
+  return (
+    <>
+      <input
+        ref={input}
+        type="file"
+        accept={ACCEPTED_MIME_TYPES.join(',')}
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          // Значение сбрасывается, иначе повторный выбор того же файла
+          // не вызовет change.
+          event.target.value = ''
+          if (file) void onSelect(file)
+        }}
+      />
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => input.current?.click()}
+        title="Загрузить другой файл вместо этого: создаётся новая версия документа"
+        className="rounded-md border border-[var(--color-border-subtle)] px-4 py-1.5 text-sm hover:bg-neutral-100 disabled:opacity-40"
+      >
+        Заменить файл
+      </button>
+    </>
+  )
 }
 
 function RejectForm({

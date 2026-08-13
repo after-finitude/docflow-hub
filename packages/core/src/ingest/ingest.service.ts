@@ -29,6 +29,12 @@ export interface IngestInput {
   correlationId: string
   ip?: string | null
   userAgent?: string | null
+  /**
+   * Документ, который заменяется этим файлом (ТЗ §10: «возможность заменить
+   * файл»). Задаёт версию явно там, где пути источника нет и вывести
+   * предшественника не из чего.
+   */
+  replaces?: { id: string; versionNumber: number } | null
 }
 
 export interface IngestResult {
@@ -58,9 +64,14 @@ export class IngestService {
   async ingest(input: IngestInput): Promise<IngestResult> {
     const checksum = createHash('sha256').update(input.buffer).digest('hex')
 
-    const current = input.sourcePath
-      ? await this.currentVersion(input.sourceType, input.sourcePath)
-      : null
+    // Замена файла задаёт предшественника напрямую; для файлов из источника
+    // он ищется по пути. Совпадение содержимого и там, и там означает, что
+    // ничего не менялось.
+    const current = input.replaces
+      ? { ...input.replaces, checksum: await this.checksumOf(input.replaces.id) }
+      : input.sourcePath
+        ? await this.currentVersion(input.sourceType, input.sourcePath)
+        : null
     const decision = decideIngest(current, checksum)
     if (decision.action === 'skip') return { documentId: current?.id ?? null, action: 'skipped' }
 
@@ -95,6 +106,7 @@ export class IngestService {
         storageKey,
         status: 'received',
         versionNumber: decision.versionNumber,
+        previousVersionId: decision.action === 'version' ? (current?.id ?? null) : null,
         duplicateOfId: duplicateOf?.id ?? null,
       })
       .returning({ id: documents.id })
@@ -155,6 +167,15 @@ export class IngestService {
       documentId: created.id,
       action: decision.action === 'version' ? 'versioned' : 'created',
     }
+  }
+
+  private async checksumOf(documentId: string): Promise<string> {
+    const [row] = await this.db
+      .select({ checksum: documents.checksum })
+      .from(documents)
+      .where(eq(documents.id, documentId))
+      .limit(1)
+    return row?.checksum ?? ''
   }
 
   /** Актуальная версия по пути источника: она же основа для сравнения хеша. */

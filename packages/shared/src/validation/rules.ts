@@ -71,16 +71,25 @@ export type ValidationRule = z.infer<typeof validationRuleSchema>
 /** Идентификатор правила уникальности invoice_number — единственная cross-document проверка (ТЗ §9). */
 export const INVOICE_NUMBER_UNIQUE_RULE = 'invoice_number_unique'
 
+/** Предупреждение о качестве распознавания, ставится этапом OCR (ТЗ §10). */
+export const OCR_QUALITY_RULE = 'ocr_quality_low'
+
 /**
  * Правила, созданные не движком валидации: их не трогает перезапуск.
- * Сейчас это только предупреждение о нескольких документах в одном файле,
- * которое ставит классификация (ТЗ 6.3).
+ * Предупреждение о нескольких документах в одном файле ставит классификация
+ * (ТЗ 6.3), предупреждение о качестве распознавания — этап OCR (ТЗ §10).
+ * Обоих движок не знает и при перевалидации стереть их не должен.
  */
-export const EXTERNAL_RULE_IDS = ['multi_document_suspected'] as const
+export const EXTERNAL_RULE_IDS = ['multi_document_suspected', OCR_QUALITY_RULE] as const
 
 /**
  * Правила, наличие которых само по себе отправляет документ на проверку,
  * даже если это предупреждение. ТЗ 6.3: подозрение на несколько документов
  * в одном файле «создаёт warning и отправляет документ на проверку».
+ * ТЗ §10: скан очень низкого качества — «Needs review + предупреждение
+ * об OCR quality».
  */
-export const FORCE_REVIEW_RULE_IDS: readonly string[] = ['multi_document_suspected']
+export const FORCE_REVIEW_RULE_IDS: readonly string[] = [
+  'multi_document_suspected',
+  OCR_QUALITY_RULE,
+]

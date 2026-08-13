@@ -12,15 +12,21 @@ import {
   queueConcurrency,
   recordDeadLetter,
   startRun,
+  validationIssues,
   writeAudit,
   type Database,
   type Env,
 } from '@docflow/core'
-import type { DocumentStatus, WorkflowState } from '@docflow/shared'
+import {
+  OCR_QUALITY_RULE,
+  assessOcrQuality,
+  type DocumentStatus,
+  type WorkflowState,
+} from '@docflow/shared'
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq'
 import { Inject, Logger, type OnModuleInit } from '@nestjs/common'
 import { Queue, UnrecoverableError, type Job } from 'bullmq'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { OCR_PROVIDER, type OcrProvider } from './ocr-provider'
 
 export interface OcrJob {
@@ -107,6 +113,8 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
         .set({ pageCount: result.pages.length })
         .where(eq(documents.id, documentId))
 
+      await this.syncQualityWarning(documentId, result.pages)
+
       await finishRun(this.db, runId)
       await this.classifyQueue.add('classify', { documentId, correlationId })
       await this.publish(documentId, 'processing', 'succeeded')
@@ -117,6 +125,49 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
       await this.handleFailure(job, documentId, runId, error)
       throw error
     }
+  }
+
+  /**
+   * Предупреждение о качестве распознавания (ТЗ §10). Ставится здесь, а не
+   * движком валидации: движок работает с полями, а качество скана — свойство
+   * страниц. Правило перечислено в EXTERNAL_RULE_IDS, поэтому перевалидация
+   * при правке поля его не стирает, и в FORCE_REVIEW_RULE_IDS — документ
+   * с плохим сканом не проходит автоматически.
+   */
+  private async syncQualityWarning(
+    documentId: string,
+    // Имя не `pages`: так называется таблица страниц, импортированная выше.
+    recognized: { pageNumber: number; text: string; confidence: number | null }[],
+  ): Promise<void> {
+    await this.db
+      .delete(validationIssues)
+      .where(
+        and(
+          eq(validationIssues.documentId, documentId),
+          eq(validationIssues.ruleId, OCR_QUALITY_RULE),
+          isNull(validationIssues.resolvedAt),
+        ),
+      )
+
+    const issue = assessOcrQuality(
+      recognized.map((page) => ({
+        pageNumber: page.pageNumber,
+        confidence: page.confidence,
+        textLength: page.text.trim().length,
+      })),
+    )
+    if (!issue) return
+
+    await this.db.insert(validationIssues).values({
+      documentId,
+      fieldName: null,
+      ruleId: OCR_QUALITY_RULE,
+      severity: 'warning',
+      message: issue.message,
+      expected: issue.expected,
+      actual: issue.actual,
+    })
+    this.logger.warn(`Документ ${documentId}: ${issue.actual}`)
   }
 
   /** Failed — только когда попытки исчерпаны либо ошибка неустранима. */

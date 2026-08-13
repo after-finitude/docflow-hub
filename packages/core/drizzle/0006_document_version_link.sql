@@ -1,0 +1,2 @@
+ALTER TABLE "documents" ADD COLUMN "previous_version_id" uuid;--> statement-breakpoint
+ALTER TABLE "documents" ADD CONSTRAINT "documents_previous_version_id_documents_id_fk" FOREIGN KEY ("previous_version_id") REFERENCES "public"."documents"("id") ON DELETE set null ON UPDATE no action;

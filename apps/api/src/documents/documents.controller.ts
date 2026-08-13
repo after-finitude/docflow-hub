@@ -45,6 +45,25 @@ import { ExportService } from '../export/export.service'
 import { PageRenderService } from './page-render.service'
 import type { MulterFileFilter, UploadedDocument } from './uploaded-document'
 
+/**
+ * Ограничения приёма файла (ТЗ 6.1). Общие для загрузки и замены оригинала:
+ * превышение лимита Nest превращает в 413, неподдерживаемый тип отсекается
+ * фильтром — до записи в хранилище и до вызова LLM.
+ */
+const UPLOAD_INTERCEPTOR_OPTIONS = {
+  limits: { fileSize: UPLOAD_MAX_BYTES },
+  fileFilter: ((_request, file, callback) => {
+    if ((ACCEPTED_MIME_TYPES as readonly string[]).includes(file.mimetype)) {
+      callback(null, true)
+      return
+    }
+    callback(
+      new BadRequestException(`Тип ${file.mimetype} не поддерживается. Допустимы PDF, JPEG и PNG`),
+      false,
+    )
+  }) satisfies MulterFileFilter,
+}
+
 @Controller('documents')
 export class DocumentsController {
   constructor(
@@ -55,25 +74,7 @@ export class DocumentsController {
   ) {}
 
   @Post()
-  @UseInterceptors(
-    FileInterceptor('file', {
-      // Превышение лимита Nest сам превращает в 413, неподдерживаемый тип
-      // отсекается фильтром ниже — до записи в хранилище и до вызова LLM (ТЗ 6.1).
-      limits: { fileSize: UPLOAD_MAX_BYTES },
-      fileFilter: ((_request, file, callback) => {
-        if ((ACCEPTED_MIME_TYPES as readonly string[]).includes(file.mimetype)) {
-          callback(null, true)
-          return
-        }
-        callback(
-          new BadRequestException(
-            `Тип ${file.mimetype} не поддерживается. Допустимы PDF, JPEG и PNG`,
-          ),
-          false,
-        )
-      }) satisfies MulterFileFilter,
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file', UPLOAD_INTERCEPTOR_OPTIONS))
   async upload(
     @UploadedFile() file: UploadedDocument | undefined,
     @CurrentUser() user: SessionUser,
@@ -81,6 +82,22 @@ export class DocumentsController {
   ): Promise<DocumentListItem> {
     if (!file) throw new BadRequestException('Файл не передан')
     return this.documents.upload(file, user, origin)
+  }
+
+  /**
+   * Замена оригинала (ТЗ §10). Ограничения приёма те же, что при загрузке,
+   * поэтому фильтр и лимит переиспользуются.
+   */
+  @Post(':id/file')
+  @UseInterceptors(FileInterceptor('file', UPLOAD_INTERCEPTOR_OPTIONS))
+  async replaceFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: UploadedDocument | undefined,
+    @CurrentUser() user: SessionUser,
+    @Origin() origin: RequestContext,
+  ): Promise<DocumentListItem> {
+    if (!file) throw new BadRequestException('Файл не передан')
+    return this.documents.replaceFile(id, file, user, origin)
   }
 
   @Get()

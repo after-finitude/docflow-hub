@@ -485,6 +485,54 @@ else
   fail "повреждённый файл не был принят на загрузку"
 fi
 
+# Скан низкого качества: предупреждение об OCR quality и проверка человеком
+# (ТЗ §10). Mock-OCR не читает изображения, поэтому JPEG даёт пустой текст.
+scan_id=$(upload_document evaluation/dataset/scan-low-quality.jpg | json "o.id")
+if [ -n "$scan_id" ]; then
+  scan_settled=$(await_settled "$scan_id")
+  scan_status=$(printf '%s' "$scan_settled" | json "o.status")
+  [ "$scan_status" = "needs_review" ] && pass "скан низкого качества отправлен на проверку" \
+    || fail "скан низкого качества получил статус $scan_status"
+
+  scan_issue=$(printf '%s' "$scan_settled" | json "o.issues.some(i=>i.ruleId==='ocr_quality_low' && i.severity==='warning')")
+  if [ "$scan_issue" = "true" ]; then
+    pass "выдано предупреждение о качестве распознавания"
+    note "$(printf '%s' "$scan_settled" | json "o.issues.find(i=>i.ruleId==='ocr_quality_low').message")"
+  else
+    fail "предупреждения об OCR quality нет"
+  fi
+
+  # Замена файла: новая версия, прежняя остаётся неактуальной (ТЗ §10, 6.9).
+  replaced=$(curl -s -b "$COOKIES" -X POST "http://localhost:${WEB_PORT}/api/documents/${scan_id}/file" \
+    -F "file=@scripts/fixtures/sample-invoice.pdf")
+  new_id=$(printf '%s' "$replaced" | json "o.id")
+  new_version=$(printf '%s' "$replaced" | json "o.versionNumber")
+  new_previous=$(printf '%s' "$replaced" | json "o.previousVersionId")
+
+  if [ -n "$new_id" ] && [ "$new_id" != "$scan_id" ] && [ "$new_version" = "2" ]; then
+    pass "замена файла создала вторую версию"
+  else
+    fail "замена файла: id $new_id, версия $new_version"
+  fi
+  [ "$new_previous" = "$scan_id" ] && pass "новая версия связана с прежней" \
+    || fail "previousVersionId=$new_previous, ожидался $scan_id"
+
+  old_active=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents/${scan_id}" | json "o.isActive")
+  [ "$old_active" = "false" ] && pass "заменённый документ стал неактуальным" \
+    || fail "прежняя версия осталась активной"
+
+  replace_audit=$(psql_owner "select count(*) from audit_events where action='document.file_replaced'")
+  [ "${replace_audit:-0}" -ge 1 ] 2>/dev/null && pass "замена файла записана в журнал" \
+    || fail "замена файла не попала в журнал"
+
+  # Повторная замена тем же файлом не создаёт версию-пустышку.
+  same=$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" \
+    -X POST "http://localhost:${WEB_PORT}/api/documents/${new_id}/file" \
+    -F "file=@scripts/fixtures/sample-invoice.pdf")
+  [ "$same" = "400" ] && pass "замена тем же файлом отклонена" \
+    || fail "замена тем же содержимым вернула $same"
+fi
+
 # Неподдерживаемый тип отсекается до записи в хранилище.
 txt_code=$(printf 'просто текст' > /tmp/docflow-verify.txt && curl -s -o /dev/null -w '%{http_code}' \
   -b "$COOKIES" -X POST "http://localhost:${WEB_PORT}/api/documents" -F 'file=@/tmp/docflow-verify.txt')
@@ -636,6 +684,14 @@ if [ "${SOURCE_PROVIDER:-none}" = "local_folder" ]; then
     cross_dup=$(curl -s -b "$COOKIES" "http://localhost:${WEB_PORT}/api/documents/${synced_id}" | json "o.duplicateOfId")
     [ -n "$cross_dup" ] && pass "дубликат распознан между источниками" \
       || fail "дубликат из другого источника не связан с оригиналом"
+
+    # Замена файла у документа из источника запрещена: следующий проход
+    # синхронизации вернул бы содержимое источника.
+    src_replace=$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" \
+      -X POST "http://localhost:${WEB_PORT}/api/documents/${synced_id}/file" \
+      -F "file=@scripts/fixtures/invoice-sum-mismatch.pdf")
+    [ "$src_replace" = "400" ] && pass "замена файла у документа из источника отклонена" \
+      || fail "замена файла из источника вернула $src_replace"
   else
     fail "файл из папки-источника не принят"
   fi

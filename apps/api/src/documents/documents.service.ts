@@ -72,6 +72,7 @@ const listColumns = {
   thumbnailKey: documents.thumbnailKey,
   duplicateOfId: documents.duplicateOfId,
   versionNumber: documents.versionNumber,
+  previousVersionId: documents.previousVersionId,
   isActive: documents.isActive,
   receivedAt: documents.receivedAt,
   minCriticalConfidence: sql<number | null>`(
@@ -140,6 +141,69 @@ export class DocumentsService {
 
     // Загрузка через интерфейс не имеет пути источника, поэтому приём всегда
     // создаёт документ: ветка skipped недостижима.
+    return this.findOne(result.documentId!)
+  }
+
+  /**
+   * Замена оригинала (ТЗ §10: плохо распознанный скан можно заменить).
+   * Файл не перезаписывается: создаётся следующая версия, прежняя остаётся
+   * неактуальной вместе со всей историей решений по ней.
+   */
+  async replaceFile(
+    id: string,
+    file: UploadedDocument,
+    user: SessionUser,
+    origin: RequestContext,
+  ): Promise<DocumentListItem> {
+    const [document] = await this.db
+      .select({
+        id: documents.id,
+        status: documents.status,
+        sourceType: documents.sourceType,
+        versionNumber: documents.versionNumber,
+        isActive: documents.isActive,
+        checksum: documents.checksum,
+      })
+      .from(documents)
+      .where(eq(documents.id, id))
+      .limit(1)
+    if (!document) throw new NotFoundException('Документ не найден')
+
+    if (document.sourceType !== 'upload') {
+      // Иначе следующий проход синхронизации вернул бы содержимое источника
+      // и правка оператора молча пропала бы.
+      throw new BadRequestException(
+        'Документ получен из источника: заменять файл нужно в самом источнике',
+      )
+    }
+    if (!document.isActive) {
+      throw new BadRequestException('Документ неактуален: заменяется только последняя версия')
+    }
+    if (document.status === 'exported') {
+      throw new BadRequestException('Выгруженный документ не заменяется')
+    }
+    if (document.status === 'processing') {
+      throw new BadRequestException('Документ ещё обрабатывается')
+    }
+
+    const result = await this.ingest.ingest({
+      buffer: file.buffer,
+      filename: file.originalname,
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      sourceType: 'upload',
+      actorType: 'user',
+      actorId: user.id,
+      auditAction: 'document.file_replaced',
+      correlationId: origin.correlationId ?? randomUUID(),
+      ip: origin.ip,
+      userAgent: origin.userAgent,
+      replaces: { id: document.id, versionNumber: document.versionNumber },
+    })
+
+    if (result.action === 'skipped') {
+      throw new BadRequestException('Загружен тот же файл: заменять нечего')
+    }
     return this.findOne(result.documentId!)
   }
 
@@ -644,6 +708,7 @@ export class DocumentsService {
       thumbnailKey: string | null
       duplicateOfId: string | null
       versionNumber: number
+      previousVersionId: string | null
       isActive: boolean
       receivedAt: Date
       minCriticalConfidence: number | null
@@ -669,6 +734,7 @@ export class DocumentsService {
       hasThumbnail: Boolean(value.thumbnailKey),
       duplicateOfId: value.duplicateOfId,
       versionNumber: value.versionNumber,
+      previousVersionId: value.previousVersionId,
       isActive: value.isActive,
       currentStep: value.currentStep,
       currentStepState: value.currentStepState,

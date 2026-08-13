@@ -49,6 +49,8 @@ export interface DocumentListItem {
   duplicateOfId: string | null
   /** Номер версии по пути источника; актуальна последняя (ТЗ 6.9). */
   versionNumber: number
+  /** Предыдущая версия того же документа, если она есть. */
+  previousVersionId: string | null
   /** false — вытеснен новой версией или удалён в источнике. */
   isActive: boolean
   /** Последний этап обработки — для индикатора прогресса. */
