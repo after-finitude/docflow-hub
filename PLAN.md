@@ -450,6 +450,19 @@ upload ──► Received ──► Processing ──► Needs review ──► 
 
 Ведётся по ходу, финализируется после этапа 8: `/architecture` (компоненты, sequence pipeline), `/configuration` (env, схемы, пороги), `/runbook` (запуск, остановка, повтор упавшей задачи, восстановление), `/evaluation`, `/known-limitations` (mock/sandbox, ограничения нормализации изображений, поведение DeepSeek на strict JSON). Видео 60–90с и три скриншота — после этапа 9 (нужен Execution Log).
 
+**Статус: сделано, кроме видео.** [docs/architecture.md](docs/architecture.md),
+[docs/configuration.md](docs/configuration.md), [docs/runbook.md](docs/runbook.md),
+[evaluation/last-run.md](evaluation/last-run.md),
+[known-limitations.md](known-limitations.md).
+
+Три скриншота — [docs/screenshots](docs/screenshots/README.md). Они снимаются
+с живого стека командой `npm run screenshots`, а не рисуются вручную: снимок,
+который нельзя воспроизвести, устаревает молча. Скрипт управляет уже
+установленным в системе браузером и ничего не скачивает — то же решение, что
+и в генераторе демо-набора. Отказ для журнала выполнения воспроизводится
+удалением объекта из хранилища: это транзиентная ошибка, поэтому попытки
+исчерпываются штатно и задача уходит в DLQ.
+
 ## 5. Риски
 
 | Риск                                                                                        | Митигация                                                                                                                                                                             |

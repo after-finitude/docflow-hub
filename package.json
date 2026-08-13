@@ -17,6 +17,7 @@
     "lint": "oxlint",
     "dataset": "node scripts/generate-dataset.mjs",
     "eval": "tsc -b && node scripts/eval.mjs",
+    "screenshots": "node scripts/screenshots.mjs",
     "test": "tsc -b && node --test 'packages/shared/dist/**/*.test.js'",
     "verify": "bash scripts/verify.sh",
     "format": "prettier --write .",
@@ -33,6 +34,7 @@
     "dejavu-fonts-ttf": "^2.37.3",
     "oxlint": "^1.76.0",
     "pdf-lib": "^1.17.1",
+    "playwright-core": "^1.62.1",
     "prettier": "^3.6.2",
     "typescript": "^7.0.2"
   }

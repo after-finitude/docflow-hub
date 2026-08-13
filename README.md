@@ -3,12 +3,25 @@
 AI Document Operations Hub: приём документов, OCR, извлечение полей по схеме,
 проверка данных, ручная верификация и экспорт.
 
-План разработки — [PLAN.md](PLAN.md). Известные ограничения — [known-limitations.md](known-limitations.md).
+| Документ                                                | О чём                                            |
+| ------------------------------------------------------- | ------------------------------------------------ |
+| [docs/architecture.md](docs/architecture.md)             | Компоненты и последовательность обработки        |
+| [docs/configuration.md](docs/configuration.md)           | Переменные окружения, схемы типов, пороги        |
+| [docs/runbook.md](docs/runbook.md)                       | Запуск, остановка, повтор задачи, восстановление |
+| [docs/screenshots](docs/screenshots/README.md)           | Экраны системы                                   |
+| [evaluation/last-run.md](evaluation/last-run.md)         | Отчёт о качестве                                 |
+| [known-limitations.md](known-limitations.md)             | Что является mock, sandbox или ограничением      |
+| [PLAN.md](PLAN.md)                                       | План разработки и решения по этапам              |
 
 ## Состояние
 
-Этап 1 (скелет) готов: монорепозиторий, модель данных и миграции, очереди,
-объектное хранилище, аутентификация, docker-compose.
+Реализованы все девять этапов плана: приём документов, OCR, классификация,
+извлечение полей с привязкой к области-источнику, валидация и маршрутизация,
+Review Workspace, канонический JSON и экспорт, демо-набор с оценкой качества,
+второй источник с версиями и Execution Log.
+
+Проверка живого стека — `npm run verify` (84 проверки). Из состава поставки
+ТЗ §16 не сделано только демонстрационное видео.
 
 ## Запуск
 
@@ -81,3 +94,8 @@ npm run dev:web
 | `npm run db:generate`| Генерация миграции из схемы Drizzle          |
 | `npm run db:migrate` | Применение миграций                          |
 | `npm run db:seed`    | Создание seed-пользователей                  |
+| `npm test`           | Юнит-тесты (node:test)                       |
+| `npm run verify`     | Полная проверка: статика и живой стек        |
+| `npm run dataset`    | Пересборка демо-набора документов            |
+| `npm run eval`       | Отчёт о качестве в `evaluation/last-run.md`  |
+| `npm run screenshots`| Съёмка экранов в `docs/screenshots`          |
