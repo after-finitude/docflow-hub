@@ -26,14 +26,10 @@ export function LogoutButton() {
 
   return (
     <div className="text-right">
-      <button
-        type="button"
-        onClick={handleLogout}
-        className="rounded-md border border-[var(--color-border-subtle)] px-3 py-1.5 text-sm hover:bg-neutral-100"
-      >
+      <button type="button" onClick={handleLogout} className="btn btn--ghost btn--sm">
         Выйти
       </button>
-      {failed && <p className="mt-1 text-xs text-red-600">Не удалось выйти, повторите</p>}
+      {failed && <p className="mt-1 text-xs text-danger">Не удалось выйти, повторите</p>}
     </div>
   )
 }

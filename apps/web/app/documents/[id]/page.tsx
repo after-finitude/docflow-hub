@@ -27,9 +27,9 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
 function Unavailable() {
   return (
     <main className="mx-auto max-w-6xl p-8">
-      <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-12 text-center">
+      <div className="panel p-12 text-center">
         <h1 className="text-lg font-semibold">Сервис недоступен</h1>
-        <p className="mt-2 text-sm text-neutral-500">
+        <p className="mt-2 text-sm text-muted">
           Не удалось связаться с API. Обновите страницу через несколько секунд.
         </p>
       </div>

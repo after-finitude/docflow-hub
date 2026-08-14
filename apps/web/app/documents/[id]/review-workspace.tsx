@@ -180,22 +180,19 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
 
   return (
     <main className="flex h-screen flex-col p-6">
-      <header className="mb-4 flex items-center justify-between gap-4">
+      <header className="mb-4 flex items-center justify-between gap-4 border-b border-rule pb-3">
         <div className="min-w-0">
-          <Link href="/inbox" className="text-xs text-neutral-500 underline hover:text-neutral-800">
+          <Link href="/inbox" className="link text-xs">
             ← К очереди
           </Link>
-          <h1 className="truncate text-lg font-semibold">{document.originalFilename}</h1>
+          <h1 className="mt-1 truncate text-lg">{document.originalFilename}</h1>
           {document.versionNumber > 1 && (
-            <p className="text-xs text-neutral-500">
+            <p className="mono text-2xs text-muted">
               версия {document.versionNumber}
               {document.previousVersionId && (
                 <>
                   {' · '}
-                  <Link
-                    href={`/documents/${document.previousVersionId}`}
-                    className="underline hover:text-neutral-800"
-                  >
+                  <Link href={`/documents/${document.previousVersionId}`} className="link">
                     предыдущая
                   </Link>
                 </>
@@ -203,24 +200,18 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
             </p>
           )}
           {!document.isActive && (
-            <p className="text-xs text-amber-700">
+            <p className="text-2xs text-warn">
               Версия неактуальна: заменена новой или удалена в источнике
             </p>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-2 text-sm">
-          <span className="rounded bg-neutral-100 px-2 py-1 text-xs">
-            {DOCUMENT_STATUS_LABELS[document.status]}
-          </span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="chip chip--neutral">{DOCUMENT_STATUS_LABELS[document.status]}</span>
           {document.blockingIssues > 0 && (
-            <span className="rounded bg-red-50 px-2 py-1 text-xs text-red-700">
-              блокирующих: {document.blockingIssues}
-            </span>
+            <span className="chip chip--danger">блокирующих: {document.blockingIssues}</span>
           )}
           {document.warningIssues > 0 && (
-            <span className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
-              предупреждений: {document.warningIssues}
-            </span>
+            <span className="chip chip--warn">предупреждений: {document.warningIssues}</span>
           )}
         </div>
       </header>
@@ -236,18 +227,18 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
               onSelectField={setActiveField}
             />
           ) : (
-            <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-[var(--color-border-subtle)] text-sm text-neutral-500">
+            <div className="flex flex-1 items-center justify-center rounded-[10px] border border-dashed border-rule-2 text-sm text-muted">
               Документ ещё не подготовлен
             </div>
           )}
         </section>
 
         <section className="flex min-w-0 basis-[45%] flex-col overflow-y-auto pr-1">
-          <div className="mb-4 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4">
-            <label className="text-xs text-neutral-500">
-              Тип документа
+          <div className="panel mb-3 p-4">
+            <label className="block">
+              <span className="label mb-1">Тип документа</span>
               <select
-                className="mt-1 block w-full rounded-md border border-[var(--color-border-subtle)] px-2 py-1.5 text-sm"
+                className="field"
                 value={document.documentType ?? 'unknown'}
                 disabled={busy || readOnly}
                 onChange={(event) =>
@@ -264,21 +255,31 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                 ))}
               </select>
             </label>
-            <p className="mt-1 text-xs text-neutral-500">
+            <p className="mt-1 text-2xs text-muted">
               Смена типа перезапускает извлечение по новой схеме
             </p>
 
             {document.statusReason && (
-              <p className="mt-3 text-xs text-neutral-600">{document.statusReason}</p>
+              <p className="mt-3 text-xs text-ink-2">{document.statusReason}</p>
             )}
 
-            {documentIssues.map((issue) => (
-              <p key={issue.id} className="mt-2 text-xs text-amber-700">
-                {issue.message}
-              </p>
-            ))}
+            {/* Проблемы уровня документа: качество распознавания, подозрение
+                на несколько документов в одном файле. Поля тут ни при чём. */}
+            {documentIssues.length > 0 && (
+              <ul className="mt-3 space-y-1.5 border-l-2 border-warn pl-3">
+                {documentIssues.map((issue) => (
+                  <li key={issue.id} className="text-xs leading-snug text-ink-2">
+                    {issue.message}
+                  </li>
+                ))}
+              </ul>
+            )}
 
-            {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
+            {error && (
+              <p role="alert" className="mt-3 text-xs text-danger">
+                {error}
+              </p>
+            )}
 
             <div className="mt-4 flex flex-wrap gap-2">
               <button
@@ -290,7 +291,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                 onClick={() =>
                   void call(`/api/documents/${document.id}/approve`, { method: 'POST' })
                 }
-                className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm text-white disabled:opacity-40"
+                className="btn btn--primary"
               >
                 Подтвердить
               </button>
@@ -298,7 +299,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                 type="button"
                 disabled={busy || readOnly}
                 onClick={() => setRejecting(true)}
-                className="rounded-md border border-[var(--color-border-subtle)] px-4 py-1.5 text-sm hover:bg-neutral-100 disabled:opacity-40"
+                className="btn btn--danger"
               >
                 Отклонить
               </button>
@@ -310,7 +311,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                     () => router.refresh(),
                   )
                 }
-                className="rounded-md border border-[var(--color-border-subtle)] px-4 py-1.5 text-sm hover:bg-neutral-100 disabled:opacity-40"
+                className="btn btn--ghost"
               >
                 Переобработать
               </button>
@@ -360,16 +361,22 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
             )}
           </div>
 
-          <div className="mb-3 flex flex-wrap gap-1">
+          <div
+            role="tablist"
+            aria-label="Фильтр полей"
+            className="mb-3 flex w-fit shrink-0 rounded-[6px] border border-rule p-0.5"
+          >
             {FIELD_FILTERS.map((option) => (
               <button
                 key={option}
                 type="button"
+                role="tab"
+                aria-selected={filter === option}
                 onClick={() => setFilter(option)}
-                className={`rounded-md px-2 py-1 text-xs ${
+                className={`rounded-[4px] px-2.5 py-1 text-xs whitespace-nowrap transition-colors duration-[120ms] ${
                   filter === option
-                    ? 'bg-neutral-900 text-white'
-                    : 'border border-[var(--color-border-subtle)] hover:bg-neutral-100'
+                    ? 'bg-accent-wash font-medium text-accent'
+                    : 'text-ink-2 hover:bg-paper-2'
                 }`}
               >
                 {FIELD_FILTER_LABELS[option]}
@@ -379,7 +386,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
 
           <div className="space-y-3">
             {visibleFields.length === 0 && (
-              <p className="rounded-lg border border-dashed border-[var(--color-border-subtle)] p-6 text-center text-sm text-neutral-500">
+              <p className="rounded-[10px] border border-dashed border-rule-2 p-6 text-center text-sm text-muted">
                 {document.fields.length === 0
                   ? 'Поля появятся после извлечения'
                   : 'Под фильтр ничего не подходит'}
@@ -423,20 +430,20 @@ function ExportPanel({
   onExport: (destination: ExportDestination) => void
 }) {
   return (
-    <div className="mt-4 border-t border-[var(--color-border-subtle)] pt-3">
-      <h3 className="text-xs font-medium text-neutral-600">Выгрузка</h3>
+    <div className="mt-4 border-t border-rule pt-3">
+      <h3 className="mono text-2xs tracking-[0.06em] text-muted uppercase">Выгрузка</h3>
 
       {exports.map((item) => (
-        <p key={item.id} className="mt-1 text-xs">
-          {EXPORT_DESTINATION_LABELS[item.destination]}:{' '}
+        <p key={item.id} className="mt-1.5 text-xs">
+          <span className="text-ink-2">{EXPORT_DESTINATION_LABELS[item.destination]}</span>{' '}
           {item.status === 'succeeded' ? (
-            <span className="text-green-700">выполнена {formatWhen(item.exportedAt)}</span>
+            <span className="text-ok">выполнена {formatWhen(item.exportedAt)}</span>
           ) : item.status === 'failed' ? (
-            <span className="text-red-600">
-              ошибка ({item.errorCode}), попыток {item.attempts}
+            <span className="text-danger">
+              ошибка (<span className="mono">{item.errorCode}</span>), попыток {item.attempts}
             </span>
           ) : (
-            <span className="text-neutral-500">ожидает</span>
+            <span className="text-muted">ожидает</span>
           )}
         </p>
       ))}
@@ -452,7 +459,7 @@ function ExportPanel({
               disabled={busy || done}
               onClick={() => onExport(destination)}
               title={done ? 'Уже выгружено: повторный запрос не создаёт дубликат' : undefined}
-              className="rounded-md border border-[var(--color-border-subtle)] px-3 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40"
+              className="btn btn--ghost btn--sm"
             >
               {existing?.status === 'failed' ? 'Повторить: ' : 'Выгрузить в '}
               {EXPORT_DESTINATION_LABELS[destination]}
@@ -503,7 +510,7 @@ function ReplaceFileButton({
         disabled={disabled}
         onClick={() => input.current?.click()}
         title="Загрузить другой файл вместо этого: создаётся новая версия документа"
-        className="rounded-md border border-[var(--color-border-subtle)] px-4 py-1.5 text-sm hover:bg-neutral-100 disabled:opacity-40"
+        className="btn btn--ghost"
       >
         Заменить файл
       </button>
@@ -522,11 +529,11 @@ function RejectForm({
   const [comment, setComment] = useState('')
 
   return (
-    <div className="mt-4 rounded-md border border-[var(--color-border-subtle)] p-3">
-      <label className="text-xs text-neutral-500">
-        Причина отклонения
+    <div className="mt-3 rounded-[6px] border border-rule bg-paper-2 p-3">
+      <label className="block">
+        <span className="label mb-1">Причина отклонения</span>
         <select
-          className="mt-1 block w-full rounded-md border border-[var(--color-border-subtle)] px-2 py-1.5 text-sm"
+          className="field"
           value={reason}
           onChange={(event) => setReason(event.target.value as RejectReason)}
         >
@@ -538,7 +545,7 @@ function RejectForm({
         </select>
       </label>
       <textarea
-        className="mt-2 w-full rounded-md border border-[var(--color-border-subtle)] px-2 py-1.5 text-sm"
+        className="field mt-2"
         rows={2}
         placeholder="Комментарий (необязательно)"
         value={comment}
@@ -548,15 +555,11 @@ function RejectForm({
         <button
           type="button"
           onClick={() => void onSubmit(reason, comment)}
-          className="rounded-md bg-red-600 px-3 py-1 text-xs text-white"
+          className="btn btn--danger btn--sm"
         >
           Отклонить документ
         </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md border border-[var(--color-border-subtle)] px-3 py-1 text-xs"
-        >
+        <button type="button" onClick={onCancel} className="btn btn--ghost btn--sm">
           Отмена
         </button>
       </div>

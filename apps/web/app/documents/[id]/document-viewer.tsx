@@ -60,10 +60,9 @@ export function DocumentViewer({
               key={number}
               type="button"
               onClick={() => setPage(number)}
-              className={`rounded border p-1 ${
-                number === page
-                  ? 'border-neutral-900'
-                  : 'border-[var(--color-border-subtle)] hover:border-neutral-400'
+              aria-current={number === page ? 'true' : undefined}
+              className={`rounded-[6px] border p-1 transition-colors duration-[120ms] ${
+                number === page ? 'border-accent' : 'border-rule hover:border-rule-2'
               }`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -72,7 +71,7 @@ export function DocumentViewer({
                 alt={`Страница ${number}`}
                 className="w-full"
               />
-              <span className="mt-1 block text-center text-xs text-neutral-500">{number}</span>
+              <span className="mono mt-1 block text-center text-2xs text-muted">{number}</span>
             </button>
           ))}
         </div>
@@ -84,7 +83,7 @@ export function DocumentViewer({
             type="button"
             onClick={() => setZoomIndex((index) => Math.max(0, index - 1))}
             disabled={zoomIndex === 0}
-            className="rounded border border-[var(--color-border-subtle)] px-2 py-1 disabled:opacity-40"
+            className="btn btn--ghost btn--sm"
           >
             −
           </button>
@@ -93,25 +92,25 @@ export function DocumentViewer({
             type="button"
             onClick={() => setZoomIndex((index) => Math.min(ZOOM_STEPS.length - 1, index + 1))}
             disabled={zoomIndex === ZOOM_STEPS.length - 1}
-            className="rounded border border-[var(--color-border-subtle)] px-2 py-1 disabled:opacity-40"
+            className="btn btn--ghost btn--sm"
           >
             +
           </button>
           <button
             type="button"
             onClick={() => setRotation((value) => (value + 90) % 360)}
-            className="rounded border border-[var(--color-border-subtle)] px-2 py-1"
+            className="btn btn--ghost btn--sm"
           >
             Повернуть
           </button>
-          <span className="ml-auto text-neutral-500">
+          <span className="mono ml-auto text-2xs text-muted">
             Страница {page} из {pageCount || 1}
           </span>
         </div>
 
         <div
           ref={stageRef}
-          className="flex-1 overflow-auto rounded-lg border border-[var(--color-border-subtle)] bg-neutral-100 p-4"
+          className="flex-1 overflow-auto rounded-[10px] border border-rule bg-paper-3 p-4"
         >
           <div
             className="relative mx-auto origin-top"
@@ -135,11 +134,7 @@ export function DocumentViewer({
                   data-active={isActive}
                   onClick={() => onSelectField(isActive ? null : highlight.fieldName)}
                   title={highlight.fieldName}
-                  className={`absolute border-2 transition-colors ${
-                    isActive
-                      ? 'border-amber-500 bg-amber-300/40'
-                      : 'border-blue-400/60 bg-blue-300/15 hover:bg-blue-300/35'
-                  }`}
+                  className={`bbox ${isActive ? 'bbox--active' : ''}`}
                   style={{
                     left: `${highlight.bbox.x * 100}%`,
                     top: `${highlight.bbox.y * 100}%`,

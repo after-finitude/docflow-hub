@@ -1,10 +1,9 @@
 import type { DocumentListPage } from '@docflow/shared'
-import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 import { readSession } from '@/lib/session'
+import { TopBar } from '../top-bar'
 import { InboxClient } from './inbox-client'
-import { LogoutButton } from './logout-button'
 
 export default async function InboxPage() {
   const session = await readSession()
@@ -25,39 +24,32 @@ export default async function InboxPage() {
     return <Unavailable />
   }
 
-  const { user } = session
-
   return (
-    <main className="mx-auto max-w-7xl p-8">
-      <header className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Document Inbox</h1>
-          <p className="text-sm text-neutral-500">
-            {user.login} · {user.role === 'admin' ? 'администратор' : 'оператор'}
-          </p>
+    <>
+      <TopBar user={session.user} active="inbox" />
+      <main className="mx-auto max-w-[1600px] px-6 py-6">
+        <div className="mb-5 flex items-end justify-between gap-4">
+          <div>
+            <h1 className="text-xl">Очередь документов</h1>
+            <p className="mt-0.5 text-xs text-muted">
+              Приём, распознавание и проверка — по одному экрану на документ
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          <Link href="/runs" className="text-sm underline underline-offset-2">
-            Execution Log
-          </Link>
-          <LogoutButton />
-        </div>
-      </header>
-
-      <InboxClient initial={initial} />
-    </main>
+        <InboxClient initial={initial} />
+      </main>
+    </>
   )
 }
 
 function Unavailable() {
   return (
-    <main className="mx-auto max-w-6xl p-8">
-      <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-12 text-center">
-        <h1 className="text-lg font-semibold">Сервис недоступен</h1>
-        <p className="mt-2 text-sm text-neutral-500">
-          Не удалось связаться с API. Обновите страницу через несколько секунд.
-        </p>
-      </div>
+    <main className="mx-auto max-w-2xl px-6 pt-[18vh]">
+      <h1 className="text-xl">Сервис недоступен</h1>
+      <p className="mt-2 max-w-[52ch] text-sm text-ink-2">
+        Не удалось связаться с API. Очередь появится, как только он ответит — обновите страницу
+        через несколько секунд.
+      </p>
     </main>
   )
 }

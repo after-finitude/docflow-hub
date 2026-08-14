@@ -43,20 +43,24 @@ export function FieldCard({
   return (
     <div
       onMouseEnter={field.sourceFound ? onFocusSource : undefined}
-      className={`rounded-lg border bg-[var(--color-surface)] p-4 transition-colors ${
+      className={`rounded-[10px] border bg-paper p-3 transition-colors duration-[120ms] ${
         isActive
-          ? 'border-amber-500'
+          ? 'border-accent bg-accent-wash'
           : blocking.length
-            ? 'border-red-300'
-            : 'border-[var(--color-border-subtle)]'
+            ? 'border-danger'
+            : 'border-rule'
       }`}
     >
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <label className="text-sm font-medium" htmlFor={`field-${field.name}`}>
           {field.label}
-          {field.isRequired && <span className="ml-1 text-red-500">*</span>}
+          {field.isRequired && (
+            <span className="ml-1 text-danger" title="Обязательное поле">
+              *
+            </span>
+          )}
           {field.isCritical && (
-            <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600">
+            <span className="mono ml-2 text-2xs tracking-[0.06em] text-muted uppercase">
               критичное
             </span>
           )}
@@ -72,14 +76,14 @@ export function FieldCard({
           onChange={(event) => setValue(event.target.value)}
           onBlur={() => dirty && void save()}
           placeholder="значение отсутствует"
-          className="w-full rounded-md border border-[var(--color-border-subtle)] px-3 py-2 text-sm outline-none focus:border-neutral-500 disabled:bg-neutral-50"
+          className="field"
         />
         {field.rawValue !== null && field.rawValue !== displayValue(field) && (
           <button
             type="button"
             onClick={() => setShowRaw((current) => !current)}
             title="Показать значение как в документе"
-            className="rounded-md border border-[var(--color-border-subtle)] px-2 text-xs text-neutral-500 hover:bg-neutral-100"
+            className="btn btn--ghost btn--sm"
           >
             raw
           </button>
@@ -87,38 +91,36 @@ export function FieldCard({
       </div>
 
       {showRaw && (
-        <p className="mt-1 text-xs text-neutral-500">Как в документе: {field.rawValue}</p>
+        <p className="mt-1 text-2xs text-muted">
+          Как в документе: <span className="mono">{field.rawValue}</span>
+        </p>
       )}
 
-      {field.isEdited && <p className="mt-1 text-xs text-neutral-500">Исправлено оператором</p>}
+      {field.isEdited && <p className="mt-1 text-2xs text-muted">Исправлено оператором</p>}
 
       {field.confidenceReason && !field.isEdited && (
-        <p className="mt-1 text-xs text-neutral-500">{field.confidenceReason}</p>
+        <p className="mt-1 text-2xs text-muted">{field.confidenceReason}</p>
       )}
 
       <div className="mt-2">
         {field.sourceFound ? (
-          <button
-            type="button"
-            onClick={onFocusSource}
-            className="text-xs text-blue-700 underline hover:text-blue-900"
-          >
+          <button type="button" onClick={onFocusSource} className="link text-xs">
             Показать в документе{field.sourcePage ? ` (стр. ${field.sourcePage})` : ''}
           </button>
         ) : (
           // Ссылки нет и выводится признак — требование ТЗ 5.2.
-          <span className="text-xs text-amber-700">Источник не найден</span>
+          <span className="chip chip--warn">Источник не найден</span>
         )}
       </div>
 
       {issues.map((issue) => (
         <p
           key={issue.id}
-          className={`mt-2 text-xs ${issue.severity === 'blocking' ? 'text-red-600' : 'text-amber-700'}`}
+          className={`mt-2 text-xs leading-snug ${issue.severity === 'blocking' ? 'text-danger' : 'text-warn'}`}
         >
           {issue.message}
           {issue.expected !== null && issue.actual !== null && (
-            <span className="block text-neutral-500">
+            <span className="mono block text-2xs text-muted">
               ожидалось: {issue.expected} · фактически: {issue.actual}
             </span>
           )}
@@ -136,24 +138,30 @@ function ConfidenceIndicator({
   threshold: number
 }) {
   if (confidence === null) {
-    return <span className="text-xs text-neutral-400">нет значения</span>
+    return <span className="text-2xs text-rule-2">нет значения</span>
   }
 
   // Красный ниже порога, жёлтый пограничный, зелёный выше (ТЗ 5.2).
   const color =
     confidence < threshold
-      ? 'bg-red-500'
+      ? 'bg-danger'
       : confidence < Math.min(1, threshold + 0.1)
-        ? 'bg-amber-500'
-        : 'bg-green-500'
+        ? 'bg-warn'
+        : 'bg-ok'
 
   return (
     <span className="flex shrink-0 items-center gap-2">
-      <span className="text-xs tabular-nums text-neutral-600">{confidence.toFixed(2)}</span>
-      <span className="block h-1.5 w-16 rounded bg-neutral-200">
+      <span className="mono text-xs">{confidence.toFixed(2)}</span>
+      <span className="relative block h-1 w-16 rounded-full bg-paper-3">
         <span
-          className={`block h-1.5 rounded ${color}`}
+          className={`block h-1 rounded-full ${color}`}
           style={{ width: `${Math.round(confidence * 100)}%` }}
+        />
+        {/* Засечка порога: число само по себе не говорит, плохо это или нет. */}
+        <span
+          aria-hidden
+          className="absolute inset-y-[-2px] w-px bg-rule-2"
+          style={{ left: `${Math.round(threshold * 100)}%` }}
         />
       </span>
     </span>

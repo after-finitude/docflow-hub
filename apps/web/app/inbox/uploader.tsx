@@ -62,6 +62,8 @@ export function Uploader({ onUploaded }: UploaderProps) {
 
   return (
     <div>
+      {/* Приём файлов — не главный герой экрана, а узкая полоса над очередью:
+          оператор большую часть времени разбирает уже принятое. */}
       <div
         onDragOver={(event) => {
           event.preventDefault()
@@ -70,16 +72,25 @@ export function Uploader({ onUploaded }: UploaderProps) {
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
         onClick={() => inputRef.current?.click()}
-        className={`cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
-          dragging
-            ? 'border-neutral-900 bg-neutral-100'
-            : 'border-[var(--color-border-subtle)] bg-[var(--color-surface)]'
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            inputRef.current?.click()
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-busy={busy}
+        className={`flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 rounded-[10px] border border-dashed px-4 py-3 transition-colors duration-[120ms] ${
+          dragging ? 'border-accent bg-accent-wash' : 'border-rule-2 bg-paper hover:bg-paper-2'
         }`}
       >
-        <p className="text-sm font-medium">
-          {busy ? 'Загрузка…' : 'Перетащите файлы сюда или нажмите для выбора'}
-        </p>
-        <p className="mt-1 text-xs text-neutral-500">PDF, JPEG или PNG, до 25 МБ</p>
+        <span className="text-sm font-medium">
+          {busy ? 'Загружаем…' : 'Перетащите файлы или нажмите, чтобы выбрать'}
+        </span>
+        <span className="mono text-2xs whitespace-nowrap text-muted sm:ml-auto">
+          PDF · JPEG · PNG · до 25 МБ
+        </span>
         <input
           ref={inputRef}
           type="file"
@@ -96,8 +107,8 @@ export function Uploader({ onUploaded }: UploaderProps) {
       {rejected.length > 0 && (
         <ul className="mt-2 space-y-1">
           {rejected.map((item) => (
-            <li key={item.name} className="text-xs text-red-600">
-              {item.name}: {item.reason}
+            <li key={item.name} className="text-xs text-danger">
+              <span className="mono">{item.name}</span> — {item.reason}
             </li>
           ))}
         </ul>

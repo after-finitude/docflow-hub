@@ -41,6 +41,17 @@ const EMPTY_FILTERS: Filters = {
 /** Статусы, при которых документ ещё меняется — для индикатора прогресса. */
 const IN_FLIGHT: DocumentStatus[] = ['received', 'processing']
 
+/** Тон метки статуса. Цвет дублируется словом — он не единственный носитель. */
+const STATUS_TONE: Record<DocumentStatus, string> = {
+  received: 'chip--neutral',
+  processing: 'chip--live',
+  needs_review: 'chip--warn',
+  approved: 'chip--ok',
+  exported: 'chip--ok',
+  failed: 'chip--danger',
+  rejected: 'chip--danger',
+}
+
 export function InboxClient({ initial }: { initial: DocumentListPage }) {
   const [data, setData] = useState(initial)
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
@@ -121,39 +132,48 @@ export function InboxClient({ initial }: { initial: DocumentListPage }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <Uploader onUploaded={() => void load(filters)} />
 
       <FilterBar filters={filters} onChange={applyFilters} />
 
-      <div className="flex items-center justify-between text-xs text-neutral-500">
-        <span>
-          Документов: {data.total}
-          {error && <span className="ml-2 text-red-600">{error}</span>}
+      <div className="flex items-center justify-between gap-4 text-xs">
+        <span className="text-muted">
+          Документов: <span className="mono text-ink">{data.total}</span>
+          {error && <span className="ml-2 text-danger">{error}</span>}
         </span>
-        <span>{live ? 'Обновления в реальном времени' : 'Обновление опросом'}</span>
+        <span className="flex items-center gap-1.5 text-muted">
+          <span
+            aria-hidden
+            className={`h-1.5 w-1.5 rounded-full ${live ? 'bg-ok' : 'bg-rule-2'}`}
+          />
+          {live ? 'Обновления в реальном времени' : 'Обновление опросом'}
+        </span>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
-        <table className="w-full min-w-[900px] text-sm">
-          <thead className="border-b border-[var(--color-border-subtle)] text-left text-xs text-neutral-500">
+      <div className="panel overflow-x-auto">
+        <table className="table min-w-[1040px]">
+          <thead>
             <tr>
-              <th className="p-3 font-medium">Превью</th>
-              <th className="p-3 font-medium">Название</th>
-              <th className="p-3 font-medium">Источник</th>
-              <th className="p-3 font-medium">Тип</th>
-              <th className="p-3 font-medium">Статус</th>
-              <th className="p-3 font-medium">Confidence</th>
-              <th className="p-3 font-medium">Проблемы</th>
-              <th className="p-3 font-medium">Получен</th>
-              <th className="p-3" />
+              <th className="w-14">Файл</th>
+              <th>Название</th>
+              <th className="w-28">Источник</th>
+              <th className="w-40">Тип</th>
+              <th className="w-56">Статус</th>
+              <th className="w-28">Уверенность</th>
+              <th className="w-32">Проблемы</th>
+              <th className="w-36">Получен</th>
+              <th className="w-24" />
             </tr>
           </thead>
           <tbody>
             {data.items.length === 0 && (
               <tr>
-                <td colSpan={9} className="p-12 text-center text-sm text-neutral-500">
-                  Документов нет. Загрузите файлы через область выше.
+                <td colSpan={9} className="py-16 text-center">
+                  <p className="text-sm">В очереди пусто</p>
+                  <p className="mt-1 text-xs text-muted">
+                    Загрузите файлы областью выше или положите их в папку источника
+                  </p>
                 </td>
               </tr>
             )}
@@ -173,88 +193,73 @@ export function InboxClient({ initial }: { initial: DocumentListPage }) {
 
 function Row({ item, onRetry }: { item: DocumentListItem; onRetry: (id: string) => void }) {
   return (
-    <tr className="border-b border-[var(--color-border-subtle)] last:border-0 align-top">
-      <td className="p-3">
+    <tr className="align-middle">
+      <td>
         {item.hasThumbnail ? (
-          <Link href={`/documents/${item.id}`}>
+          <Link href={`/documents/${item.id}`} tabIndex={-1} aria-hidden>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`/api/documents/${item.id}/thumbnail`}
               alt=""
-              className="h-16 w-12 rounded border border-[var(--color-border-subtle)] object-cover"
+              className="h-11 w-8 rounded-[3px] border border-rule object-cover"
             />
           </Link>
         ) : (
-          <div className="h-16 w-12 rounded border border-dashed border-[var(--color-border-subtle)]" />
+          <div className="h-11 w-8 rounded-[3px] border border-dashed border-rule-2" />
         )}
       </td>
-      <td className="p-3">
-        <Link
-          href={`/documents/${item.id}`}
-          className="font-medium underline-offset-2 hover:underline"
-        >
+      <td>
+        <Link href={`/documents/${item.id}`} className="font-medium hover:text-accent">
           {item.originalFilename}
         </Link>
-        <div className="text-xs text-neutral-500">{formatSize(item.sizeBytes)}</div>
-        {item.duplicateOfId && (
-          <div className="mt-1 text-xs text-amber-700">Дубликат уже принятого документа</div>
-        )}
-        {item.versionNumber > 1 && (
-          <div className="mt-1 text-xs text-neutral-500">версия {item.versionNumber}</div>
-        )}
-        {!item.isActive && (
-          <div className="mt-1 text-xs text-neutral-500">
-            неактуален: удалён в источнике или заменён новой версией
-          </div>
-        )}
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-2xs text-muted">
+          <span className="mono">{formatSize(item.sizeBytes)}</span>
+          {item.versionNumber > 1 && <span className="mono">версия {item.versionNumber}</span>}
+          {item.duplicateOfId && <span className="text-warn">дубликат</span>}
+          {!item.isActive && <span>неактуален</span>}
+        </div>
       </td>
-      <td className="p-3 text-neutral-600">{SOURCE_TYPE_LABELS[item.sourceType]}</td>
-      <td className="p-3">
+      <td className="text-ink-2">{SOURCE_TYPE_LABELS[item.sourceType]}</td>
+      <td>
         {item.documentType ? (
           <>
             <div>{DOCUMENT_TYPE_LABELS[item.documentType]}</div>
             {item.typeConfidence !== null && (
-              <div className="text-xs text-neutral-500">
-                {formatConfidence(item.typeConfidence)}
-              </div>
+              <div className="mono text-2xs text-muted">{item.typeConfidence.toFixed(2)}</div>
             )}
           </>
         ) : (
-          <span className="text-neutral-400">—</span>
+          <span className="text-rule-2">—</span>
         )}
       </td>
-      <td className="p-3">
+      <td>
         <StatusCell item={item} />
       </td>
-      <td className="p-3">
+      <td>
         {item.minCriticalConfidence === null ? (
-          <span className="text-neutral-400">—</span>
+          <span className="text-rule-2">—</span>
         ) : (
           <ConfidenceBar value={item.minCriticalConfidence} />
         )}
       </td>
-      <td className="p-3">
+      <td>
         {item.blockingIssues === 0 && item.warningIssues === 0 ? (
-          <span className="text-neutral-400">—</span>
+          <span className="text-rule-2">—</span>
         ) : (
-          <div className="space-y-0.5 text-xs">
+          <div className="flex flex-wrap gap-1">
             {item.blockingIssues > 0 && (
-              <div className="text-red-600">блокирующих: {item.blockingIssues}</div>
+              <span className="chip chip--danger">{item.blockingIssues} блок.</span>
             )}
             {item.warningIssues > 0 && (
-              <div className="text-amber-700">предупреждений: {item.warningIssues}</div>
+              <span className="chip chip--warn">{item.warningIssues} пред.</span>
             )}
           </div>
         )}
       </td>
-      <td className="p-3 text-xs text-neutral-600">{formatDate(item.receivedAt)}</td>
-      <td className="p-3 text-right">
+      <td className="mono whitespace-nowrap text-2xs text-muted">{formatDate(item.receivedAt)}</td>
+      <td className="text-right">
         {item.status === 'failed' && (
-          <button
-            type="button"
-            onClick={() => onRetry(item.id)}
-            className="rounded-md border border-[var(--color-border-subtle)] px-2 py-1 text-xs hover:bg-neutral-100"
-          >
+          <button type="button" onClick={() => onRetry(item.id)} className="btn btn--ghost btn--sm">
             Повторить
           </button>
         )}
@@ -264,178 +269,179 @@ function Row({ item, onRetry }: { item: DocumentListItem; onRetry: (id: string) 
 }
 
 function StatusCell({ item }: { item: DocumentListItem }) {
-  const tone: Record<DocumentStatus, string> = {
-    received: 'bg-neutral-100 text-neutral-700',
-    processing: 'bg-blue-50 text-blue-700',
-    needs_review: 'bg-amber-50 text-amber-800',
-    approved: 'bg-green-50 text-green-700',
-    exported: 'bg-green-100 text-green-800',
-    failed: 'bg-red-50 text-red-700',
-    rejected: 'bg-red-100 text-red-800',
-  }
-
   return (
     <div className="space-y-1">
-      <span className={`inline-block rounded px-2 py-0.5 text-xs ${tone[item.status]}`}>
+      <span className={`chip ${STATUS_TONE[item.status]}`}>
         {DOCUMENT_STATUS_LABELS[item.status]}
       </span>
       {item.statusReason && (
-        <div className="max-w-[220px] text-xs text-neutral-600">{item.statusReason}</div>
+        <div
+          title={item.statusReason}
+          className="line-clamp-2 max-w-[15rem] text-2xs leading-snug text-muted"
+        >
+          {item.statusReason}
+        </div>
       )}
       {IN_FLIGHT.includes(item.status) && <StepProgress current={item.currentStep} />}
     </div>
   )
 }
 
-/** Прогресс по этапам обработки, ТЗ 5.1. Этапы 3–5 наполнят его реальными шагами. */
+/** Прогресс по этапам обработки, ТЗ 5.1. */
 function StepProgress({ current }: { current: DocumentListItem['currentStep'] }) {
   const index = current ? PIPELINE_UI_STEPS.indexOf(current) : -1
   return (
-    <div className="flex gap-1">
+    <div className="flex gap-0.5" title={current ? WORKFLOW_STEP_LABELS[current] : undefined}>
       {PIPELINE_UI_STEPS.map((step, position) => (
         <span
           key={step}
-          title={WORKFLOW_STEP_LABELS[step]}
-          className={`h-1 w-6 rounded ${position <= index ? 'bg-blue-500' : 'bg-neutral-200'}`}
+          className={`h-0.5 w-5 rounded-full ${position <= index ? 'bg-accent' : 'bg-rule'}`}
         />
       ))}
     </div>
   )
 }
 
+/**
+ * Уверенность: число читается, полоса сравнивается. Порог 0.8 отмечен
+ * засечкой — без неё «0.63» не говорит, плохо это или нормально.
+ */
 function ConfidenceBar({ value }: { value: number }) {
-  const percent = Math.round(value * 100)
-  const color = value < 0.6 ? 'bg-red-500' : value < 0.8 ? 'bg-amber-500' : 'bg-green-500'
+  const tone = value < 0.6 ? 'bg-danger' : value < 0.8 ? 'bg-warn' : 'bg-ok'
   return (
-    <div className="w-24">
-      <div className="text-xs">{value.toFixed(2)}</div>
-      <div className="mt-1 h-1.5 rounded bg-neutral-200">
-        <div className={`h-1.5 rounded ${color}`} style={{ width: `${percent}%` }} />
+    <div className="w-20">
+      <div className="mono text-xs">{value.toFixed(2)}</div>
+      <div className="relative mt-1 h-1 rounded-full bg-paper-3">
+        <div
+          className={`h-1 rounded-full ${tone}`}
+          style={{ width: `${Math.round(value * 100)}%` }}
+        />
+        <span aria-hidden className="absolute inset-y-[-2px] left-[80%] w-px bg-rule-2" />
       </div>
     </div>
   )
 }
 
 function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: Filters) => void }) {
-  const field =
-    'rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-1.5 text-sm'
+  const dirty =
+    filters.status !== '' ||
+    filters.type !== '' ||
+    filters.source !== '' ||
+    filters.receivedFrom !== '' ||
+    filters.receivedTo !== '' ||
+    filters.hasBlocking
 
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <label className="text-xs text-neutral-500">
-        Статус
-        <select
-          className={`mt-1 block ${field}`}
-          value={filters.status}
-          onChange={(event) =>
-            onChange({ ...filters, status: event.target.value as Filters['status'] })
-          }
-        >
-          <option value="">все</option>
-          {DOCUMENT_STATUSES.map((status) => (
-            <option key={status} value={status}>
-              {DOCUMENT_STATUS_LABELS[status]}
-            </option>
-          ))}
-        </select>
-      </label>
+    <div className="flex flex-wrap items-end gap-2">
+      <Select
+        label="Статус"
+        value={filters.status}
+        onChange={(value) => onChange({ ...filters, status: value as Filters['status'] })}
+        options={DOCUMENT_STATUSES.map((s) => [s, DOCUMENT_STATUS_LABELS[s]])}
+      />
+      <Select
+        label="Тип"
+        value={filters.type}
+        onChange={(value) => onChange({ ...filters, type: value as Filters['type'] })}
+        options={DOCUMENT_TYPES.map((t) => [t, DOCUMENT_TYPE_LABELS[t]])}
+      />
+      <Select
+        label="Источник"
+        value={filters.source}
+        onChange={(value) => onChange({ ...filters, source: value as Filters['source'] })}
+        options={SOURCE_TYPES.map((s) => [s, SOURCE_TYPE_LABELS[s]])}
+      />
 
-      <label className="text-xs text-neutral-500">
-        Тип
-        <select
-          className={`mt-1 block ${field}`}
-          value={filters.type}
-          onChange={(event) =>
-            onChange({ ...filters, type: event.target.value as Filters['type'] })
-          }
-        >
-          <option value="">все</option>
-          {DOCUMENT_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {DOCUMENT_TYPE_LABELS[type]}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="text-xs text-neutral-500">
-        Источник
-        <select
-          className={`mt-1 block ${field}`}
-          value={filters.source}
-          onChange={(event) =>
-            onChange({ ...filters, source: event.target.value as Filters['source'] })
-          }
-        >
-          <option value="">все</option>
-          {SOURCE_TYPES.map((source) => (
-            <option key={source} value={source}>
-              {SOURCE_TYPE_LABELS[source]}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="text-xs text-neutral-500">
-        Получен с
+      <label className="block">
+        <span className="label mb-1">Получен с</span>
         <input
           type="date"
-          className={`mt-1 block ${field}`}
+          className="field w-36"
           value={filters.receivedFrom}
           onChange={(event) => onChange({ ...filters, receivedFrom: event.target.value })}
         />
       </label>
-
-      <label className="text-xs text-neutral-500">
-        по
+      <label className="block">
+        <span className="label mb-1">по</span>
         <input
           type="date"
-          className={`mt-1 block ${field}`}
+          className="field w-36"
           value={filters.receivedTo}
           onChange={(event) => onChange({ ...filters, receivedTo: event.target.value })}
         />
       </label>
 
-      <label className="flex items-center gap-2 pb-2 text-xs text-neutral-600">
+      <label className="flex h-9 shrink-0 cursor-pointer items-center gap-2 text-xs text-ink-2">
         <input
           type="checkbox"
+          className="accent-accent"
           checked={filters.hasBlocking}
           onChange={(event) => onChange({ ...filters, hasBlocking: event.target.checked })}
         />
-        только с блокирующими ошибками
+        только с блокирующими
       </label>
 
-      <button
-        type="button"
-        onClick={() => onChange(EMPTY_FILTERS)}
-        className="pb-2 text-xs text-neutral-500 underline hover:text-neutral-800"
-      >
-        сбросить
-      </button>
+      {dirty && (
+        <div className="flex h-9 items-center">
+          <button
+            type="button"
+            onClick={() => onChange(EMPTY_FILTERS)}
+            className="btn btn--ghost btn--sm"
+          >
+            Сбросить
+          </button>
+        </div>
+      )}
     </div>
+  )
+}
+
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  options: [string, string][]
+}) {
+  return (
+    <label className="block">
+      <span className="label mb-1">{label}</span>
+      <select className="field w-44" value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">все</option>
+        {options.map(([key, text]) => (
+          <option key={key} value={key}>
+            {text}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }
 
 function Pagination({ data, onPage }: { data: DocumentListPage; onPage: (page: number) => void }) {
   const pages = Math.ceil(data.total / data.pageSize)
   return (
-    <div className="flex items-center justify-center gap-2 text-sm">
+    <div className="flex items-center justify-center gap-3">
       <button
         type="button"
         disabled={data.page <= 1}
         onClick={() => onPage(data.page - 1)}
-        className="rounded-md border border-[var(--color-border-subtle)] px-3 py-1 disabled:opacity-40"
+        className="btn btn--ghost btn--sm"
       >
         Назад
       </button>
-      <span className="text-xs text-neutral-500">
-        {data.page} из {pages}
+      <span className="mono text-xs text-muted">
+        {data.page} / {pages}
       </span>
       <button
         type="button"
         disabled={data.page >= pages}
         onClick={() => onPage(data.page + 1)}
-        className="rounded-md border border-[var(--color-border-subtle)] px-3 py-1 disabled:opacity-40"
+        className="btn btn--ghost btn--sm"
       >
         Вперёд
       </button>
@@ -449,10 +455,8 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
 }
 
-function formatConfidence(value: number): string {
-  return `уверенность ${value.toFixed(2)}`
-}
-
+/** Год в очереди не нужен: она живёт днями, а строка от него растёт вдвое. */
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
+  const date = new Date(iso)
+  return `${date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })} ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
 }

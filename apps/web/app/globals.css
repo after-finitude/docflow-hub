@@ -1,12 +1,365 @@
 @import 'tailwindcss';
+@import './tokens.css';
 
-@theme {
-  --color-surface: oklch(0.99 0 0);
-  --color-surface-muted: oklch(0.97 0.003 250);
-  --color-border-subtle: oklch(0.9 0.005 250);
+/* Токены прокинуты в Tailwind: утилиты и CSS-классы берут одни и те же
+ * значения, поэтому расхождение системы и разметки невозможно. */
+@theme inline {
+  --color-paper: var(--color-paper);
+  --color-paper-2: var(--color-paper-2);
+  --color-paper-3: var(--color-paper-3);
+  --color-ink: var(--color-ink);
+  --color-ink-2: var(--color-ink-2);
+  --color-muted: var(--color-muted);
+  --color-rule: var(--color-rule);
+  --color-rule-2: var(--color-rule-2);
+  --color-accent: var(--color-accent);
+  --color-accent-wash: var(--color-accent-wash);
+  --color-ok: var(--color-ok);
+  --color-ok-wash: var(--color-ok-wash);
+  --color-warn: var(--color-warn);
+  --color-warn-wash: var(--color-warn-wash);
+  --color-danger: var(--color-danger);
+  --color-danger-wash: var(--color-danger-wash);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+}
+
+/* ─── Основание ───────────────────────────────────────────────────────── */
+
+html,
+body {
+  /* clip, а не hidden: hidden на корне ломает position: sticky. */
+  overflow-x: clip;
 }
 
 body {
-  background-color: var(--color-surface-muted);
-  color: oklch(0.25 0.01 250);
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-style: normal;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+/* Кольцо фокуса общее для всего и появляется мгновенно: анимированное
+ * кольцо оставляет клавиатуру без индикатора в начале перехода. */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+::selection {
+  background: var(--color-accent-wash);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 150ms !important;
+    transition-property: opacity !important;
+  }
+}
+
+/* ─── Элементы управления ─────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2xs);
+  height: var(--control-h);
+  padding-inline: var(--space-sm);
+  border: var(--rule-width) solid transparent;
+  border-radius: var(--radius-control);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  /* Подпись действия — объект в одну строку. Перенос читается как поломка. */
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-micro) var(--ease-out),
+    border-color var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
+}
+
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.btn--primary {
+  background: var(--color-accent-strong);
+  color: var(--color-accent-ink);
+}
+
+@media (hover: hover) {
+  .btn--primary:not(:disabled):hover {
+    background: var(--color-accent);
+  }
+}
+
+.btn--ghost {
+  background: var(--color-paper);
+  border-color: var(--color-rule-2);
+  color: var(--color-ink);
+}
+
+@media (hover: hover) {
+  .btn--ghost:not(:disabled):hover {
+    background: var(--color-paper-2);
+  }
+}
+
+.btn--danger {
+  background: var(--color-paper);
+  border-color: var(--color-rule-2);
+  color: var(--color-danger);
+}
+
+@media (hover: hover) {
+  .btn--danger:not(:disabled):hover {
+    background: var(--color-danger-wash);
+    border-color: var(--color-danger);
+  }
+}
+
+.btn--sm {
+  height: calc(var(--control-h) - 0.375rem);
+  padding-inline: var(--space-xs);
+  font-size: var(--text-xs);
+}
+
+/* Ссылка-действие: подчёркивание рисуется, а не наследуется — толщина
+ * и отступ под контролем. */
+.link {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklch, var(--color-accent) 35%, transparent);
+  transition: text-decoration-color var(--dur-micro) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .link:hover {
+    text-decoration-color: var(--color-accent);
+  }
+}
+
+/* ─── Поля ввода ──────────────────────────────────────────────────────── */
+
+.field {
+  width: 100%;
+  height: var(--control-h);
+  padding-inline: var(--space-xs);
+  background: var(--color-paper);
+  /* Ширина рамки одинакова во всех состояниях: фокус меняет outline. */
+  border: var(--rule-width) solid var(--color-rule-2);
+  border-radius: var(--radius-control);
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  transition: background-color var(--dur-micro) var(--ease-out);
+}
+
+.field::placeholder {
+  color: var(--color-muted);
+}
+
+@media (hover: hover) {
+  .field:hover:not(:disabled) {
+    background: var(--color-paper-2);
+  }
+}
+
+.field:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.field[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+.field--mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+textarea.field {
+  height: auto;
+  min-height: 6rem;
+  padding-block: var(--space-xs);
+  resize: vertical;
+}
+
+select.field {
+  padding-inline-end: var(--space-lg);
+}
+
+.label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+/* ─── Поверхности ─────────────────────────────────────────────────────── */
+
+.panel {
+  background: var(--color-paper);
+  border: var(--rule-width) solid var(--color-rule);
+  border-radius: var(--radius-panel);
+}
+
+/* Глубина рисуется линиями, не тенями: одна волосяная граница вместо
+ * карточки в карточке. */
+.panel--flush {
+  border-radius: 0;
+  border-inline: 0;
+}
+
+/* ─── Таблица ─────────────────────────────────────────────────────────── */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.table thead th {
+  height: 2rem;
+  padding-inline: var(--space-sm);
+  background: var(--color-paper-3);
+  border-bottom: var(--rule-width) solid var(--color-rule);
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.table tbody td {
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: var(--rule-width) solid var(--color-rule);
+  vertical-align: middle;
+}
+
+.table tbody tr {
+  transition: background-color var(--dur-micro) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .table tbody tr:hover {
+    background: var(--color-paper-2);
+  }
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ─── Метки состояния ─────────────────────────────────────────────────── */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  padding: 0.125rem var(--space-xs);
+  border-radius: var(--radius-control);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Точка рядом со словом: цвет никогда не единственный носитель смысла. */
+.chip::before {
+  content: '';
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.chip--neutral {
+  background: var(--color-paper-3);
+  color: var(--color-ink-2);
+}
+
+.chip--live {
+  background: var(--color-accent-wash);
+  color: var(--color-accent);
+}
+
+.chip--ok {
+  background: var(--color-ok-wash);
+  color: var(--color-ok);
+}
+
+.chip--warn {
+  background: var(--color-warn-wash);
+  color: var(--color-warn);
+}
+
+.chip--danger {
+  background: var(--color-danger-wash);
+  color: var(--color-danger);
+}
+
+/* Технические значения: correlation_id, суммы, коды. Одна роль — один шрифт. */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Длинные значения переносятся внутри слова, иначе строка распирает таблицу. */
+.mono--wrap {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+/* ─── Области-источники в просмотрщике ────────────────────────────────── */
+
+/* Все найденные источники обведены нейтральной волосяной линией, и только
+ * выбранное поле получает акцент: если синим светятся все рамки сразу,
+ * акцент перестаёт что-либо выделять. */
+.bbox {
+  position: absolute;
+  border: 1px solid color-mix(in oklch, var(--color-ink) 28%, transparent);
+  background: transparent;
+  transition: background-color var(--dur-micro) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .bbox:hover {
+    background: color-mix(in oklch, var(--color-accent) 12%, transparent);
+  }
+}
+
+.bbox--active {
+  border: 2px solid var(--color-accent);
+  background: color-mix(in oklch, var(--color-accent) 16%, transparent);
 }

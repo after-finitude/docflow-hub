@@ -1,0 +1,12 @@
+[
+  {
+    "date": "2026-08-14",
+    "scope": "app",
+    "genre": "modern-minimal",
+    "macrostructure": "Workbench",
+    "theme": "Cobalt",
+    "enrichment": "none",
+    "design_system": "design.md",
+    "brief": "Docflow Hub — операторская консоль приёма и проверки документов: очередь, рабочее место проверки, журнал выполнения"
+  }
+]

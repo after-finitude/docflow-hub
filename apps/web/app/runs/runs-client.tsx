@@ -84,39 +84,42 @@ export function RunsClient({ initial }: { initial: RunListPage }) {
     <div className="space-y-6">
       <FilterBar filters={filters} onChange={applyFilters} />
 
-      <div className="flex items-center justify-between text-xs text-neutral-500">
-        <span>
-          Записей: {data.total}
-          {error && <span className="ml-2 text-red-600">{error}</span>}
+      <div className="flex items-center justify-between gap-4 text-xs">
+        <span className="text-muted">
+          Записей: <span className="mono text-ink">{data.total}</span>
+          {error && <span className="ml-2 text-danger">{error}</span>}
         </span>
         <button
           type="button"
           onClick={() => void load(filters, data.page)}
-          className="underline hover:text-neutral-800"
+          className="link text-xs"
         >
           обновить
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
-        <table className="w-full min-w-[1000px] text-sm">
-          <thead className="border-b border-[var(--color-border-subtle)] text-left text-xs text-neutral-500">
+      <div className="panel overflow-x-auto">
+        <table className="table min-w-[1040px]">
+          <thead>
             <tr>
-              <th className="p-3 font-medium">Документ</th>
-              <th className="p-3 font-medium">Этап</th>
-              <th className="p-3 font-medium">Статус</th>
-              <th className="p-3 font-medium">Длительность</th>
-              <th className="p-3 font-medium">Попыток</th>
-              <th className="p-3 font-medium">Код ошибки</th>
-              <th className="p-3 font-medium">correlation_id</th>
-              <th className="p-3" />
+              <th>Документ</th>
+              <th className="w-36">Этап</th>
+              <th className="w-32">Состояние</th>
+              <th className="w-28">Длительность</th>
+              <th className="w-20">Попыток</th>
+              <th className="w-44">Код ошибки</th>
+              <th className="w-72">correlation_id</th>
+              <th className="w-28" />
             </tr>
           </thead>
           <tbody>
             {data.items.length === 0 && (
               <tr>
-                <td colSpan={8} className="p-12 text-center text-sm text-neutral-500">
-                  Записей нет.
+                <td colSpan={8} className="py-16 text-center">
+                  <p className="text-sm">Записей нет</p>
+                  <p className="mt-1 text-xs text-muted">
+                    Журнал наполняется по мере обработки документов
+                  </p>
                 </td>
               </tr>
             )}
@@ -155,47 +158,45 @@ function Row({
   onAct: (run: RunListItem, action: 'retry' | 'manual') => void
 }) {
   const tone: Record<WorkflowState, string> = {
-    pending: 'bg-neutral-100 text-neutral-700',
-    running: 'bg-blue-50 text-blue-700',
-    succeeded: 'bg-green-50 text-green-700',
-    failed: 'bg-red-50 text-red-700',
+    pending: 'chip--neutral',
+    running: 'chip--live',
+    succeeded: 'chip--ok',
+    failed: 'chip--danger',
   }
 
   return (
     <>
-      <tr className="border-b border-[var(--color-border-subtle)] align-top last:border-0">
-        <td className="p-3">
-          <Link
-            href={`/documents/${run.documentId}`}
-            className="font-medium underline-offset-2 hover:underline"
-          >
+      <tr className="align-middle">
+        <td>
+          <Link href={`/documents/${run.documentId}`} className="font-medium hover:text-accent">
             {run.documentFilename}
           </Link>
-          <div className="text-xs text-neutral-500">
+          <div className="mt-0.5 text-2xs text-muted">
             {DOCUMENT_STATUS_LABELS[run.documentStatus]}
           </div>
         </td>
-        <td className="p-3">{WORKFLOW_STEP_LABELS[run.step]}</td>
-        <td className="p-3">
-          <span className={`inline-block rounded px-2 py-0.5 text-xs ${tone[run.state]}`}>
-            {WORKFLOW_STATE_LABELS[run.state]}
-          </span>
+        <td>{WORKFLOW_STEP_LABELS[run.step]}</td>
+        <td>
+          <span className={`chip ${tone[run.state]}`}>{WORKFLOW_STATE_LABELS[run.state]}</span>
         </td>
-        <td className="p-3 text-xs text-neutral-600">{formatDuration(run.durationMs)}</td>
-        <td className="p-3 text-xs text-neutral-600">{run.attempts}</td>
-        <td className="p-3 text-xs">
+        <td className="mono text-xs text-ink-2">{formatDuration(run.durationMs)}</td>
+        <td className="mono text-xs text-ink-2">{run.attempts}</td>
+        <td className="mono text-xs">
           {run.errorCode ? (
-            <span className="text-red-600">{run.errorCode}</span>
+            <span className="text-danger">{run.errorCode}</span>
           ) : (
-            <span className="text-neutral-400">—</span>
+            <span className="text-rule-2">—</span>
           )}
         </td>
-        <td className="p-3 font-mono text-[11px] text-neutral-500">{run.correlationId}</td>
-        <td className="p-3 text-right">
+        <td className="mono truncate text-2xs text-muted" title={run.correlationId}>
+          {run.correlationId}
+        </td>
+        <td className="text-right">
           <button
             type="button"
             onClick={onToggle}
-            className="rounded-md border border-[var(--color-border-subtle)] px-2 py-1 text-xs hover:bg-neutral-100"
+            aria-expanded={expanded}
+            className="btn btn--ghost btn--sm"
           >
             {expanded ? 'Свернуть' : 'Подробнее'}
           </button>
@@ -203,11 +204,11 @@ function Row({
       </tr>
 
       {expanded && (
-        <tr className="border-b border-[var(--color-border-subtle)] bg-neutral-50/60">
-          <td colSpan={8} className="space-y-4 p-4">
+        <tr className="bg-paper-2">
+          <td colSpan={8} className="space-y-3 p-4">
             <div className="grid gap-4 md:grid-cols-2">
               <Detail title="Вход этапа">
-                <pre className="overflow-x-auto text-xs">
+                <pre className="mono overflow-x-auto text-2xs leading-relaxed">
                   {JSON.stringify(
                     run.deadLetter?.payload ?? { documentId: run.documentId },
                     null,
@@ -216,7 +217,7 @@ function Row({
                 </pre>
               </Detail>
               <Detail title="Результат">
-                <dl className="space-y-1 text-xs text-neutral-600">
+                <dl className="space-y-1 text-xs text-ink-2">
                   <Line label="Начало" value={formatDate(run.startedAt)} />
                   <Line label="Окончание" value={formatDate(run.finishedAt)} />
                   <Line label="Очередь" value={run.deadLetter?.queue ?? '—'} />
@@ -231,13 +232,13 @@ function Row({
 
             {run.errorDetail && (
               <Detail title="Текст ошибки">
-                <pre className="overflow-x-auto text-xs text-red-700">{run.errorDetail}</pre>
+                <pre className="mono overflow-x-auto text-xs text-danger">{run.errorDetail}</pre>
               </Detail>
             )}
 
             {run.deadLetter?.stack && (
               <Detail title="Стек">
-                <pre className="max-h-64 overflow-auto text-[11px] text-neutral-600">
+                <pre className="mono max-h-64 overflow-auto text-2xs leading-relaxed text-muted">
                   {run.deadLetter.stack}
                 </pre>
               </Detail>
@@ -247,23 +248,25 @@ function Row({
               <button
                 type="button"
                 disabled={busy || !RETRYABLE.includes(run.step)}
+                title={
+                  RETRYABLE.includes(run.step)
+                    ? undefined
+                    : 'Приём и экспорт повторяются иначе — см. runbook'
+                }
                 onClick={() => onAct(run, 'retry')}
-                className="rounded-md border border-[var(--color-border-subtle)] px-3 py-1.5 text-xs hover:bg-neutral-100 disabled:opacity-40"
+                className="btn btn--primary btn--sm"
               >
-                Повторить этап
+                {busy ? 'Ставим в очередь…' : 'Повторить этап'}
               </button>
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => onAct(run, 'manual')}
-                className="rounded-md border border-[var(--color-border-subtle)] px-3 py-1.5 text-xs hover:bg-neutral-100 disabled:opacity-40"
+                className="btn btn--ghost btn--sm"
               >
                 В ручную обработку
               </button>
-              <Link
-                href={`/documents/${run.documentId}`}
-                className="rounded-md border border-[var(--color-border-subtle)] px-3 py-1.5 text-xs hover:bg-neutral-100"
-              >
+              <Link href={`/documents/${run.documentId}`} className="btn btn--ghost btn--sm">
                 Открыть документ
               </Link>
             </div>
@@ -276,8 +279,8 @@ function Row({
 
 function Detail({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-3">
-      <div className="mb-2 text-xs font-medium text-neutral-500">{title}</div>
+    <div className="panel p-3">
+      <div className="mono mb-2 text-2xs tracking-[0.06em] text-muted uppercase">{title}</div>
       {children}
     </div>
   )
@@ -286,22 +289,19 @@ function Detail({ title, children }: { title: string; children: React.ReactNode 
 function Line({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-2">
-      <dt className="w-36 shrink-0 text-neutral-500">{label}</dt>
-      <dd className="break-all">{value}</dd>
+      <dt className="w-36 shrink-0 text-muted">{label}</dt>
+      <dd className="mono mono--wrap">{value}</dd>
     </div>
   )
 }
 
 function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: Filters) => void }) {
-  const field =
-    'rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-surface)] px-2 py-1.5 text-sm'
-
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <label className="text-xs text-neutral-500">
-        Этап
+    <div className="flex flex-wrap items-end gap-2">
+      <label className="block">
+        <span className="label mb-1">Этап</span>
         <select
-          className={`mt-1 block ${field}`}
+          className="field w-44"
           value={filters.step}
           onChange={(event) =>
             onChange({ ...filters, step: event.target.value as Filters['step'] })
@@ -316,29 +316,30 @@ function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: F
         </select>
       </label>
 
-      <label className="text-xs text-neutral-500">
-        С
+      <label className="block">
+        <span className="label mb-1">С</span>
         <input
           type="date"
-          className={`mt-1 block ${field}`}
+          className="field w-36"
           value={filters.from}
           onChange={(event) => onChange({ ...filters, from: event.target.value })}
         />
       </label>
 
-      <label className="text-xs text-neutral-500">
-        по
+      <label className="block">
+        <span className="label mb-1">по</span>
         <input
           type="date"
-          className={`mt-1 block ${field}`}
+          className="field w-36"
           value={filters.to}
           onChange={(event) => onChange({ ...filters, to: event.target.value })}
         />
       </label>
 
-      <label className="flex items-center gap-2 pb-2 text-xs text-neutral-600">
+      <label className="flex h-9 shrink-0 cursor-pointer items-center gap-2 text-xs text-ink-2">
         <input
           type="checkbox"
+          className="accent-accent"
           checked={filters.onlyErrors}
           onChange={(event) => onChange({ ...filters, onlyErrors: event.target.checked })}
         />
@@ -348,9 +349,9 @@ function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: F
       <button
         type="button"
         onClick={() => onChange(EMPTY_FILTERS)}
-        className="pb-2 text-xs text-neutral-500 underline hover:text-neutral-800"
+        className="btn btn--ghost btn--sm"
       >
-        сбросить
+        Сбросить
       </button>
     </div>
   )
@@ -359,23 +360,23 @@ function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: F
 function Pagination({ data, onPage }: { data: RunListPage; onPage: (page: number) => void }) {
   const pages = Math.ceil(data.total / data.pageSize)
   return (
-    <div className="flex items-center justify-center gap-2 text-sm">
+    <div className="flex items-center justify-center gap-3">
       <button
         type="button"
         disabled={data.page <= 1}
         onClick={() => onPage(data.page - 1)}
-        className="rounded-md border border-[var(--color-border-subtle)] px-3 py-1 disabled:opacity-40"
+        className="btn btn--ghost btn--sm"
       >
         Назад
       </button>
-      <span className="text-xs text-neutral-500">
-        {data.page} из {pages}
+      <span className="mono text-xs text-muted">
+        {data.page} / {pages}
       </span>
       <button
         type="button"
         disabled={data.page >= pages}
         onClick={() => onPage(data.page + 1)}
-        className="rounded-md border border-[var(--color-border-subtle)] px-3 py-1 disabled:opacity-40"
+        className="btn btn--ghost btn--sm"
       >
         Вперёд
       </button>

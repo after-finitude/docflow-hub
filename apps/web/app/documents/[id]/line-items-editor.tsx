@@ -35,19 +35,18 @@ export function LineItemsEditor({ value, disabled, onSave }: LineItemsEditorProp
     setDirty(false)
   }
 
-  const cell =
-    'w-full rounded border border-[var(--color-border-subtle)] px-2 py-1 text-sm disabled:bg-neutral-50'
+  const cell = 'field field--mono h-8 px-2 text-xs'
 
   return (
-    <div className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4">
+    <div className="panel p-4">
       <h3 className="mb-3 text-sm font-medium">Позиции</h3>
 
       {items.length === 0 ? (
-        <p className="text-xs text-neutral-500">Позиции отсутствуют</p>
+        <p className="text-xs text-muted">Позиции отсутствуют</p>
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-xs text-neutral-500">
+            <tr className="mono text-left text-2xs tracking-[0.06em] text-muted uppercase">
               <th className="pb-1 font-medium">Описание</th>
               <th className="w-20 pb-1 font-medium">Кол-во</th>
               <th className="w-24 pb-1 font-medium">Цена</th>
@@ -102,7 +101,7 @@ export function LineItemsEditor({ value, disabled, onSave }: LineItemsEditorProp
                       setItems((current) => current.filter((_, i) => i !== index))
                       setDirty(true)
                     }}
-                    className="text-neutral-400 hover:text-red-600 disabled:opacity-40"
+                    className="text-muted transition-colors duration-[120ms] hover:text-danger disabled:opacity-40"
                     title="Удалить строку"
                   >
                     ×
@@ -122,7 +121,7 @@ export function LineItemsEditor({ value, disabled, onSave }: LineItemsEditorProp
             setItems((current) => [...current, { ...EMPTY_ITEM }])
             setDirty(true)
           }}
-          className="rounded-md border border-[var(--color-border-subtle)] px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40"
+          className="btn btn--ghost btn--sm"
         >
           Добавить строку
         </button>
@@ -131,7 +130,7 @@ export function LineItemsEditor({ value, disabled, onSave }: LineItemsEditorProp
             type="button"
             disabled={disabled || saving}
             onClick={() => void save()}
-            className="rounded-md bg-neutral-900 px-3 py-1 text-xs text-white disabled:opacity-40"
+            className="btn btn--primary btn--sm"
           >
             {saving ? 'Сохранение…' : 'Сохранить позиции'}
           </button>

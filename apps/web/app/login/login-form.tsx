@@ -41,51 +41,84 @@ export function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-8 shadow-sm"
-      >
-        <h1 className="text-xl font-semibold">Docflow Hub</h1>
-        <p className="mt-1 mb-6 text-sm text-neutral-500">Вход в систему</p>
+    // Форма прижата к левой трети и посажена на 18vh, а не выровнена по
+    // центру экрана: у входа нет причин вести себя как афиша.
+    <main className="min-h-screen px-6 pt-[18vh] pb-16">
+      <div className="mx-auto grid max-w-[1600px] gap-12 md:grid-cols-[minmax(0,22rem)_1fr]">
+        <form onSubmit={handleSubmit} noValidate>
+          <div className="flex items-baseline gap-2">
+            <span className="font-display text-xl font-semibold tracking-tight">Docflow</span>
+            <span className="mono text-2xs uppercase tracking-[0.14em] text-muted">hub</span>
+          </div>
+          <p className="mt-1 text-sm text-muted">Приём, распознавание и проверка документов</p>
 
-        <label className="block text-sm font-medium" htmlFor="login">
-          Логин
-        </label>
-        <input
-          id="login"
-          name="login"
-          autoComplete="username"
-          required
-          value={login}
-          onChange={(event) => setLogin(event.target.value)}
-          className="mt-1 mb-4 w-full rounded-md border border-[var(--color-border-subtle)] px-3 py-2 outline-none focus:border-neutral-500"
-        />
+          <div className="mt-8 space-y-4">
+            <div>
+              <label className="label mb-1" htmlFor="login">
+                Логин
+              </label>
+              <input
+                id="login"
+                name="login"
+                autoComplete="username"
+                required
+                aria-invalid={error !== null}
+                aria-describedby="auth-error"
+                value={login}
+                onChange={(event) => setLogin(event.target.value)}
+                className="field"
+              />
+            </div>
 
-        <label className="block text-sm font-medium" htmlFor="password">
-          Пароль
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          className="mt-1 w-full rounded-md border border-[var(--color-border-subtle)] px-3 py-2 outline-none focus:border-neutral-500"
-        />
+            <div>
+              <label className="label mb-1" htmlFor="password">
+                Пароль
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                aria-invalid={error !== null}
+                aria-describedby="auth-error"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="field"
+              />
+            </div>
+          </div>
 
-        {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+          {/* Высота строки сообщения зарезервирована: появление ошибки
+              не должно сдвигать кнопку под курсором. */}
+          <p
+            id="auth-error"
+            role={error ? 'alert' : undefined}
+            className="mt-3 min-h-[1.25rem] text-xs text-danger"
+          >
+            {error}
+          </p>
 
-        <button
-          type="submit"
-          disabled={pending}
-          className="mt-6 w-full rounded-md bg-neutral-900 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {pending ? 'Вход…' : 'Войти'}
-        </button>
-      </form>
+          <button type="submit" disabled={pending} className="btn btn--primary mt-2 w-full">
+            {pending ? 'Проверяем…' : 'Войти'}
+          </button>
+        </form>
+
+        <aside className="hidden self-end border-l border-rule pl-12 md:block">
+          <p className="max-w-[38ch] text-sm leading-relaxed text-ink-2">
+            Каждое извлечённое значение хранит ссылку на область в оригинале, из которой оно взято.
+            Система не выдаёт результат, не показывая источник.
+          </p>
+          <dl className="mt-8 grid max-w-md grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-xs">
+            <dt className="text-muted">Типы документов</dt>
+            <dd className="mono">инвойс · выписка · письмо · договор</dd>
+            <dt className="text-muted">Источники</dt>
+            <dd className="mono">загрузка · папка · Диск</dd>
+            <dt className="text-muted">Проверка</dt>
+            <dd className="mono">правила схемы + уверенность полей</dd>
+          </dl>
+        </aside>
+      </div>
     </main>
   )
 }
