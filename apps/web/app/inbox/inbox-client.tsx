@@ -455,8 +455,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
 }
 
-/** Год в очереди не нужен: она живёт днями, а строка от него растёт вдвое. */
 function formatDate(iso: string): string {
   const date = new Date(iso)
-  return `${date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })} ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
+  return `${date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
 }

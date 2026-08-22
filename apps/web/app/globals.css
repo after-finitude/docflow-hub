@@ -147,6 +147,12 @@ h3 {
   font-size: var(--text-xs);
 }
 
+@media (pointer: coarse) {
+  .btn--sm {
+    height: var(--control-h);
+  }
+}
+
 /* Ссылка-действие: подчёркивание рисуется, а не наследуется — толщина
  * и отступ под контролем. */
 .link {

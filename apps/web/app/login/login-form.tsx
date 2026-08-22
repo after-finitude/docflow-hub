@@ -45,11 +45,11 @@ export function LoginForm() {
     // центру экрана: у входа нет причин вести себя как афиша.
     <main className="min-h-screen px-6 pt-[18vh] pb-16">
       <div className="mx-auto grid max-w-[1600px] gap-12 md:grid-cols-[minmax(0,22rem)_1fr]">
-        <form onSubmit={handleSubmit} noValidate>
-          <div className="flex items-baseline gap-2">
+        <form onSubmit={handleSubmit}>
+          <h1 className="flex items-baseline gap-2">
             <span className="font-display text-xl font-semibold tracking-tight">Docflow</span>
             <span className="mono text-2xs uppercase tracking-[0.14em] text-muted">hub</span>
-          </div>
+          </h1>
           <p className="mt-1 text-sm text-muted">Приём, распознавание и проверка документов</p>
 
           <div className="mt-8 space-y-4">
