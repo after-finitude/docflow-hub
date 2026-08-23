@@ -20,8 +20,8 @@ export interface ActiveSchema {
 }
 
 /**
- * Активная версия схемы типа. jsonb проходит через zod: повреждённая схема
- * в БД должна падать здесь с внятной ошибкой, а не глубоко в pipeline.
+ * Active type-schema version. Validate jsonb with Zod so a corrupt database
+ * schema fails clearly here instead of deep in the pipeline.
  */
 export async function getActiveSchema(
   db: Database,

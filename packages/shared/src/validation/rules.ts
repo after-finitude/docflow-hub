@@ -2,17 +2,11 @@ import { z } from 'zod'
 import { ISSUE_SEVERITIES } from '../enums'
 
 /**
- * Правила валидации (ТЗ 6.6). Хранятся в конфигурации схемы типа и
- * версионируются вместе с ней, поэтому это zod-схемы, а не код.
+ * Validation rules (spec 6.6), stored and versioned in type-schema configuration.
  *
- * Типы проверок из ТЗ 6.6 покрыты так:
- *   обязательность      — выводится из FieldSpec.required, отдельного правила не нужно;
- *   регулярное выражение — regex;
- *   диапазон дат        — date_offset (относительно сегодня) и date_order (между полями);
- *   формат валюты       — enum поверх нормализованного кода ISO 4217;
- *   арифметика сумм     — sum;
- *   справочник значений — enum;
- *   условия между полями — date_order, number_compare.
+ * Required fields come from FieldSpec.required; regex covers patterns;
+ * date_offset and date_order cover date ranges; enum covers normalized currency
+ * and reference values; sum covers arithmetic; number_compare covers field relations.
  */
 
 const severity = z.enum(ISSUE_SEVERITIES)
@@ -44,7 +38,7 @@ export const validationRuleSchema = z.discriminatedUnion('type', [
     ...base,
     type: z.literal('date_offset'),
     field: z.string(),
-    /** Не позже, чем сегодня + N дней (ТЗ §13: invoice_date). */
+    /** No later than today + N days (spec §13: invoice_date). */
     maxDaysFromToday: z.number().int().optional(),
     minDaysFromToday: z.number().int().optional(),
   }),
@@ -52,13 +46,13 @@ export const validationRuleSchema = z.discriminatedUnion('type', [
     ...base,
     type: z.literal('date_order'),
     field: z.string(),
-    /** Дата не раньше значения этого поля (ТЗ §13: due_date ≥ invoice_date). */
+    /** Date no earlier than this field (spec §13: due_date ≥ invoice_date). */
     notEarlierThan: z.string(),
   }),
   z.object({
     ...base,
     type: z.literal('sum'),
-    /** target ≈ сумма operands с допуском tolerance (ТЗ §13: blocking). */
+    /** target ≈ sum of operands within tolerance (spec §13: blocking). */
     target: z.string(),
     operands: z.array(z.string()).min(2),
     tolerance: z.number().nonnegative(),
@@ -68,26 +62,21 @@ export const validationRuleSchema = z.discriminatedUnion('type', [
 
 export type ValidationRule = z.infer<typeof validationRuleSchema>
 
-/** Идентификатор правила уникальности invoice_number — единственная cross-document проверка (ТЗ §9). */
+/** invoice_number uniqueness rule, the only cross-document check (spec §9). */
 export const INVOICE_NUMBER_UNIQUE_RULE = 'invoice_number_unique'
 
-/** Предупреждение о качестве распознавания, ставится этапом OCR (ТЗ §10). */
+/** OCR quality warning set by the OCR stage (spec §10). */
 export const OCR_QUALITY_RULE = 'ocr_quality_low'
 
 /**
- * Правила, созданные не движком валидации: их не трогает перезапуск.
- * Предупреждение о нескольких документах в одном файле ставит классификация
- * (ТЗ 6.3), предупреждение о качестве распознавания — этап OCR (ТЗ §10).
- * Обоих движок не знает и при перевалидации стереть их не должен.
+ * External rules preserved by revalidation: classification sets the multiple-
+ * document warning (spec 6.3), and OCR sets the quality warning (spec §10).
  */
 export const EXTERNAL_RULE_IDS = ['multi_document_suspected', OCR_QUALITY_RULE] as const
 
 /**
- * Правила, наличие которых само по себе отправляет документ на проверку,
- * даже если это предупреждение. ТЗ 6.3: подозрение на несколько документов
- * в одном файле «создаёт warning и отправляет документ на проверку».
- * ТЗ §10: скан очень низкого качества — «Needs review + предупреждение
- * об OCR quality».
+ * Rules that force review even at warning severity: suspected multiple documents
+ * (spec 6.3) and very poor scan quality (spec §10).
  */
 export const FORCE_REVIEW_RULE_IDS: readonly string[] = [
   'multi_document_suspected',

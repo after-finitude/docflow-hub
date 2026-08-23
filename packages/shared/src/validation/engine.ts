@@ -2,9 +2,8 @@ import type { IssueSeverity, ValueType } from '../enums'
 import type { ValidationRule } from './rules'
 
 /**
- * Движок валидации (ТЗ 6.6). Чистая функция: одни и те же входные данные
- * дают один и тот же результат, поэтому решение воспроизводимо (ТЗ 6.7).
- * Работает и в воркере, и синхронно в API при правке поля.
+ * Validation engine (spec 6.6). A pure function gives reproducible results
+ * (spec 6.7) in both workers and synchronous API field edits.
  */
 
 export interface ValidationField {
@@ -18,7 +17,7 @@ export interface ValidationField {
 }
 
 export interface ValidationContext {
-  /** Сегодняшняя дата в ISO (YYYY-MM-DD). Передаётся снаружи ради воспроизводимости. */
+  /** Current ISO date (YYYY-MM-DD), supplied externally for reproducibility. */
   today: string
 }
 
@@ -39,17 +38,17 @@ export function validateDocument(
   const byName = new Map(fields.map((field) => [field.name, field]))
   const issues: ValidationIssueResult[] = []
 
-  // Обязательность выводится из конфигурации схемы, а не дублируется правилами.
-  // Пропуск критичного поля блокирует подтверждение, некритичного — предупреждает.
+  // Required flags come from the schema. Missing critical fields block approval;
+  // missing noncritical fields warn.
   for (const field of fields) {
     if (field.isRequired && isEmpty(field)) {
       issues.push({
         ruleId: `required:${field.name}`,
         fieldName: field.name,
         severity: field.isCritical ? 'blocking' : 'warning',
-        message: `Обязательное поле «${field.label}» не заполнено`,
-        expected: 'значение указано',
-        actual: 'пусто',
+        message: `Required field “${field.label}” is empty`,
+        expected: 'a value',
+        actual: 'empty',
       })
     }
   }
@@ -75,8 +74,8 @@ function applyRule(
         return new RegExp(rule.pattern).test(value)
           ? null
           : {
-              message: `Значение поля «${field.label}» имеет неверный формат`,
-              expected: `соответствие шаблону ${rule.pattern}`,
+              message: `Field “${field.label}” has an invalid format`,
+              expected: `match pattern ${rule.pattern}`,
               actual: value,
             }
       })
@@ -88,8 +87,8 @@ function applyRule(
         return rule.values.includes(value)
           ? null
           : {
-              message: `Недопустимое значение поля «${field.label}»`,
-              expected: `одно из: ${rule.values.join(', ')}`,
+              message: `Field “${field.label}” has an unsupported value`,
+              expected: `one of: ${rule.values.join(', ')}`,
               actual: value,
             }
       })
@@ -100,15 +99,15 @@ function applyRule(
         if (value === null) return null
         if (rule.min !== undefined && value < rule.min) {
           return {
-            message: `Значение поля «${field.label}» меньше допустимого`,
-            expected: `не меньше ${format(rule.min)}`,
+            message: `Field “${field.label}” is below the minimum`,
+            expected: `at least ${format(rule.min)}`,
             actual: format(value),
           }
         }
         if (rule.max !== undefined && value > rule.max) {
           return {
-            message: `Значение поля «${field.label}» больше допустимого`,
-            expected: `не больше ${format(rule.max)}`,
+            message: `Field “${field.label}” is above the maximum`,
+            expected: `at most ${format(rule.max)}`,
             actual: format(value),
           }
         }
@@ -130,9 +129,9 @@ function applyRule(
       }[rule.operator]
       if (ok) return null
 
-      const words = { gte: 'не меньше', lte: 'не больше', gt: 'больше', lt: 'меньше' }
+      const words = { gte: 'at least', lte: 'at most', gt: 'greater than', lt: 'less than' }
       return issue(rule, field.name, {
-        message: `Поле «${field.label}» должно быть ${words[rule.operator]} поля «${other.label}»`,
+        message: `Field “${field.label}” must be ${words[rule.operator]} field “${other.label}”`,
         expected: `${words[rule.operator]} ${format(otherValue)}`,
         actual: format(value),
       })
@@ -147,8 +146,8 @@ function applyRule(
           const limit = shiftDate(context.today, rule.maxDaysFromToday)
           if (value > limit) {
             return {
-              message: `Дата в поле «${field.label}» слишком далеко в будущем`,
-              expected: `не позже ${limit}`,
+              message: `Date in “${field.label}” is too far in the future`,
+              expected: `no later than ${limit}`,
               actual: value,
             }
           }
@@ -157,8 +156,8 @@ function applyRule(
           const limit = shiftDate(context.today, rule.minDaysFromToday)
           if (value < limit) {
             return {
-              message: `Дата в поле «${field.label}» слишком далеко в прошлом`,
-              expected: `не раньше ${limit}`,
+              message: `Date in “${field.label}” is too far in the past`,
+              expected: `no earlier than ${limit}`,
               actual: value,
             }
           }
@@ -175,8 +174,8 @@ function applyRule(
       if (value >= otherValue) return null
 
       return issue(rule, field.name, {
-        message: `Дата в поле «${field.label}» раньше даты в поле «${other.label}»`,
-        expected: `не раньше ${otherValue}`,
+        message: `Date in “${field.label}” is before “${other.label}”`,
+        expected: `no earlier than ${otherValue}`,
         actual: value,
       })
     }
@@ -187,8 +186,7 @@ function applyRule(
       if (!target || targetValue === null) return null
 
       const operands = rule.operands.map((name) => byName.get(name)).filter(isPresent)
-      // Отсутствующее слагаемое считается нулём: налог может не указываться,
-      // и это не повод объявлять суммы несходящимися.
+      // Treat a missing operand as zero because tax may be omitted legitimately.
       const sum = operands.reduce((acc, field) => acc + (asNumber(field.normalizedValue) ?? 0), 0)
       if (Math.abs(sum - targetValue) <= rule.tolerance) return null
 
@@ -196,7 +194,7 @@ function applyRule(
         .map((field) => `${field.label} ${format(asNumber(field.normalizedValue) ?? 0)}`)
         .join(' + ')
       return issue(rule, target.name, {
-        message: `Суммы не сходятся: ${breakdown} = ${format(sum)}, а «${target.label}» = ${format(targetValue)}`,
+        message: `Amounts do not match: ${breakdown} = ${format(sum)}, but “${target.label}” = ${format(targetValue)}`,
         expected: format(sum),
         actual: format(targetValue),
       })
@@ -204,18 +202,18 @@ function applyRule(
 
     case 'array_or_absent':
       return checkSingle(rule, byName, (field) => {
-        // Либо массив, либо явный признак отсутствия (ТЗ §13).
+        // Accept either an array or an explicit missing value (spec §13).
         if (field.normalizedValue === null || Array.isArray(field.normalizedValue)) return null
         return {
-          message: `Поле «${field.label}» должно быть таблицей позиций или явно отсутствовать`,
-          expected: 'массив позиций либо отсутствие значения',
+          message: `Field “${field.label}” must contain line items or be explicitly absent`,
+          expected: 'a line-item array or no value',
           actual: typeof field.normalizedValue,
         }
       })
   }
 }
 
-/** Обёртка для правил по одному полю: отсутствующее поле не проверяется. */
+/** Wrapper for single-field rules; skip absent fields. */
 function checkSingle(
   rule: ValidationRule & { field: string },
   byName: Map<string, ValidationField>,
@@ -238,7 +236,7 @@ function issue(
     ruleId: rule.id,
     fieldName,
     severity: rule.severity,
-    // Текст правила из конфигурации имеет приоритет над сгенерированным.
+    // Configured rule text overrides generated text.
     message: rule.message ?? detail.message,
     expected: detail.expected,
     actual: detail.actual,
@@ -269,7 +267,7 @@ function format(value: number): string {
   return value.toFixed(2)
 }
 
-/** Сдвиг ISO-даты на дни без часовых поясов. */
+/** Shift an ISO date by days without time zones. */
 function shiftDate(iso: string, days: number): string {
   const date = new Date(`${iso}T00:00:00Z`)
   date.setUTCDate(date.getUTCDate() + days)

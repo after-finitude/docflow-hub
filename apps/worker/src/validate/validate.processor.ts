@@ -26,9 +26,9 @@ export interface ValidateJob {
 }
 
 /**
- * Последний этап автоматической обработки: валидация, пересчёт уверенности
- * и маршрутизация (ТЗ 6.6, 6.7). Вся логика — в ValidationRunnerService,
- * который тот же код выполняет и синхронно при правке поля оператором.
+ * Final automatic stage: validation, confidence recalculation, and routing
+ * (spec 6.6, 6.7). ValidationRunnerService also runs the same logic
+ * synchronously after an operator edits a field.
  */
 @Processor(QUEUE.VALIDATE, { ...PIPELINE_WORKER_OPTIONS })
 export class ValidateProcessor extends WorkerHost implements OnModuleInit {
@@ -56,7 +56,7 @@ export class ValidateProcessor extends WorkerHost implements OnModuleInit {
       .where(eq(documents.id, documentId))
       .limit(1)
     if (!document) {
-      this.logger.warn(`Документ ${documentId} не найден, задача пропущена`)
+      this.logger.warn(`Document ${documentId} not found; skipping job`)
       return
     }
 
@@ -85,14 +85,12 @@ export class ValidateProcessor extends WorkerHost implements OnModuleInit {
     const unrecoverable = error instanceof UnrecoverableError
     const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
     if (!unrecoverable && attemptsLeft > 0) {
-      this.logger.warn(
-        `Документ ${documentId}: валидация не удалась, осталось попыток ${attemptsLeft}`,
-      )
+      this.logger.warn(`Document ${documentId}: validation failed; ${attemptsLeft} attempt(s) left`)
       return
     }
 
-    // Сама задача больше не повторится: она уходит в dead-letter queue,
-    // откуда её повторяет оператор из Execution Log (ТЗ 6.10).
+    // The job will not retry automatically; it moves to the dead-letter queue
+    // for an operator to retry from the Execution Log (spec 6.10).
     await recordDeadLetter(this.db, {
       documentId,
       runId,
@@ -105,13 +103,13 @@ export class ValidateProcessor extends WorkerHost implements OnModuleInit {
       attempts: job.attemptsMade + 1,
     })
 
-    const reason = 'Не удалось проверить документ. Обработку можно повторить вручную'
+    const reason = 'Document validation failed. Processing can be retried manually'
     await this.db
       .update(documents)
       .set({ status: 'failed', statusReason: reason })
       .where(eq(documents.id, documentId))
     await this.publish(documentId, 'failed', 'failed')
-    this.logger.error(`Документ ${documentId}: валидация — ${detail}`)
+    this.logger.error(`Document ${documentId}: validation — ${detail}`)
   }
 
   private async publish(

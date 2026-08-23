@@ -9,8 +9,7 @@ import { SEED_RULES } from './seed-rules'
 import { DEFAULT_THRESHOLDS, SEED_SCHEMAS } from './seed-schemas'
 
 /**
- * Seed обязательного объёма: два пользователя (ТЗ 3.1) и схемы четырёх
- * типов документов (ТЗ 6.4).
+ * Seed the required two users (spec 3.1) and four document-type schemas (spec 6.4).
  */
 async function main(): Promise<void> {
   const env = loadEnv()
@@ -31,9 +30,8 @@ async function main(): Promise<void> {
       },
     ]
 
-    // Пароль и роль приводятся к значениям из конфигурации, а не пропускаются
-    // при конфликте: иначе на томе, переживившем смену формата хэша или правку
-    // SEED_*_PASSWORD, вход отказывал бы без единого следа в журнале.
+    // Update password and role from configuration on conflict so a persisted
+    // volume survives hash-format or SEED_*_PASSWORD changes without breaking login.
     for (const user of seedUsers) {
       const [saved] = await db
         .insert(users)
@@ -44,11 +42,11 @@ async function main(): Promise<void> {
         })
         .returning({ login: users.login, role: users.role })
 
-      console.log(`Пользователь ${saved.login} (${saved.role}) актуализирован`)
+      console.log(`User ${saved.login} (${saved.role}) updated`)
     }
 
-    // Версия 1 каждой схемы приводится к коду; пороги при апдейте не трогаются —
-    // их правит администратор через API, и seed не должен их откатывать.
+    // Keep every persisted schema version in the current language without
+    // overwriting thresholds managed by an administrator through the API.
     for (const documentType of CLASSIFIABLE_DOCUMENT_TYPES) {
       const jsonSchema = { fields: SEED_SCHEMAS[documentType], rules: SEED_RULES[documentType] }
       const [existing] = await db
@@ -61,8 +59,8 @@ async function main(): Promise<void> {
         await db
           .update(documentSchemas)
           .set({ jsonSchema })
-          .where(eq(documentSchemas.id, existing.id))
-        console.log(`Схема ${documentType} v1 актуализирована`)
+          .where(eq(documentSchemas.documentType, documentType))
+        console.log(`Schemas for ${documentType} updated`)
       } else {
         await db.insert(documentSchemas).values({
           documentType,
@@ -71,7 +69,7 @@ async function main(): Promise<void> {
           thresholds: DEFAULT_THRESHOLDS,
           isActive: true,
         })
-        console.log(`Схема ${documentType} v1 создана`)
+        console.log(`Schema ${documentType} v1 created`)
       }
     }
   } finally {
@@ -80,6 +78,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  console.error('Seed не выполнен:', error)
+  console.error('Seed failed:', error)
   process.exit(1)
 })

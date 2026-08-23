@@ -21,8 +21,8 @@ export interface SyncSummary {
 }
 
 /**
- * Синхронизация второго источника (ТЗ 6.1, 6.9): новые файлы принимаются,
- * изменённые становятся новой версией, исчезнувшие помечаются неактивными.
+ * Secondary-source sync (spec 6.1, 6.9): ingest new files, version changed
+ * files, and mark removed files inactive.
  */
 @Injectable()
 export class SyncService {
@@ -40,7 +40,7 @@ export class SyncService {
 
   async run(correlationId: string): Promise<SyncSummary> {
     const provider = this.provider
-    if (!provider) throw new Error('Источник не настроен')
+    if (!provider) throw new Error('Source is not configured')
 
     const summary: SyncSummary = {
       created: 0,
@@ -84,7 +84,7 @@ export class SyncService {
       } catch (error) {
         summary.failed += 1
         this.logger.error(
-          `Файл ${file.sourcePath} не принят: ${error instanceof Error ? error.message : String(error)}`,
+          `File ${file.sourcePath} was not ingested: ${error instanceof Error ? error.message : String(error)}`,
         )
       }
     }
@@ -93,23 +93,23 @@ export class SyncService {
       summary.deactivated += await this.deactivate(provider, path, correlationId)
     }
 
-    // Курсор двигается только после прохода без отказов: иначе файл, который
-    // не удалось скачать, не вернулся бы в приращение никогда. Повторная
-    // обработка безопасна — приём идемпотентен по паре путь+содержимое.
+    // Advance the cursor only after a failure-free pass; otherwise a failed
+    // download would never appear again. Reprocessing is safe because ingest is
+    // idempotent by path and content.
     if (summary.failed === 0) {
       await writeCursor(this.db, provider.name, listing.cursor)
     } else {
-      await writeCursor(this.db, provider.name, cursor, `Не принято файлов: ${summary.failed}`)
+      await writeCursor(this.db, provider.name, cursor, `Files not ingested: ${summary.failed}`)
     }
 
     this.logger.log(
-      `Синхронизация ${provider.name}: новых ${summary.created}, версий ${summary.versioned}, ` +
-        `без изменений ${summary.skipped}, удалено ${summary.deactivated}, отказов ${summary.failed}`,
+      `Sync ${provider.name}: ${summary.created} new, ${summary.versioned} versioned, ` +
+        `${summary.skipped} unchanged, ${summary.deactivated} removed, ${summary.failed} failed`,
     )
     return summary
   }
 
-  /** Актуальные версии уже принятых файлов источника — основа сравнения снимка. */
+  /** Active versions of ingested source files used as the snapshot baseline. */
   private async knownFiles(
     provider: SourceProvider,
   ): Promise<{ sourcePath: string; checksum: string }[]> {
@@ -124,9 +124,9 @@ export class SyncService {
   }
 
   /**
-   * Удаление в источнике не стирает документ: он помечается неактивным,
-   * физическое удаление выполняет retention-задача (ТЗ 6.9). История
-   * проверок и решений по нему остаётся доступной.
+   * Source deletion marks a document inactive rather than deleting it. The
+   * retention job performs permanent deletion (spec 6.9), preserving review
+   * and decision history until then.
    */
   private async deactivate(
     provider: SourceProvider,
@@ -152,7 +152,7 @@ export class SyncService {
         action: 'document.deactivated',
         objectType: 'document',
         objectId: row.id,
-        after: { reason: 'Файл удалён в источнике', sourcePath },
+        after: { reason: 'File removed from source', sourcePath },
         result: 'success',
       })
     }

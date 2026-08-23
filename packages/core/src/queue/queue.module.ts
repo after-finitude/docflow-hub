@@ -4,8 +4,8 @@ import { ENV } from '../config/config.module'
 import type { Env } from '../config/env'
 import { ALL_QUEUES, defaultJobOptionsFor } from './queues'
 
-// Динамические модули очередей нужны и в imports, и в exports: без реэкспорта
-// @InjectQueue не разрешится в модулях-потребителях.
+// Queue dynamic modules belong in both imports and exports so consumer modules
+// can resolve @InjectQueue.
 const queueModules = ALL_QUEUES.map((name) =>
   BullModule.registerQueue({ name, defaultJobOptions: defaultJobOptionsFor(name) }),
 )

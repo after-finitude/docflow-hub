@@ -1,10 +1,10 @@
 /* Hallmark · genre: modern-minimal · theme: Cobalt · design-system: design.md · designed-as-app
- * Единственное место, где заданы значения. Разметка обращается только по имени:
- * инлайновый oklch или hex где-либо ещё — это уже не система, а импровизация.
+ * The single source of token values. Markup refers only to names; inline oklch
+ * or hex values elsewhere would bypass the system.
  */
 
 :root {
-  /* ─── Поверхности и текст ───────────────────────────────────────────── */
+  /* ─── Surfaces and text ─────────────────────────────────────────────── */
   --color-paper: oklch(98.5% 0.004 250);
   --color-paper-2: oklch(96.8% 0.005 250);
   --color-paper-3: oklch(94.5% 0.006 252);
@@ -14,19 +14,17 @@
   --color-rule: oklch(90% 0.006 252);
   --color-rule-2: oklch(84% 0.008 252);
 
-  /* ─── Сигнал ────────────────────────────────────────────────────────── */
-  /* L53, а не 58 из темы: на 58 % ссылка акцентом даёт 4.17:1 против
-     бумаги — ниже порога 4.5 для основного текста. Замерено на живой
-     странице, не на глаз. */
+  /* ─── Signal ────────────────────────────────────────────────────────── */
+  /* L53 instead of the theme's 58: at 58%, an accent link has 4.17:1
+     contrast against paper, below the 4.5 text threshold. */
   --color-accent: oklch(53% 0.2 256);
-  /* Заливка кнопки ещё темнее: белый текст на самом акценте не добирает
-     до 4.5:1, а понижать текст до серого на цвете нельзя. */
+  /* Button fill is darker because white text on the accent misses 4.5:1. */
   --color-accent-strong: oklch(46% 0.18 256);
   --color-accent-ink: oklch(99% 0.005 250);
   --color-accent-wash: oklch(96% 0.02 256);
   --color-focus: oklch(52% 0.2 256);
 
-  /* ─── Статусы документа ─────────────────────────────────────────────── */
+  /* ─── Document statuses ─────────────────────────────────────────────── */
   --color-ok: oklch(52% 0.13 155);
   --color-ok-wash: oklch(96% 0.03 155);
   --color-warn: oklch(50% 0.12 75);
@@ -34,12 +32,12 @@
   --color-danger: oklch(55% 0.19 27);
   --color-danger-wash: oklch(96% 0.03 27);
 
-  /* ─── Шрифты ────────────────────────────────────────────────────────── */
+  /* ─── Fonts ─────────────────────────────────────────────────────────── */
   --font-display: 'Space Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
   --font-body: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
 
-  /* ─── Шкала размеров: малая терция (1.2) ────────────────────────────── */
+  /* ─── Type scale: minor third (1.2) ─────────────────────────────────── */
   --text-2xs: 0.6875rem;
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
@@ -48,7 +46,7 @@
   --text-xl: 1.3125rem;
   --text-2xl: 1.625rem;
 
-  /* ─── Отступы: 4pt ──────────────────────────────────────────────────── */
+  /* ─── Spacing: 4pt ─────────────────────────────────────────────────── */
   --space-3xs: 0.125rem;
   --space-2xs: 0.25rem;
   --space-xs: 0.5rem;
@@ -58,30 +56,29 @@
   --space-xl: 2rem;
   --space-2xl: 3rem;
 
-  /* ─── Геометрия ─────────────────────────────────────────────────────── */
+  /* ─── Geometry ──────────────────────────────────────────────────────── */
   --radius-control: 6px;
   --radius-panel: 10px;
   --rule-width: 1px;
-  /* Высота элемента управления и строки таблицы. Компактная плотность —
-     оператор держит очередь целиком в поле зрения. */
+  /* Control and table-row height. Compact density keeps the queue in view. */
   --control-h: 2.25rem;
   --row-h: 2.75rem;
 
-  /* ─── Движение ──────────────────────────────────────────────────────── */
+  /* ─── Motion ────────────────────────────────────────────────────────── */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --dur-micro: 120ms;
   --dur-short: 220ms;
 
-  /* ─── Слои ──────────────────────────────────────────────────────────── */
+  /* ─── Layers ────────────────────────────────────────────────────────── */
   --z-base: 0;
   --z-sticky: 10;
   --z-overlay: 20;
   --z-modal: 30;
 }
 
-/* Палец крупнее курсора: на сенсорном вводе элементы дорастают до 44px. */
+/* Fingers are larger than pointers, so touch controls grow to 44px. */
 @media (pointer: coarse) {
   :root {
     --control-h: 2.75rem;

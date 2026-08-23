@@ -5,18 +5,17 @@ import { ENV } from '../config/config.module'
 import type { Env } from '../config/env'
 
 /**
- * Объектное хранилище оригиналов и миниатюр. Ссылки на файлы выдаются
- * подписанными и с ограниченным сроком жизни (ТЗ §11).
+ * Object storage for originals and thumbnails. File links are signed and
+ * short-lived (spec §11).
  */
 @Injectable()
 export class StorageService implements OnModuleInit {
   private readonly logger = new Logger(StorageService.name)
-  /** Внутренний клиент: чтение и запись из контейнеров. */
+  /** Internal client for reads and writes from containers. */
   private readonly client: Client
   /**
-   * Клиент для подписи ссылок, отдаваемых браузеру. Отдельный, потому что
-   * подпись покрывает Host: ссылку, подписанную адресом minio:9000, браузер
-   * открыть не сможет.
+   * Separate client for browser link signing because signatures cover Host and
+   * browsers cannot open a URL signed for minio:9000.
    */
   private publicClient!: Client
 
@@ -34,13 +33,11 @@ export class StorageService implements OnModuleInit {
     const bucket = this.env.MINIO_BUCKET
     if (!(await this.client.bucketExists(bucket))) {
       await this.client.makeBucket(bucket)
-      this.logger.log(`Создан bucket ${bucket}`)
+      this.logger.log(`Created bucket ${bucket}`)
     }
 
-    // Регион спрашивается у внутреннего клиента и передаётся публичному
-    // готовым. Сам он узнать его не может: MINIO_PUBLIC_URL — адрес для
-    // браузера, изнутри контейнера он не открывается, и подпись ссылки
-    // падала бы на попытке определить регион.
+    // Resolve the region with the internal client and pass it to the public one;
+    // MINIO_PUBLIC_URL may be unreachable from inside the container.
     const region = await this.client.getBucketRegionAsync(bucket)
     const publicUrl = new URL(this.env.MINIO_PUBLIC_URL)
     const useSSL = publicUrl.protocol === 'https:'
@@ -71,7 +68,7 @@ export class StorageService implements OnModuleInit {
     return this.client.getObject(this.env.MINIO_BUCKET, key)
   }
 
-  /** Подписанная ссылка для браузера, срок — SIGNED_URL_TTL_SECONDS. */
+  /** Browser signed URL valid for SIGNED_URL_TTL_SECONDS. */
   async signedUrl(key: string): Promise<string> {
     return this.publicClient.presignedGetObject(
       this.env.MINIO_BUCKET,
@@ -84,7 +81,7 @@ export class StorageService implements OnModuleInit {
     await this.client.removeObject(this.env.MINIO_BUCKET, key)
   }
 
-  /** Перечисление объектов под префиксом — для retention-задачи (ТЗ 6.9). */
+  /** List objects under a prefix for retention (spec 6.9). */
   async list(prefix: string): Promise<{ key: string; lastModified: Date }[]> {
     const stream = this.client.listObjectsV2(this.env.MINIO_BUCKET, prefix, true)
     const items: { key: string; lastModified: Date }[] = []
@@ -94,7 +91,7 @@ export class StorageService implements OnModuleInit {
     return items
   }
 
-  /** Все файлы документа лежат под общим префиксом и удаляются одним вызовом. */
+  /** All document files share a prefix and are deleted in one call. */
   async removePrefix(prefix: string): Promise<number> {
     const keys = (await this.list(prefix)).map((item) => item.key)
     if (keys.length) await this.client.removeObjects(this.env.MINIO_BUCKET, keys)

@@ -3,16 +3,15 @@ import { Injectable } from '@nestjs/common'
 import type { ClassifyInput, ExtractInput, LlmProvider } from './llm-provider'
 
 /**
- * Детерминированный LLM без внешних вызовов.
+ * Deterministic LLM without external calls.
  *
- * Классификация — по заголовочным паттернам; извлечение — по шаблону
- * «Метка: значение», которым размечены демо-документы (scripts/generate-dataset.mjs)
- * и фикстуры. Evidence всегда дословная строка из текста страницы, поэтому
- * матчер находит её штатно.
+ * Classification uses heading patterns; extraction uses the “Label: value”
+ * format in demo documents and fixtures. Evidence is always a verbatim page
+ * line so the matcher can locate it normally.
  *
- * Осознанное ограничение: mock знает формат демо-набора, поэтому измеряет
- * не качество модели, а работоспособность конвейера. Реальное качество
- * извлечения даёт `npm run eval` с LLM_PROVIDER=openai_compatible.
+ * Deliberate limitation: the mock knows the demo dataset format, so it measures
+ * pipeline behavior rather than model quality. Measure real extraction quality
+ * with `npm run eval` and LLM_PROVIDER=openai_compatible.
  */
 @Injectable()
 export class MockLlmProvider implements LlmProvider {
@@ -25,20 +24,28 @@ export class MockLlmProvider implements LlmProvider {
       .join('\n')
       .toLowerCase()
 
-    // Паттерны заголовочные, а не пословные: слово «tax» есть в каждом
-    // инвойсе, и наивное правило уводило бы инвойсы в unknown.
+    // Match headings rather than individual words: “tax” appears in every
+    // invoice and a naive rule would classify invoices as unknown.
     const rules: Array<{ type: ClassificationResponse['document_type']; pattern: RegExp }> = [
-      { type: 'invoice', pattern: /^\s*(invoice|счёт|счет)\b/m },
+      {
+        type: 'invoice',
+        pattern: /^\s*(invoice|\u0441\u0447\u0451\u0442|\u0441\u0447\u0435\u0442)\b/m,
+      },
       {
         type: 'bank_statement',
-        pattern: /^\s*(bank statement|выписка)\b|opening balance|входящий остаток/m,
+        pattern:
+          /^\s*(bank statement|\u0432\u044b\u043f\u0438\u0441\u043a\u0430)\b|opening balance|\u0432\u0445\u043e\u0434\u044f\u0449\u0438\u0439 \u043e\u0441\u0442\u0430\u0442\u043e\u043a/m,
       },
       {
         type: 'tax_letter',
         pattern:
-          /^\s*(tax notice|налоговое уведомление|уведомление)\b|tax office|налоговая инспекция/m,
+          /^\s*(tax notice|\u043d\u0430\u043b\u043e\u0433\u043e\u0432\u043e\u0435 \u0443\u0432\u0435\u0434\u043e\u043c\u043b\u0435\u043d\u0438\u0435|\u0443\u0432\u0435\u0434\u043e\u043c\u043b\u0435\u043d\u0438\u0435)\b|tax office|\u043d\u0430\u043b\u043e\u0433\u043e\u0432\u0430\u044f \u0438\u043d\u0441\u043f\u0435\u043a\u0446\u0438\u044f/m,
       },
-      { type: 'contract', pattern: /^\s*(contract|договор|соглашение|agreement)\b/m },
+      {
+        type: 'contract',
+        pattern:
+          /^\s*(contract|agreement|\u0434\u043e\u0433\u043e\u0432\u043e\u0440|\u0441\u043e\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435)\b/m,
+      },
     ]
 
     const matched = rules.filter((rule) => rule.pattern.test(text))
@@ -51,8 +58,8 @@ export class MockLlmProvider implements LlmProvider {
       }
     }
 
-    // Повторная шапка дальше по тексту — признак нескольких документов
-    // в одном файле; используется негативным сценарием демо-набора.
+    // A repeated heading later in the text indicates multiple documents in one
+    // file and supports the demo dataset's negative scenario.
     const multiDocument = (text.match(/^\s*invoice\s*$/gm) ?? []).length > 1
 
     return {
@@ -68,8 +75,8 @@ export class MockLlmProvider implements LlmProvider {
   async extract(input: ExtractInput): Promise<ExtractionResponse> {
     const patterns = PATTERNS_BY_TYPE[input.documentType]
     if (!patterns) {
-      // Неизвестный тип: честный Missing по каждому полю — «не выдумывать»
-      // (ТЗ §9) относится и к mock-реализации.
+      // Unknown type: return Missing for every field. “Do not invent”
+      // (spec §9) also applies to the mock.
       return {
         fields: input.fields.map((field) => ({ name: field.name, value: null, evidence: null })),
       }
@@ -86,8 +93,8 @@ export class MockLlmProvider implements LlmProvider {
             return {
               name: field.name,
               value: match[1]!.trim(),
-              // Evidence — вся строка «Метка: значение»: она уникальнее голого
-              // значения и совпадает с OCR-блоком строки целиком.
+              // Evidence is the full “Label: value” line, which is more unique
+              // than the value alone and matches the complete OCR line block.
               evidence: { text: match[0].trim(), page: page.page },
             }
           }
@@ -98,7 +105,7 @@ export class MockLlmProvider implements LlmProvider {
   }
 }
 
-/** Метки демо-набора по типам документов. */
+/** Demo dataset labels by document type. */
 const PATTERNS_BY_TYPE: Record<string, Record<string, RegExp>> = {
   invoice: {
     supplier_name: /^Supplier:\s*(.+)$/m,

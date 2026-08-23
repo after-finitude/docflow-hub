@@ -3,17 +3,16 @@ import type { BoundingBox } from '../contracts/ocr'
 import type { LineItem } from '../contracts/review'
 
 /**
- * Канонический JSON (ТЗ 6.8): единое представление результата, не зависящее
- * от конкретного адаптера назначения. Включает правки оператора и версию
- * схемы, по которой документ извлекался.
+ * Canonical JSON (spec 6.8): one destination-independent result including
+ * operator edits and the schema version used for extraction.
  */
 
 export const CANONICAL_FORMAT_VERSION = 1
 
 export interface CanonicalFieldValue {
-  /** Нормализованное значение — то, что уходит во внешнюю систему. */
+  /** Normalized value sent to external systems. */
   value: unknown
-  /** Как записано в документе; null для отсутствующих и введённых вручную. */
+  /** Verbatim document value, null when missing or entered manually. */
   raw: string | null
   confidence: number | null
   edited: boolean
@@ -33,7 +32,7 @@ export interface CanonicalDocument {
   }
   fields: Record<string, CanonicalFieldValue>
   lineItems: LineItem[] | null
-  /** Непогашенные предупреждения: подтверждению они не мешали, но контекст важен. */
+  /** Unresolved warnings that did not block approval but remain useful context. */
   warnings: Array<{ ruleId: string; fieldName: string | null; message: string }>
   approvedAt: string | null
   generatedAt: string
@@ -62,7 +61,7 @@ export interface CanonicalInput {
   approvedAt: string | null
   fields: CanonicalInputField[]
   warnings: Array<{ ruleId: string; fieldName: string | null; message: string }>
-  /** Момент формирования: передаётся снаружи, чтобы результат был воспроизводим. */
+  /** Generation time supplied externally for reproducibility. */
   generatedAt: string
 }
 
@@ -72,8 +71,8 @@ export function buildCanonicalDocument(input: CanonicalInput): CanonicalDocument
 
   for (const field of input.fields) {
     if (field.valueType === 'array') {
-      // Позиции выносятся отдельным блоком: у них своя структура, и адаптеры
-      // назначения работают с ними иначе, чем со скалярными полями.
+      // Keep line items separate because destinations handle their structure
+      // differently from scalar fields.
       lineItems = Array.isArray(field.normalizedValue)
         ? (field.normalizedValue as LineItem[])
         : null
@@ -112,13 +111,13 @@ export function buildCanonicalDocument(input: CanonicalInput): CanonicalDocument
 }
 
 /**
- * Маппинг внутренних полей на поля назначения (ТЗ 6.8). Порядок колонок
- * значим: адаптеры вроде Google Sheets пишут строку по нему.
+ * Internal-to-destination field mapping (spec 6.8). Column order determines
+ * rows written by adapters such as Google Sheets.
  */
 export interface ExportColumn {
-  /** Заголовок колонки в системе назначения. */
+  /** Destination column header. */
   column: string
-  /** `field:<имя>` — значение поля, `meta:<путь>` — метаданные документа. */
+  /** `field:<name>` for a field value, `meta:<path>` for document metadata. */
   source: string
 }
 
@@ -126,7 +125,7 @@ export type ExportMapping = ExportColumn[]
 
 export type ExportCell = string | number | boolean | null
 
-/** Строка для табличного назначения по маппингу. */
+/** Mapped row for a tabular destination. */
 export function toRow(canonical: CanonicalDocument, mapping: ExportMapping): ExportCell[] {
   return mapping.map((column) => resolve(canonical, column.source))
 }

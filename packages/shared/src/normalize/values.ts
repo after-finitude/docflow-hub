@@ -1,25 +1,10 @@
 import type { ValueType } from '../enums'
 
 /**
- * Нормализация извлечённых значений (ТЗ 6.4): даты в ISO, суммы в number,
- * валюта в ISO 4217. Выполняется кодом, а не LLM: детерминированно и
- * тестируемо. null — значение не удалось привести к типу.
+ * Normalize extracted values (spec 6.4): ISO dates, numeric amounts, and ISO
+ * 4217 currency codes. Code rather than the LLM keeps this deterministic and
+ * testable. null means conversion failed.
  */
-
-const MONTHS_RU: Record<string, number> = {
-  января: 1,
-  февраля: 2,
-  марта: 3,
-  апреля: 4,
-  мая: 5,
-  июня: 6,
-  июля: 7,
-  августа: 8,
-  сентября: 9,
-  октября: 10,
-  ноября: 11,
-  декабря: 12,
-}
 
 const MONTHS_EN: Record<string, number> = {
   january: 1,
@@ -36,28 +21,45 @@ const MONTHS_EN: Record<string, number> = {
   december: 12,
 }
 
+// Unicode escapes keep the source English-only while preserving support for
+// Russian-language documents already accepted by the pipeline.
+const MONTHS_RU: Record<string, number> = {
+  '\u044f\u043d\u0432\u0430\u0440\u044f': 1,
+  '\u0444\u0435\u0432\u0440\u0430\u043b\u044f': 2,
+  '\u043c\u0430\u0440\u0442\u0430': 3,
+  '\u0430\u043f\u0440\u0435\u043b\u044f': 4,
+  '\u043c\u0430\u044f': 5,
+  '\u0438\u044e\u043d\u044f': 6,
+  '\u0438\u044e\u043b\u044f': 7,
+  '\u0430\u0432\u0433\u0443\u0441\u0442\u0430': 8,
+  '\u0441\u0435\u043d\u0442\u044f\u0431\u0440\u044f': 9,
+  '\u043e\u043a\u0442\u044f\u0431\u0440\u044f': 10,
+  '\u043d\u043e\u044f\u0431\u0440\u044f': 11,
+  '\u0434\u0435\u043a\u0430\u0431\u0440\u044f': 12,
+}
+
 const CURRENCY_ALIASES: Record<string, string> = {
   eur: 'EUR',
   '€': 'EUR',
-  евро: 'EUR',
+  '\u0435\u0432\u0440\u043e': 'EUR',
   euro: 'EUR',
   usd: 'USD',
   $: 'USD',
-  доллар: 'USD',
-  долларов: 'USD',
+  '\u0434\u043e\u043b\u043b\u0430\u0440': 'USD',
+  '\u0434\u043e\u043b\u043b\u0430\u0440\u043e\u0432': 'USD',
   dollar: 'USD',
   gbp: 'GBP',
   '£': 'GBP',
-  фунт: 'GBP',
+  '\u0444\u0443\u043d\u0442': 'GBP',
   pound: 'GBP',
   rub: 'RUB',
   '₽': 'RUB',
-  руб: 'RUB',
-  'руб.': 'RUB',
-  рублей: 'RUB',
+  '\u0440\u0443\u0431': 'RUB',
+  '\u0440\u0443\u0431.': 'RUB',
+  '\u0440\u0443\u0431\u043b\u0435\u0439': 'RUB',
 }
 
-/** Дата → 'YYYY-MM-DD'. */
+/** Date → 'YYYY-MM-DD'. */
 export function normalizeDate(raw: string): string | null {
   const text = raw.trim().toLowerCase()
 
@@ -65,18 +67,18 @@ export function normalizeDate(raw: string): string | null {
   let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text)
   if (m) return validDate(Number(m[1]), Number(m[2]), Number(m[3]))
 
-  // Европейский порядок: 15.07.2026, 15/07/2026, 15-07-2026
+  // European order: 15.07.2026, 15/07/2026, 15-07-2026
   m = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/.exec(text)
   if (m) return validDate(Number(m[3]), Number(m[2]), Number(m[1]))
 
-  // Словесный месяц: «15 июля 2026», «15 july 2026» (с необязательными «г.», запятой)
-  m = /^(\d{1,2})\s+([а-яa-z]+),?\s+(\d{4})/.exec(text)
+  // Written month: “15 July 2026” and its supported Russian equivalent.
+  m = /^(\d{1,2})\s+([a-z\u0400-\u04ff]+),?\s+(\d{4})/.exec(text)
   if (m) {
-    const month = MONTHS_RU[m[2]!] ?? MONTHS_EN[m[2]!]
+    const month = MONTHS_EN[m[2]!] ?? MONTHS_RU[m[2]!]
     if (month) return validDate(Number(m[3]), month, Number(m[1]))
   }
 
-  // Американский словесный: «july 15, 2026»
+  // American written form: “July 15, 2026”.
   m = /^([a-z]+)\s+(\d{1,2}),?\s+(\d{4})$/.exec(text)
   if (m) {
     const month = MONTHS_EN[m[1]!]
@@ -94,12 +96,12 @@ function validDate(year: number, month: number, day: number): string | null {
 }
 
 /**
- * Сумма → number. Понимает «1 200,00», «1,200.00», «1200.00», «1.200,00».
- * Десятичный разделитель — последняя точка или запятая с 1–2 цифрами после.
+ * Amount → number. Supports “1 200,00”, “1,200.00”, “1200.00”, and “1.200,00”.
+ * The final dot or comma followed by one or two digits is the decimal separator.
  */
 export function normalizeAmount(raw: string): number | null {
   let text = raw.trim().replace(/[\s  ]/g, '')
-  // Валютные символы и коды по краям не мешают сумме.
+  // Ignore currency symbols and codes around the amount.
   text = text.replace(/^[^\d+-]+/, '').replace(/[^\d.,]+$/, '')
   if (!/\d/.test(text)) return null
 
@@ -114,8 +116,8 @@ export function normalizeAmount(raw: string): number | null {
   let fractionPart = ''
   if (separator !== -1) {
     const after = text.slice(separator + 1)
-    // 1–2 цифры после последнего разделителя — десятичная часть;
-    // ровно 3 — разделитель тысяч (1.200 = 1200).
+    // One or two digits after the final separator are decimals; exactly three
+    // digits indicate a thousands separator (1.200 = 1200).
     if (/^\d{1,2}$/.test(after)) {
       integerPart = text.slice(0, separator)
       fractionPart = after
@@ -129,7 +131,7 @@ export function normalizeAmount(raw: string): number | null {
   return negative ? -value : value
 }
 
-/** Валюта → код ISO 4217. */
+/** Currency → ISO 4217 code. */
 export function normalizeCurrency(raw: string): string | null {
   const text = raw.trim().toLowerCase().replace(/\.$/, '')
   if (CURRENCY_ALIASES[text]) return CURRENCY_ALIASES[text]
@@ -137,10 +139,10 @@ export function normalizeCurrency(raw: string): string | null {
   return null
 }
 
-const TRUE_WORDS = new Set(['true', 'да', 'yes', '1'])
-const FALSE_WORDS = new Set(['false', 'нет', 'no', '0'])
+const TRUE_WORDS = new Set(['true', 'yes', '1', '\u0434\u0430'])
+const FALSE_WORDS = new Set(['false', 'no', '0', '\u043d\u0435\u0442'])
 
-/** Значение по типу поля схемы. Для array нормализация — на этапе line items. */
+/** Normalize by schema field type; arrays are normalized in the line-items stage. */
 export function normalizeByType(raw: string, type: ValueType): unknown {
   switch (type) {
     case 'string':

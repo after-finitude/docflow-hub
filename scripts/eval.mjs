@@ -1,12 +1,11 @@
 /**
- * Оценка качества на размеченном наборе (ТЗ §12). Отчёт — evaluation/last-run.md.
+ * Quality evaluation on the labeled dataset (spec §12). Report: evaluation/last-run.md.
  *
- * Harness прогоняет ТЕ ЖЕ модули, что и рабочий конвейер: провайдеры OCR и LLM,
- * общую сборку поля (buildExtractedField с матчером evidence→bbox), движок
- * валидации и маршрутизацию. Не задействованы только БД и очереди — то есть
- * измеряется логика обработки, а не инфраструктура доставки.
+ * The harness runs the same OCR/LLM providers, field builder, evidence matcher,
+ * validation engine, and routing as production. It excludes only the database
+ * and queues, measuring processing logic rather than delivery infrastructure.
  *
- * Провайдеры выбираются переменными OCR_PROVIDER и LLM_PROVIDER, как в проде.
+ * OCR_PROVIDER and LLM_PROVIDER select providers exactly as in production.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -29,7 +28,7 @@ const llmName = process.env.LLM_PROVIDER ?? 'mock'
 
 async function buildProviders() {
   if (ocrName === 'google' || llmName === 'openai_compatible') {
-    // Реальные провайдеры требуют ключей; загружаются только по запросу.
+    // Real providers require credentials and load only when requested.
     const { GoogleVisionOcrProvider } =
       await import('../apps/worker/dist/ocr/google-vision-ocr.provider.js')
     const { OpenAiCompatibleLlmProvider } =
@@ -59,11 +58,11 @@ async function buildProviders() {
 
 function required(name) {
   const value = process.env[name]
-  if (!value) throw new Error(`Для выбранных провайдеров нужна переменная ${name}`)
+  if (!value) throw new Error(`Selected providers require ${name}`)
   return value
 }
 
-/** Прогон одного документа по тому же пути, что и в конвейере. */
+/** Run one document through the production processing path. */
 async function processDocument(providers, file, mimeType) {
   const buffer = readFileSync(join(datasetDir, file))
 
@@ -122,8 +121,7 @@ async function processDocument(providers, file, mimeType) {
     today: new Date().toISOString().slice(0, 10),
   })
 
-  // Подозрение на несколько документов в одном файле отправляет на проверку
-  // (ТЗ 6.3) — то же правило, что применяет ValidationRunnerService.
+  // Suspected multiple documents force review (spec 6.3), matching ValidationRunnerService.
   const routingIssues = issues.map((issue) => ({ severity: issue.severity, resolved: false }))
   if (classification.multi_document_suspected) {
     routingIssues.push({ severity: 'warning', resolved: false, forcesReview: true })
@@ -152,7 +150,7 @@ async function processDocument(providers, file, mimeType) {
   }
 }
 
-/** Сравнение нормализованного значения с эталоном. */
+/** Compare a normalized value with ground truth. */
 function valuesMatch(actual, expected) {
   if (typeof expected === 'number') {
     return typeof actual === 'number' && Math.abs(actual - expected) < 0.005
@@ -201,13 +199,13 @@ async function main() {
       if (result.rejected) counters.rejectedActual += 1
       perDocument.push({
         file: entry.file,
-        outcome: result.rejected ? 'отклонён' : 'ПРИНЯТ (ошибка)',
+        outcome: result.rejected ? 'rejected' : 'ACCEPTED (error)',
       })
       continue
     }
 
     if (result.rejected) {
-      perDocument.push({ file: entry.file, outcome: `отклонён: ${result.rejectReason}` })
+      perDocument.push({ file: entry.file, outcome: `rejected: ${result.rejectReason}` })
       continue
     }
 
@@ -216,7 +214,7 @@ async function main() {
     if (result.documentType === entry.expectedType) counters.classifiedCorrect += 1
     if (result.multiDocument) counters.multiDocumentDetected += 1
 
-    // Без извлечённых полей сравнивать нечего — это не «совпали».
+    // No extracted fields means there is nothing to compare, not a match.
     let documentCriticalOk = result.specs ? true : null
     if (result.specs) {
       for (const spec of result.specs) {
@@ -244,13 +242,13 @@ async function main() {
 
     if (result.decision.auto) {
       counters.autoApproved += 1
-      // Ошибочный документ, прошедший автоматически (ТЗ §12: цель — ноль).
+      // Invalid document passed automatically (spec §12 target: zero).
       if (isEval && !documentCriticalOk) counters.falseAutoApproval += 1
     }
 
     perDocument.push({
       file: entry.file,
-      outcome: result.decision.auto ? 'автоматически' : 'на проверку',
+      outcome: result.decision.auto ? 'automatic' : 'review',
       type: result.documentType,
       criticalOk: documentCriticalOk,
     })
@@ -278,19 +276,19 @@ async function main() {
     {
       name: 'Source coverage',
       value: percent(counters.extractedWithSource, counters.extractedValues),
-      target: 'публикуется как есть',
+      target: 'reported as-is',
       unit: '%',
     },
     {
       name: 'Straight-through rate',
       value: percent(counters.autoApproved, counters.processed),
-      target: 'публикуется как есть',
+      target: 'reported as-is',
       unit: '%',
     },
     {
       name: 'False auto-approval',
       value: counters.falseAutoApproval,
-      target: '0 на размеченном наборе',
+      target: '0 on the labeled dataset',
       unit: '',
     },
   ]
@@ -306,44 +304,43 @@ async function main() {
 
   const evalCount = groundTruth.documents.filter((item) => item.eval).length
   const report = [
-    '# Отчёт оценки качества',
+    '# Quality Evaluation Report',
     '',
-    `Дата прогона: ${new Date().toISOString()}`,
-    `Набор: ${groundTruth.documents.length} документов, из них размеченных: ${evalCount}`,
-    `Провайдеры: OCR — \`${ocrName}\`, LLM — \`${llmName}\``,
-    'Версия схем: 1 (seed), правил: ' +
+    `Run date: ${new Date().toISOString()}`,
+    `Dataset: ${groundTruth.documents.length} documents, ${evalCount} labeled`,
+    `Providers: OCR — \`${ocrName}\`, LLM — \`${llmName}\``,
+    'Schema version: 1 (seed), rules: ' +
       Object.values(SEED_RULES).reduce((sum, rules) => sum + rules.length, 0),
     '',
-    '## Метрики (ТЗ §12)',
+    '## Metrics (spec §12)',
     '',
-    '| Метрика | Значение | Цель |',
+    '| Metric | Value | Target |',
     '| --- | --- | --- |',
     ...metrics.map(
       (metric) =>
         `| ${metric.name} | ${metric.value === null ? '—' : `${metric.value}${metric.unit}`} | ${metric.target} |`,
     ),
-    `| Median review time | не измеряется здесь | требует телеметрии оператора |`,
+    `| Median review time | not measured here | requires operator telemetry |`,
     '',
-    '## Негативные сценарии',
+    '## Negative scenarios',
     '',
-    `- Повреждённые файлы: отклонено ${counters.rejectedActual} из ${counters.rejectedExpected}`,
-    `- Несколько документов в одном файле: предупреждений ${counters.multiDocumentDetected}`,
+    `- Corrupted files: rejected ${counters.rejectedActual} of ${counters.rejectedExpected}`,
+    `- Multiple documents in one file: ${counters.multiDocumentDetected} warning(s)`,
     '',
-    '## Как читать этот отчёт',
+    '## How to read this report',
     '',
     llmName === 'mock'
       ? [
-          'Прогон выполнен на **mock-провайдерах**. Mock-LLM знает формат меток',
-          'демо-набора, поэтому высокие значения извлечения означают исправность',
-          'конвейера — сопоставления evidence → bbox, нормализации, валидации и',
-          'маршрутизации, — но НЕ качество языковой модели. Оценка качества модели',
-          'требует прогона с `LLM_PROVIDER=openai_compatible` и реальным ключом.',
+          'This run used **mock providers**. The mock LLM knows the demo label format,',
+          'so high extraction scores validate the evidence matcher, normalization,',
+          'validation, and routing pipeline, NOT language-model quality. Measure the',
+          'model with `LLM_PROVIDER=openai_compatible` and real credentials.',
         ].join(' ')
-      : 'Прогон выполнен на реальных провайдерах: значения отражают качество модели.',
+      : 'This run used real providers, so values reflect model quality.',
     '',
-    '## Документы',
+    '## Documents',
     '',
-    '| Файл | Тип | Итог | Критичные поля |',
+    '| File | Type | Outcome | Critical fields |',
     '| --- | --- | --- | --- |',
     ...perDocument.map(
       (item) =>
@@ -351,8 +348,8 @@ async function main() {
           item.criticalOk === undefined || item.criticalOk === null
             ? '—'
             : item.criticalOk
-              ? 'совпали'
-              : 'расхождение'
+              ? 'matched'
+              : 'mismatch'
         } |`,
     ),
     '',
@@ -362,17 +359,17 @@ async function main() {
 
   for (const metric of metrics) {
     const value = metric.value === null ? '—' : `${metric.value}${metric.unit}`
-    console.log(`${metric.name.padEnd(28)} ${String(value).padStart(8)}   цель: ${metric.target}`)
+    console.log(`${metric.name.padEnd(28)} ${String(value).padStart(8)}   target: ${metric.target}`)
   }
-  console.log(`\nОтчёт: evaluation/last-run.md`)
+  console.log(`\nReport: evaluation/last-run.md`)
 
   if (failures.length > 0) {
-    console.error(`\nНе достигнуты цели: ${failures.map((item) => item.name).join(', ')}`)
+    console.error(`\nTargets not met: ${failures.map((item) => item.name).join(', ')}`)
     process.exit(1)
   }
 }
 
 main().catch((error) => {
-  console.error('Оценка не выполнена:', error)
+  console.error('Evaluation failed:', error)
   process.exit(1)
 })

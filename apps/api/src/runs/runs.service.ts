@@ -24,9 +24,9 @@ import { randomUUID } from 'node:crypto'
 import type { RequestContext } from '../auth/decorators'
 
 /**
- * Этап, поставленный в очередь заново. Приём и экспорт сюда не входят
- * намеренно: приём означал бы повторное чтение источника, а экспорт
- * повторяется со страницы документа и никогда не автоматически (ТЗ 6.10).
+ * Stage queued again. Ingest and export are intentionally excluded: ingest
+ * would reread the source, while export is retried from the document page and
+ * never automatically (spec 6.10).
  */
 const QUEUE_BY_STEP: Partial<Record<WorkflowStep, string>> = {
   preprocess: QUEUE.PREPROCESS,
@@ -36,7 +36,7 @@ const QUEUE_BY_STEP: Partial<Record<WorkflowStep, string>> = {
   validation: QUEUE.VALIDATE,
 }
 
-/** Журнал выполнения и действия над этапами (ТЗ 5.3). */
+/** Execution history and stage actions (spec 5.3). */
 @Injectable()
 export class RunsService {
   constructor(
@@ -105,9 +105,9 @@ export class RunsService {
   }
 
   /**
-   * Повтор этапа из dead-letter queue (ТЗ 5.3, 6.10). Задача ставится заново
-   * с новым correlation_id: это отдельная попытка, а не продолжение прежней,
-   * и в журнале она должна прослеживаться отдельно.
+   * Retry a stage from the dead-letter queue (spec 5.3, 6.10). Requeue with a
+   * new correlation_id because this is a separate attempt that must be traced
+   * independently.
    */
   async retry(runId: string, user: SessionUser, origin: RequestContext): Promise<RunListItem> {
     const run = await this.findRun(runId)
@@ -115,12 +115,12 @@ export class RunsService {
     if (!queueName) {
       throw new BadRequestException(
         run.step === 'export'
-          ? 'Экспорт повторяется со страницы документа'
-          : `Этап ${run.step} не повторяется`,
+          ? 'Export is retried from the document page'
+          : `Stage ${run.step} cannot be retried`,
       )
     }
     if (run.documentStatus === 'processing') {
-      throw new BadRequestException('Документ уже обрабатывается')
+      throw new BadRequestException('Document is already processing')
     }
 
     const correlationId = origin.correlationId ?? randomUUID()
@@ -130,8 +130,8 @@ export class RunsService {
       .set({ status: 'processing', statusReason: null })
       .where(eq(documents.id, run.documentId))
 
-    // Записи DLQ закрываются: задача снова в работе, и в раскрытии строки
-    // должно быть видно, что повтор уже запрошен.
+    // Resolve DLQ entries because the job is active again; expanded log rows
+    // should show that a retry has already been requested.
     await this.db
       .update(deadLetters)
       .set({ retriedAt: new Date(), retriedBy: user.id })
@@ -169,18 +169,17 @@ export class RunsService {
   }
 
   /**
-   * Перевод документа в ручную обработку (ТЗ 5.3): автоматический путь для
-   * него признан безнадёжным, дальше с ним работает оператор в Review
-   * Workspace. Поля остаются как есть — потерять извлечённое было бы хуже,
-   * чем показать неполное.
+   * Send a document to manual review (spec 5.3) after automatic processing is
+   * deemed unrecoverable. Preserve existing fields for the Review Workspace;
+   * incomplete extraction is better than losing it.
    */
   async toManual(runId: string, user: SessionUser, origin: RequestContext): Promise<RunListItem> {
     const run = await this.findRun(runId)
     if (run.documentStatus === 'exported') {
-      throw new BadRequestException('Выгруженный документ не переводится в ручную обработку')
+      throw new BadRequestException('An exported document cannot be sent to manual review')
     }
 
-    const reason = 'Переведён в ручную обработку оператором'
+    const reason = 'Sent to manual review by operator'
     await this.db
       .update(documents)
       .set({ status: 'needs_review', statusReason: reason, processedAt: new Date() })
@@ -241,7 +240,7 @@ export class RunsService {
       .where(eq(workflowRuns.id, runId))
       .limit(1)
 
-    if (!row) throw new NotFoundException('Запись журнала не найдена')
+    if (!row) throw new NotFoundException('Execution log entry not found')
     return row
   }
 
@@ -265,7 +264,7 @@ export class RunsService {
       .innerJoin(documents, eq(documents.id, workflowRuns.documentId))
       .where(eq(workflowRuns.id, runId))
       .limit(1)
-    if (!row) throw new NotFoundException('Запись журнала не найдена')
+    if (!row) throw new NotFoundException('Execution log entry not found')
 
     const letters = await this.deadLettersFor([runId])
     return {
@@ -278,7 +277,7 @@ export class RunsService {
     }
   }
 
-  /** Последняя запись DLQ по каждому этапу: прежние остаются историей повторов. */
+  /** Latest DLQ entry per stage; older entries remain as retry history. */
   private async deadLettersFor(runIds: string[]): Promise<Map<string, DeadLetterDto>> {
     const result = new Map<string, DeadLetterDto>()
     if (runIds.length === 0) return result

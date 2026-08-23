@@ -5,11 +5,11 @@ import type { AuthenticatedRequest } from '../auth/decorators'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
- * Сквозной идентификатор запроса: связывает записи журнала и — начиная
- * с этапа 3 — шаги обработки документа в WorkflowRun.
+ * End-to-end request ID linking audit entries and, from stage 3 onward,
+ * document processing steps in WorkflowRun.
  *
- * Обычная express-функция, а не Nest-middleware: подключается через app.use
- * и не зависит от синтаксиса маршрутов, который менялся вместе с Express 5.
+ * A plain Express function registered with app.use, independent of route
+ * syntax that changed with Express 5.
  */
 export function correlationMiddleware(
   request: AuthenticatedRequest,
@@ -17,8 +17,8 @@ export function correlationMiddleware(
   next: NextFunction,
 ): void {
   const incoming = request.get('x-correlation-id')
-  // Колонка correlation_id имеет тип uuid, поэтому произвольную строку
-  // из заголовка принять нельзя — иначе вставка в журнал упадёт.
+  // correlation_id is a UUID column, so reject arbitrary header values that
+  // would make audit inserts fail.
   request.correlationId = incoming && UUID_PATTERN.test(incoming) ? incoming : randomUUID()
   response.setHeader('x-correlation-id', request.correlationId)
   next()

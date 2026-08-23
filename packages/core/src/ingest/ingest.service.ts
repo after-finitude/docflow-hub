@@ -20,7 +20,7 @@ export interface IngestInput {
   mimeType: string
   sizeBytes: number
   sourceType: SourceType
-  /** Путь или id файла в источнике: по нему определяются версии (ТЗ 6.9). */
+  /** Source path or file ID used to identify versions (spec 6.9). */
   sourcePath?: string | null
   sourceMessageId?: string | null
   actorType: ActorType
@@ -30,9 +30,8 @@ export interface IngestInput {
   ip?: string | null
   userAgent?: string | null
   /**
-   * Документ, который заменяется этим файлом (ТЗ §10: «возможность заменить
-   * файл»). Задаёт версию явно там, где пути источника нет и вывести
-   * предшественника не из чего.
+   * Document replaced by this file (spec §10). Explicitly identifies the prior
+   * version when no source path exists.
    */
   replaces?: { id: string; versionNumber: number } | null
 }
@@ -43,12 +42,11 @@ export interface IngestResult {
 }
 
 /**
- * Приём файла (ТЗ 6.1): checksum, связь дубликатов, версии по пути источника,
- * запись в хранилище и постановка в pipeline.
+ * File ingest (spec 6.1): checksum, duplicate linkage, source-path versions,
+ * storage write, and pipeline enqueue.
  *
- * Общий код загрузки через интерфейс и синхронизации источника: расхождение
- * этих двух путей означало бы, что дубликаты и версии работают по-разному
- * в зависимости от того, откуда пришёл файл.
+ * UI upload and source sync share this code so duplicates and versions behave
+ * identically regardless of origin.
  */
 @Injectable()
 export class IngestService {
@@ -64,9 +62,8 @@ export class IngestService {
   async ingest(input: IngestInput): Promise<IngestResult> {
     const checksum = createHash('sha256').update(input.buffer).digest('hex')
 
-    // Замена файла задаёт предшественника напрямую; для файлов из источника
-    // он ищется по пути. Совпадение содержимого и там, и там означает, что
-    // ничего не менялось.
+    // Replacement identifies its predecessor directly; source files find it by
+    // path. Matching content means nothing changed in either case.
     const current = input.replaces
       ? { ...input.replaces, checksum: await this.checksumOf(input.replaces.id) }
       : input.sourcePath
@@ -77,14 +74,12 @@ export class IngestService {
 
     const storageKey = originalKey(randomUUID(), input.mimeType)
 
-    // Файл кладётся в хранилище до создания записи: строка документа никогда
-    // не должна указывать на отсутствующий объект. Осиротевший объект при
-    // отказе вставки безвреден и вычищается retention-задачей.
+    // Store the file before inserting its row so a document never references a
+    // missing object. Retention cleans up an orphan if insertion fails.
     await this.storage.put(storageKey, input.buffer, input.mimeType)
 
-    // Дубликат по checksum: документ принимается, но связывается с оригиналом
-    // и повторно не экспортируется (ТЗ §10). Проверка общая для всех
-    // источников — файл, пришедший с Диска, может дублировать загруженный.
+    // Accept checksum duplicates but link them to the original and do not export
+    // again (spec §10). Check across all sources.
     const [duplicateOf] = await this.db
       .select({ id: documents.id })
       .from(documents)
@@ -112,9 +107,8 @@ export class IngestService {
       .returning({ id: documents.id })
 
     if (decision.action === 'version' && current) {
-      // Прежняя версия сохраняется, но перестаёт быть актуальной (ТЗ 6.9).
-      // Обработка, уже запущенная для неё, доводится до конца: она работает
-      // со своей копией файла в хранилище (ТЗ §10).
+      // Preserve the old version as inactive (spec 6.9). Already-started
+      // processing finishes against its own stored copy (spec §10).
       await this.db
         .update(documents)
         .set({ isActive: false, deactivatedAt: new Date() })
@@ -142,8 +136,8 @@ export class IngestService {
       userAgent: input.userAgent ?? undefined,
     })
 
-    // Приём — первый этап журнала выполнения (ТЗ 5.3): он завершён в момент,
-    // когда файл сохранён и документ создан.
+    // Ingest is the first execution-log stage (spec 5.3), complete when storage
+    // and document creation succeed.
     const runId = await startRun(this.db, created.id, 'ingestion', input.correlationId)
     await finishRun(this.db, runId)
 
@@ -161,7 +155,7 @@ export class IngestService {
     })
 
     this.logger.log(
-      `Принят документ ${created.id} (${input.sourceType}), версия ${decision.versionNumber}`,
+      `Ingested document ${created.id} (${input.sourceType}), version ${decision.versionNumber}`,
     )
     return {
       documentId: created.id,
@@ -178,7 +172,7 @@ export class IngestService {
     return row?.checksum ?? ''
   }
 
-  /** Актуальная версия по пути источника: она же основа для сравнения хеша. */
+  /** Active version by source path, also the checksum comparison baseline. */
   private async currentVersion(
     sourceType: SourceType,
     sourcePath: string,

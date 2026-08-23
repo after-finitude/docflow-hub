@@ -34,8 +34,8 @@ import { SchemasModule } from './schemas/schemas.module'
   ],
   controllers: [HealthController, EventsController],
   providers: [
-    // Аутентификация обязательна на всех эндпоинтах, кроме помеченных
-    // @Public (ТЗ 3.1); проверка роли — вторым слоем.
+    // Authentication is required on every endpoint except those marked
+    // @Public (spec 3.1); role checks form the second layer.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

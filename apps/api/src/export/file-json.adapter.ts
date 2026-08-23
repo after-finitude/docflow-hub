@@ -4,8 +4,8 @@ import { Injectable } from '@nestjs/common'
 import { DestinationUnavailableError, type ExportAdapter } from './export-adapter'
 
 /**
- * Выгрузка канонического JSON в объектное хранилище (ТЗ 6.8).
- * Маппинг не применяется: канонический вид и есть содержимое файла.
+ * Export canonical JSON to object storage (spec 6.8). No mapping is applied
+ * because the canonical representation is the file content.
  */
 @Injectable()
 export class FileJsonAdapter implements ExportAdapter {
@@ -14,8 +14,8 @@ export class FileJsonAdapter implements ExportAdapter {
   constructor(private readonly storage: StorageService) {}
 
   async send(canonical: CanonicalDocument, _mapping: unknown, exportKey: string): Promise<string> {
-    // Ключ идемпотентности в имени объекта: повторная отправка того же экспорта
-    // перезаписывает тот же файл, а не плодит копии.
+    // Include the idempotency key in the object name so retries overwrite the
+    // same file instead of creating copies.
     const key = `exports/${sanitize(exportKey)}.json`
     try {
       await this.storage.put(
@@ -26,7 +26,7 @@ export class FileJsonAdapter implements ExportAdapter {
     } catch (error) {
       throw new DestinationUnavailableError(
         'storage_unavailable',
-        `Хранилище недоступно: ${error instanceof Error ? error.message : String(error)}`,
+        `Storage unavailable: ${error instanceof Error ? error.message : String(error)}`,
       )
     }
     return key

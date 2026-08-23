@@ -15,7 +15,7 @@ import {
   type PageText,
 } from './llm-provider'
 
-/** Repair-политика невалидного JSON: до 2 повторов (ТЗ 6.4, 6.10). */
+/** Invalid JSON repair policy: up to two retries (spec 6.4, 6.10). */
 const MAX_REPAIRS = 2
 
 export interface OpenAiCompatibleOptions {
@@ -31,10 +31,9 @@ interface ChatMessage {
 }
 
 /**
- * Любой OpenAI-совместимый chat-completions endpoint: DeepSeek, OpenAI и др.
- * Модель и адрес задаются конфигурацией — смена провайдера не трогает код.
- * Используется response_format json_object: строгие json-схемы поддерживают
- * не все совместимые провайдеры, а zod-валидация с repair покрывает разницу.
+ * Any OpenAI-compatible chat-completions endpoint. Configuration selects the
+ * model and URL without code changes. response_format json_object works across
+ * providers, while Zod validation and repair cover inconsistent strict-schema support.
  */
 @Injectable()
 export class OpenAiCompatibleLlmProvider implements LlmProvider {
@@ -99,7 +98,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
     )
   }
 
-  /** Запрос с валидацией ответа и repair-циклом. */
+  /** Request with response validation and a repair loop. */
   private async complete<T>(messages: ChatMessage[], schema: ZodType<T>): Promise<T> {
     const conversation = [...messages]
     let lastError = ''
@@ -111,7 +110,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
       try {
         parsed = JSON.parse(raw)
       } catch (error) {
-        lastError = `не JSON: ${error instanceof Error ? error.message : String(error)}`
+        lastError = `not JSON: ${error instanceof Error ? error.message : String(error)}`
         conversation.push(
           { role: 'assistant', content: raw },
           {
@@ -136,7 +135,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
         },
       )
       this.logger.warn(
-        `Ответ LLM не прошёл схему (repair ${attempt + 1}/${MAX_REPAIRS}): ${lastError}`,
+        `LLM response failed schema validation (repair ${attempt + 1}/${MAX_REPAIRS}): ${lastError}`,
       )
     }
 
@@ -161,14 +160,14 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
         signal: AbortSignal.timeout(this.options.timeoutMs),
       })
     } catch (error) {
-      // Сеть и таймаут — транзиентные: политика повторов BullMQ (ТЗ 6.10).
+      // Network failures and timeouts are transient; BullMQ retries them (spec 6.10).
       throw error instanceof Error ? error : new Error(String(error))
     }
 
     if (!response.ok) {
       const body = (await response.text()).slice(0, 300)
       const message = `LLM API ${response.status}: ${body}`
-      // 429 и 5xx лечатся повтором; остальные 4xx (ключ, модель) — нет.
+      // Retry 429 and 5xx responses, but not other 4xx errors such as key or model failures.
       if (response.status === 429 || response.status >= 500) throw new Error(message)
       throw new UnrecoverableError(message)
     }
@@ -177,7 +176,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
       choices?: Array<{ message?: { content?: string } }>
     }
     const content = payload.choices?.[0]?.message?.content
-    if (!content) throw new Error('LLM API вернул ответ без содержимого')
+    if (!content) throw new Error('LLM API returned an empty response')
     return content
   }
 }

@@ -13,14 +13,12 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 }
 
 /**
- * Наблюдаемая папка — источник без внешних зависимостей: он проверяется
- * на живом стенде, тогда как Google Drive требует ключа service account.
- * Роль та же, что у mock-провайдеров OCR и LLM: сквозной путь должен быть
- * воспроизводим без учётных данных.
+ * A watched folder is a source without external dependencies, usable on a live
+ * environment while Google Drive requires service-account credentials. Like the
+ * mock OCR and LLM providers, it keeps the end-to-end path reproducible.
  *
- * Курсора у папки нет: файловая система не хранит журнал изменений, поэтому
- * каждый проход отдаёт полный снимок, а новые, изменённые и удалённые файлы
- * вычисляются сравнением с уже принятыми (diffSnapshot).
+ * The filesystem has no change cursor, so every pass returns a full snapshot;
+ * diffSnapshot compares it with accepted files to find additions, changes, and removals.
  */
 export class LocalFolderSource implements SourceProvider {
   readonly name = 'local_folder'
@@ -35,9 +33,9 @@ export class LocalFolderSource implements SourceProvider {
     try {
       entries = await readdir(this.directory, { recursive: true })
     } catch (error) {
-      // Отсутствие папки — конфигурационная ошибка, а не пустой источник:
-      // молчаливый пустой снимок пометил бы все документы удалёнными.
-      throw new Error(`Папка источника ${this.directory} недоступна`, { cause: error })
+      // A missing directory is a configuration error, not an empty source;
+      // treating it as empty would mark every document removed.
+      throw new Error(`Source directory ${this.directory} is unavailable`, { cause: error })
     }
 
     const files: SourceFile[] = []
@@ -49,12 +47,12 @@ export class LocalFolderSource implements SourceProvider {
       const info = await stat(absolute)
       if (!info.isFile()) continue
       if (info.size > UPLOAD_MAX_BYTES) {
-        this.logger.warn(`Файл ${entry} больше лимита ${UPLOAD_MAX_BYTES} Б и пропущен`)
+        this.logger.warn(`File ${entry} exceeds the ${UPLOAD_MAX_BYTES} B limit and was skipped`)
         continue
       }
 
-      // Хеш считается здесь, а не при приёме: без него изменение файла
-      // неотличимо от простого перезаписывания тем же содержимым.
+      // Hash here rather than during ingest so changed content differs from a
+      // rewrite with identical content.
       const buffer = await readFile(absolute)
       files.push({
         sourcePath: entry.split(sep).join('/'),
@@ -70,10 +68,10 @@ export class LocalFolderSource implements SourceProvider {
 
   async download(file: SourceFile): Promise<Buffer> {
     const absolute = join(this.directory, file.sourcePath)
-    // Путь приходит из листинга этой же папки, но проверка дешевле разбора
-    // последствий: `..` в имени вывел бы чтение за пределы источника.
+    // The path came from this directory's listing, but validate it anyway so a
+    // `..` name cannot escape the source.
     if (relative(this.directory, absolute).startsWith('..')) {
-      throw new Error(`Путь ${file.sourcePath} выходит за пределы папки источника`)
+      throw new Error(`Path ${file.sourcePath} escapes the source directory`)
     }
     return readFile(absolute)
   }

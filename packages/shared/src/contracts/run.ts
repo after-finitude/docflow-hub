@@ -6,18 +6,17 @@ import {
   type WorkflowStep,
 } from '../enums'
 
-/** Журнал выполнения этапов, экран Execution Log (ТЗ 5.3). */
+/** Stage execution history for the Execution Log screen (spec 5.3). */
 
 /**
- * Запись из dead-letter queue: задача, исчерпавшая попытки. Полный текст
- * ошибки и стек живут здесь, а не в workflow_runs, — в журнале выполнения
- * хранится код и краткое сообщение.
+ * Dead-letter queue entry for an exhausted job. Full error text and stack live
+ * here; workflow_runs stores only the code and summary.
  */
 export interface DeadLetterDto {
   id: string
   queue: string
   jobId: string | null
-  /** Входные параметры этапа — раскрытие строки в Execution Log. */
+  /** Stage input shown in the expanded Execution Log row. */
   payload: unknown
   errorCode: string
   errorMessage: string
@@ -35,7 +34,7 @@ export interface RunListItem {
   step: WorkflowStep
   state: WorkflowState
   attempts: number
-  /** Длительность этапа; null, пока этап не завершён. */
+  /** Stage duration, or null until completion. */
   durationMs: number | null
   errorCode: string | null
   errorDetail: string | null
@@ -52,7 +51,7 @@ export interface RunListPage {
   pageSize: number
 }
 
-/** Фильтры журнала: только ошибки, диапазон дат, тип этапа (ТЗ 5.3). */
+/** Log filters for errors, date range, and stage type (spec 5.3). */
 export const runListQuerySchema = z.object({
   onlyErrors: z
     .enum(['true', 'false'])

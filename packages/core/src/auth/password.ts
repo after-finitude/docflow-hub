@@ -4,13 +4,12 @@ const PREFIX = 'scrypt'
 const KEY_LENGTH = 64
 const SALT_LENGTH = 16
 
-/** Параметры стоимости. Хранятся в самой строке хэша — см. formatHash. */
+/** Cost parameters stored in the hash string; see formatHash. */
 const DEFAULT_PARAMS = { N: 16_384, r: 8, p: 1 } as const
 
 function derive(password: string, salt: Buffer, params: ScryptOptions): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    // maxmem по умолчанию 32 МБ, а нужно 128 * N * r; для N=16384, r=8 это 16 МБ.
-    // Запас позволяет поднимать N без правки вызова.
+    // Default maxmem is 32 MB; allow headroom above 128 * N * r for future N increases.
     scrypt(password, salt, KEY_LENGTH, { ...params, maxmem: 256 * 1024 * 1024 }, (error, key) =>
       error ? reject(error) : resolve(key),
     )
@@ -18,9 +17,8 @@ function derive(password: string, salt: Buffer, params: ScryptOptions): Promise<
 }
 
 /**
- * Формат хранения: scrypt$N$r$p$<salt base64>$<key base64>.
- * Параметры стоимости внутри строки, поэтому их можно поднять в будущем,
- * не инвалидируя уже сохранённые пароли.
+ * Storage format: scrypt$N$r$p$<salt base64>$<key base64>. Embedded cost
+ * parameters can increase later without invalidating stored passwords.
  */
 export async function hashPassword(plain: string): Promise<string> {
   const { N, r, p } = DEFAULT_PARAMS

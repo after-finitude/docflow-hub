@@ -38,10 +38,10 @@ const EMPTY_FILTERS: Filters = {
   hasBlocking: false,
 }
 
-/** Статусы, при которых документ ещё меняется — для индикатора прогресса. */
+/** Statuses in which a document is still changing, used by the progress indicator. */
 const IN_FLIGHT: DocumentStatus[] = ['received', 'processing']
 
-/** Тон метки статуса. Цвет дублируется словом — он не единственный носитель. */
+/** Status badge tone. Text duplicates the color so color is not the only signal. */
 const STATUS_TONE: Record<DocumentStatus, string> = {
   received: 'chip--neutral',
   processing: 'chip--live',
@@ -77,19 +77,19 @@ export function InboxClient({ initial }: { initial: DocumentListPage }) {
       try {
         const response = await fetch(`/api/documents?${buildQuery(current, page)}`)
         if (!response.ok) {
-          setError('Не удалось обновить список')
+          setError('Could not refresh the list')
           return
         }
         setData((await response.json()) as DocumentListPage)
         setError(null)
       } catch {
-        setError('Сервис недоступен')
+        setError('Service unavailable')
       }
     },
     [buildQuery],
   )
 
-  /** События приходят пачками, поэтому обновление списка склеивается. */
+  /** Events arrive in batches, so list refreshes are debounced. */
   const scheduleReload = useCallback(() => {
     if (pending.current) return
     pending.current = setTimeout(() => {
@@ -107,7 +107,7 @@ export function InboxClient({ initial }: { initial: DocumentListPage }) {
       const event = JSON.parse(message.data as string) as StreamEvent
       if (event.type === 'document') scheduleReload()
     })
-    // Фолбэк на polling с интервалом 5 секунд, как требует ТЗ 5.1.
+    // Fall back to polling every five seconds as required by spec 5.1.
     source.addEventListener('error', () => {
       setLive(false)
       source.close()
@@ -139,7 +139,7 @@ export function InboxClient({ initial }: { initial: DocumentListPage }) {
 
       <div className="flex items-center justify-between gap-4 text-xs">
         <span className="text-muted">
-          Документов: <span className="mono text-ink">{data.total}</span>
+          Documents: <span className="mono text-ink">{data.total}</span>
           {error && <span className="ml-2 text-danger">{error}</span>}
         </span>
         <span className="flex items-center gap-1.5 text-muted">
@@ -147,7 +147,7 @@ export function InboxClient({ initial }: { initial: DocumentListPage }) {
             aria-hidden
             className={`h-1.5 w-1.5 rounded-full ${live ? 'bg-ok' : 'bg-rule-2'}`}
           />
-          {live ? 'Обновления в реальном времени' : 'Обновление опросом'}
+          {live ? 'Live updates' : 'Polling for updates'}
         </span>
       </div>
 
@@ -155,14 +155,14 @@ export function InboxClient({ initial }: { initial: DocumentListPage }) {
         <table className="table min-w-[1040px]">
           <thead>
             <tr>
-              <th className="w-14">Файл</th>
-              <th>Название</th>
-              <th className="w-28">Источник</th>
-              <th className="w-40">Тип</th>
-              <th className="w-56">Статус</th>
-              <th className="w-28">Уверенность</th>
-              <th className="w-32">Проблемы</th>
-              <th className="w-36">Получен</th>
+              <th className="w-14">File</th>
+              <th>Name</th>
+              <th className="w-28">Source</th>
+              <th className="w-40">Type</th>
+              <th className="w-56">Status</th>
+              <th className="w-28">Confidence</th>
+              <th className="w-32">Issues</th>
+              <th className="w-36">Received</th>
               <th className="w-24" />
             </tr>
           </thead>
@@ -170,9 +170,9 @@ export function InboxClient({ initial }: { initial: DocumentListPage }) {
             {data.items.length === 0 && (
               <tr>
                 <td colSpan={9} className="py-16 text-center">
-                  <p className="text-sm">В очереди пусто</p>
+                  <p className="text-sm">The queue is empty</p>
                   <p className="mt-1 text-xs text-muted">
-                    Загрузите файлы областью выше или положите их в папку источника
+                    Upload files above or place them in the source folder
                   </p>
                 </td>
               </tr>
@@ -214,9 +214,9 @@ function Row({ item, onRetry }: { item: DocumentListItem; onRetry: (id: string) 
         </Link>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-2xs text-muted">
           <span className="mono">{formatSize(item.sizeBytes)}</span>
-          {item.versionNumber > 1 && <span className="mono">версия {item.versionNumber}</span>}
-          {item.duplicateOfId && <span className="text-warn">дубликат</span>}
-          {!item.isActive && <span>неактуален</span>}
+          {item.versionNumber > 1 && <span className="mono">version {item.versionNumber}</span>}
+          {item.duplicateOfId && <span className="text-warn">duplicate</span>}
+          {!item.isActive && <span>inactive</span>}
         </div>
       </td>
       <td className="text-ink-2">{SOURCE_TYPE_LABELS[item.sourceType]}</td>
@@ -248,10 +248,10 @@ function Row({ item, onRetry }: { item: DocumentListItem; onRetry: (id: string) 
         ) : (
           <div className="flex flex-wrap gap-1">
             {item.blockingIssues > 0 && (
-              <span className="chip chip--danger">{item.blockingIssues} блок.</span>
+              <span className="chip chip--danger">{item.blockingIssues} blocking</span>
             )}
             {item.warningIssues > 0 && (
-              <span className="chip chip--warn">{item.warningIssues} пред.</span>
+              <span className="chip chip--warn">{item.warningIssues} warnings</span>
             )}
           </div>
         )}
@@ -260,7 +260,7 @@ function Row({ item, onRetry }: { item: DocumentListItem; onRetry: (id: string) 
       <td className="text-right">
         {item.status === 'failed' && (
           <button type="button" onClick={() => onRetry(item.id)} className="btn btn--ghost btn--sm">
-            Повторить
+            Retry
           </button>
         )}
       </td>
@@ -287,7 +287,7 @@ function StatusCell({ item }: { item: DocumentListItem }) {
   )
 }
 
-/** Прогресс по этапам обработки, ТЗ 5.1. */
+/** Processing-stage progress, spec 5.1. */
 function StepProgress({ current }: { current: DocumentListItem['currentStep'] }) {
   const index = current ? PIPELINE_UI_STEPS.indexOf(current) : -1
   return (
@@ -303,8 +303,8 @@ function StepProgress({ current }: { current: DocumentListItem['currentStep'] })
 }
 
 /**
- * Уверенность: число читается, полоса сравнивается. Порог 0.8 отмечен
- * засечкой — без неё «0.63» не говорит, плохо это или нормально.
+ * Confidence: read the number and compare the bar. The 0.8 threshold is
+ * marked because “0.63” alone does not show whether the score is good.
  */
 function ConfidenceBar({ value }: { value: number }) {
   const tone = value < 0.6 ? 'bg-danger' : value < 0.8 ? 'bg-warn' : 'bg-ok'
@@ -334,26 +334,26 @@ function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: F
   return (
     <div className="flex flex-wrap items-end gap-2">
       <Select
-        label="Статус"
+        label="Status"
         value={filters.status}
         onChange={(value) => onChange({ ...filters, status: value as Filters['status'] })}
         options={DOCUMENT_STATUSES.map((s) => [s, DOCUMENT_STATUS_LABELS[s]])}
       />
       <Select
-        label="Тип"
+        label="Type"
         value={filters.type}
         onChange={(value) => onChange({ ...filters, type: value as Filters['type'] })}
         options={DOCUMENT_TYPES.map((t) => [t, DOCUMENT_TYPE_LABELS[t]])}
       />
       <Select
-        label="Источник"
+        label="Source"
         value={filters.source}
         onChange={(value) => onChange({ ...filters, source: value as Filters['source'] })}
         options={SOURCE_TYPES.map((s) => [s, SOURCE_TYPE_LABELS[s]])}
       />
 
       <label className="block">
-        <span className="label mb-1">Получен с</span>
+        <span className="label mb-1">Received from</span>
         <input
           type="date"
           className="field w-36"
@@ -362,7 +362,7 @@ function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: F
         />
       </label>
       <label className="block">
-        <span className="label mb-1">по</span>
+        <span className="label mb-1">to</span>
         <input
           type="date"
           className="field w-36"
@@ -378,7 +378,7 @@ function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: F
           checked={filters.hasBlocking}
           onChange={(event) => onChange({ ...filters, hasBlocking: event.target.checked })}
         />
-        только с блокирующими
+        blocking issues only
       </label>
 
       {dirty && (
@@ -388,7 +388,7 @@ function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: F
             onClick={() => onChange(EMPTY_FILTERS)}
             className="btn btn--ghost btn--sm"
           >
-            Сбросить
+            Reset
           </button>
         </div>
       )}
@@ -411,7 +411,7 @@ function Select({
     <label className="block">
       <span className="label mb-1">{label}</span>
       <select className="field w-44" value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">все</option>
+        <option value="">all</option>
         {options.map(([key, text]) => (
           <option key={key} value={key}>
             {text}
@@ -432,7 +432,7 @@ function Pagination({ data, onPage }: { data: DocumentListPage; onPage: (page: n
         onClick={() => onPage(data.page - 1)}
         className="btn btn--ghost btn--sm"
       >
-        Назад
+        Previous
       </button>
       <span className="mono text-xs text-muted">
         {data.page} / {pages}
@@ -443,16 +443,16 @@ function Pagination({ data, onPage }: { data: DocumentListPage; onPage: (page: n
         onClick={() => onPage(data.page + 1)}
         className="btn btn--ghost btn--sm"
       >
-        Вперёд
+        Next
       </button>
     </div>
   )
 }
 
 function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} Б`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`
-  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 function formatDate(iso: string): string {

@@ -1,10 +1,10 @@
 import sharp from 'sharp'
 
 /**
- * Проверка файла и миниатюра первой страницы (ТЗ 6.1).
+ * File inspection and first-page thumbnail (spec 6.1).
  *
- * Всё, что здесь отбраковывается, — постоянные дефекты файла: повтор их не
- * исправит, и до LLM такой документ не доходит (ТЗ §9, §10).
+ * Every rejection here is a permanent file defect that retries cannot fix;
+ * rejected documents never reach the LLM (spec §9, §10).
  */
 
 export const THUMBNAIL_WIDTH = 240
@@ -12,7 +12,7 @@ export const THUMBNAIL_WIDTH = 240
 export type InspectionResult =
   { ok: true; pageCount: number; thumbnail: Buffer } | { ok: false; code: string; reason: string }
 
-/** Сигнатуры содержимого: заявленный клиентом mime-type проверяется, а не принимается на веру. */
+/** Content signatures verify the client-supplied MIME type instead of trusting it. */
 const MAGIC: Record<string, { bytes: number[]; label: string }> = {
   'application/pdf': { bytes: [0x25, 0x50, 0x44, 0x46], label: 'PDF' },
   'image/jpeg': { bytes: [0xff, 0xd8, 0xff], label: 'JPEG' },
@@ -27,14 +27,14 @@ function matchesMagic(buffer: Buffer, mimeType: string): boolean {
 
 export async function inspect(buffer: Buffer, mimeType: string): Promise<InspectionResult> {
   if (buffer.length === 0) {
-    return { ok: false, code: 'empty_file', reason: 'Файл пуст' }
+    return { ok: false, code: 'empty_file', reason: 'File is empty' }
   }
   if (!matchesMagic(buffer, mimeType)) {
     const expected = MAGIC[mimeType]?.label ?? mimeType
     return {
       ok: false,
       code: 'content_mismatch',
-      reason: `Содержимое файла не является ${expected}: расширение или тип не соответствуют данным`,
+      reason: `File content is not ${expected}; the extension or type does not match the data`,
     }
   }
 
@@ -42,8 +42,8 @@ export async function inspect(buffer: Buffer, mimeType: string): Promise<Inspect
 }
 
 async function inspectPdf(buffer: Buffer): Promise<InspectionResult> {
-  // mupdf — ESM-пакет с top-level await, поэтому только динамический импорт:
-  // require падает с ERR_REQUIRE_ASYNC_MODULE.
+  // mupdf is an ESM package with top-level await, so require fails with
+  // ERR_REQUIRE_ASYNC_MODULE; use a dynamic import.
   const mupdf = await import('mupdf')
 
   let document: ReturnType<typeof mupdf.Document.openDocument>
@@ -53,7 +53,7 @@ async function inspectPdf(buffer: Buffer): Promise<InspectionResult> {
     return {
       ok: false,
       code: 'corrupted_pdf',
-      reason: `PDF повреждён и не может быть прочитан: ${describe(error)}`,
+      reason: `PDF is corrupted and cannot be read: ${describe(error)}`,
     }
   }
 
@@ -61,13 +61,13 @@ async function inspectPdf(buffer: Buffer): Promise<InspectionResult> {
     return {
       ok: false,
       code: 'password_protected',
-      reason: 'PDF защищён паролем. Загрузите файл без защиты',
+      reason: 'PDF is password-protected. Upload an unprotected file',
     }
   }
 
   const pageCount = document.countPages()
   if (pageCount < 1) {
-    return { ok: false, code: 'no_pages', reason: 'В документе нет страниц' }
+    return { ok: false, code: 'no_pages', reason: 'Document has no pages' }
   }
 
   try {
@@ -76,7 +76,7 @@ async function inspectPdf(buffer: Buffer): Promise<InspectionResult> {
     const width = x1 - x0
     const height = y1 - y0
     if (width <= 0 || height <= 0) {
-      return { ok: false, code: 'empty_page', reason: 'Первая страница пуста' }
+      return { ok: false, code: 'empty_page', reason: 'The first page is empty' }
     }
 
     const scale = THUMBNAIL_WIDTH / width
@@ -91,7 +91,7 @@ async function inspectPdf(buffer: Buffer): Promise<InspectionResult> {
     return {
       ok: false,
       code: 'render_failed',
-      reason: `Не удалось отрисовать первую страницу: ${describe(error)}`,
+      reason: `Could not render the first page: ${describe(error)}`,
     }
   }
 }
@@ -99,8 +99,8 @@ async function inspectPdf(buffer: Buffer): Promise<InspectionResult> {
 async function inspectImage(buffer: Buffer): Promise<InspectionResult> {
   try {
     const thumbnail = await sharp(buffer)
-      // rotate() без аргументов применяет ориентацию из EXIF — иначе миниатюра
-      // окажется повёрнутой относительно того, что видит оператор.
+      // rotate() without arguments applies EXIF orientation so the thumbnail
+      // matches what the operator sees.
       .rotate()
       .resize({ width: THUMBNAIL_WIDTH, withoutEnlargement: true })
       .png()
@@ -110,7 +110,7 @@ async function inspectImage(buffer: Buffer): Promise<InspectionResult> {
     return {
       ok: false,
       code: 'corrupted_image',
-      reason: `Изображение повреждено и не может быть прочитано: ${describe(error)}`,
+      reason: `Image is corrupted and cannot be read: ${describe(error)}`,
     }
   }
 }

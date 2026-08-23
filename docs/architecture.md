@@ -1,155 +1,43 @@
-# Архитектура
+# Architecture
 
-Состав компонентов и последовательность обработки документа (ТЗ §16).
-Решения по каждому этапу и их обоснование — в [PLAN.md](../PLAN.md),
-сознательные ограничения — в [known-limitations.md](../known-limitations.md).
+Docflow Hub is an npm-workspaces monorepo with three applications and two shared packages.
 
-## Компоненты
+## Services
 
-```
-                    ┌───────────────┐
-   браузер ────────▶│  web (Next)   │  SSR-страницы, /api/* → rewrite на API
-                    └───────┬───────┘
-                            │ HTTP, session-cookie
-                    ┌───────▼───────┐        ┌──────────────┐
-                    │  api (Nest)   │◀──────▶│  PostgreSQL  │
-                    │  REST + SSE   │        └──────────────┘
-                    └───┬───────┬───┘                ▲
-             очереди    │       │  подписанные ссылки│
-                    ┌───▼───┐   │        ┌───────────┴──┐
-                    │ Redis │   └───────▶│    MinIO     │
-                    │BullMQ │            │ оригиналы,   │
-                    └───┬───┘            │ миниатюры,   │
-                        │                │ выгрузки     │
-                    ┌───▼───────────┐    └──────────────┘
-                    │ worker (Nest) │────────────▲
-                    │  processors   │            │
-                    └───┬───────────┘            │
-                        │ внешние вызовы         │
-              ┌─────────▼─────────┐              │
-              │ OCR / LLM / Drive │              │
-              │ Sheets            │──────────────┘
-              └───────────────────┘
+- `apps/web`: Next.js operator console. Browser API calls use same-origin rewrites so session cookies remain httpOnly and need no CORS policy.
+- `apps/api`: NestJS HTTP API for authentication, documents, review actions, schemas, exports, events, and execution history.
+- `apps/worker`: NestJS standalone BullMQ processors and maintenance jobs.
+- `packages/core`: database, storage, queues, ingest, validation orchestration, and export mappings.
+- `packages/shared`: domain contracts and pure normalization, matching, confidence, validation, routing, and canonical-export logic.
+
+PostgreSQL stores domain state and immutable audit events. Redis carries BullMQ jobs and queue-update pub/sub. MinIO stores originals, thumbnails, rendered pages, and JSON exports.
+
+## Processing flow
+
+```text
+upload or source sync
+  -> ingest
+  -> preprocess
+  -> OCR
+  -> classify
+  -> extract + evidence-to-bbox matching
+  -> validate + route
+  -> operator review when needed
+  -> idempotent export
 ```
 
-| Компонент         | Ответственность                                                            |
-| ----------------- | -------------------------------------------------------------------------- |
-| `apps/web`        | Next.js 16: Inbox, Review Workspace, Execution Log, форма входа             |
-| `apps/api`        | NestJS: REST, SSE, приём файлов, синхронная перевалидация, экспорт          |
-| `apps/worker`     | NestJS без HTTP: процессоры очередей, синхронизация источника, retention    |
-| `packages/core`   | Инфраструктура для api и worker: конфигурация, схема БД, хранилище, очереди |
-| `packages/shared` | Чистые модули и контракты; собирается и в браузерный бандл                  |
+Each stage writes a `workflow_runs` record with correlation ID, attempts, duration, and error summary. Exhausted transient failures also write a dead-letter entry with payload, full error, and stack.
 
-**`packages/shared` не знает ни о Nest, ни о Drizzle, ни о Node.** Он попадает
-в браузерный бандл, поэтому серверные зависимости в нём недопустимы. В нём
-живёт всё, что должно вести себя одинаково в API, воркере и на клиенте:
-перечисления, zod-контракты, нормализация значений, движок валидации,
-сопоставление evidence→bbox, расчёт уверенности, канонический JSON.
+## Security and data integrity
 
-**`packages/core` не импортируется веб-приложением.** Это инфраструктура двух
-backend-процессов; в браузере ей делать нечего.
+- A global JWT guard protects API endpoints except explicit public/optional-auth routes.
+- Role checks separate administrator and operator actions.
+- Login is rate-limited by username and uses constant-time password verification for unknown accounts.
+- The application database role cannot update or delete `audit_events`.
+- Files are validated before OCR/LLM calls and served through guarded endpoints or short-lived signed URLs.
+- Ingest is idempotent by source path and content; checksum duplicates link to the original.
+- Schema and rule versions are stored with decisions for reproducibility.
 
-## Обработка документа
+## Providers
 
-Каждый этап — отдельная очередь BullMQ: параллелизм настраивается там, где
-дорого (OCR, извлечение), не трогая остальные.
-
-```
-приём (ingestion)         IngestService: checksum, дубликаты, версии, файл в MinIO
-   │                      документ создан, статус received
-   ▼
-preprocess                проверка файла, миниатюра, число страниц
-   │                      повреждён/зашифрован → rejected, LLM не вызывается
-   ▼
-ocr                       текст и блоки с координатами постранично
-   │                      mock — текстовый слой PDF через mupdf; google — GCV
-   │                      плохо распознанные страницы → предупреждение
-   │                      об OCR quality, автопроход запрещён
-   ▼
-classify                  тип документа и уверенность; несколько документов
-   │                      в файле → предупреждение, автопроход запрещён
-   ▼
-extract                   поля по активной схеме типа; evidence → bbox
-   │                      значения дословные, нормализация — в коде
-   ▼
-validate                  правила схемы + уникальность invoice_number,
-   │                      пересчёт confidence, маршрутизация
-   ├──────────────▶ approved      нет blocking и все критичные поля выше порога
-   └──────────────▶ needs_review  иначе — оператор в Review Workspace
-                          │
-                          ▼ Approve
-                       export     канонический JSON → файл или Google Sheets
-```
-
-Экспорт выполняется **синхронно в API**, а не через очередь: запрос ждёт
-ответа системы назначения, потому что оператору нужен результат немедленно.
-Очередь `export` зарегистрирована для будущей пакетной выгрузки.
-
-### Правила, общие для всех процессоров
-
-- **Постоянный дефект не бросает исключение.** Повреждённый файл переводит
-  документ в `rejected` и завершается штатно: исключение заставило бы BullMQ
-  трижды перечитывать заведомо битый файл. Бросаются только транзиентные
-  отказы — сеть, хранилище, 5xx провайдера.
-- **Статус `failed` выставляется только при исчерпании попыток**, иначе
-  очередь мигала бы ошибкой на каждой промежуточной попытке.
-- **Каждый `@Processor` разворачивает `PIPELINE_WORKER_OPTIONS`.** BullMQ ищет
-  пользовательскую стратегию backoff в настройках воркера; без этого политика
-  1с/5с/25с молча не работает.
-- **Исчерпавшая попытки задача попадает в `dead_letters`** вместе с входными
-  параметрами, сообщением и стеком — оттуда её повторяет оператор.
-
-## Приём, источники и версии
-
-Загрузка через интерфейс и синхронизация источника идут через один
-`IngestService`. Вторая реализация означала бы, что дубликаты и версии
-работают по-разному в зависимости от того, откуда пришёл файл.
-
-- **Дубликат** определяется по sha256 среди активных документов любого
-  источника: связывается с оригиналом и повторно не экспортируется.
-- **Версия** заводится по паре `(source_type, source_path)`: новый хеш по тому
-  же пути делает прежнюю строку неактуальной (`is_active=false`,
-  `deactivated_at=now()`), но не заменяет её. У загрузок пути источника нет,
-  поэтому версий у них не бывает.
-- **Удаление в источнике** помечает документ неактуальным; физически его
-  удаляет retention-задача.
-- **Замена файла оператором** (ТЗ §10) создаёт следующую версию, а не
-  перезаписывает объект: история решений по прежнему файлу остаётся. Для
-  документов из источника замена запрещена — следующий проход синхронизации
-  вернул бы содержимое источника и правка пропала бы молча. Связь версий
-  хранится в `previous_version_id`: у загруженных вручную файлов пути
-  источника нет, и вывести предшественника больше не из чего.
-
-Источник выбирается конфигурацией так же, как OCR и LLM: `local_folder`
-отдаёт полный снимок (удаления вычисляет `diffSnapshot`), `google_drive`
-работает по курсору changes API. Курсор хранится в таблице `source_cursors`
-и сдвигается только после прохода без отказов.
-
-Периодические задачи — очередь `maintenance`, а не таймер в процессе: при
-нескольких воркерах задача обязана выполниться один раз.
-
-## Хранилище и данные
-
-Все файлы документа лежат под общим префиксом `documents/<objectId>/`, поэтому
-retention удаляет их одним вызовом. Префикс выводится из `storage_key`, а не из
-идентификатора документа: файл пишется в хранилище **до** вставки строки, чтобы
-документ никогда не ссылался на отсутствующий объект. Плата за это — возможные
-объекты без документа; их убирает та же задача по TTL.
-
-**Журнал `audit_events` защищён ролью БД**: у роли приложения нет `UPDATE` и
-`DELETE` на эту таблицу (миграция `0001`). Следствие — в журнал нельзя писать
-то, что впоследствии придётся вычищать.
-
-## Взаимодействие процессов
-
-Статусы меняются в воркере, а SSE раздаёт API — это разные процессы, поэтому
-они общаются через Redis pub/sub (`DocumentEventsService`). Веб-клиент слушает
-`/events/stream`, при обрыве переходит на опрос раз в 5 секунд.
-
-## Сессии
-
-API — единственный арбитр действительности сессии. `apps/web/proxy.ts` делает
-ровно один переход (нет cookie → `/login`); страницы спрашивают о сессии сам
-API. Обратного правила «cookie есть → на inbox» нет намеренно: наличие cookie
-ничего не говорит о её действительности, и два источника правды дают
-бесконечный цикл редиректов на любой протухшей сессии.
+OCR supports deterministic mock and Google Cloud Vision providers. LLM work supports deterministic mock and OpenAI-compatible providers. Export supports canonical JSON and Google Sheets. The secondary source can be disabled, a watched folder, or Google Drive.

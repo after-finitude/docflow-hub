@@ -38,7 +38,7 @@ export class AuthController {
   ) {}
 
   @Public()
-  // Ограничение частоты: без него единственная защита пароля — стоимость scrypt.
+  // Rate limiting prevents scrypt cost from being the password's only protection.
   @UseGuards(LoginThrottlerGuard)
   @Post('login')
   @HttpCode(200)
@@ -51,8 +51,8 @@ export class AuthController {
     await this.auth.recordAttempt(outcome, origin)
 
     if (outcome.status !== 'success') {
-      // Ответ одинаков для несуществующего логина и неверного пароля.
-      throw new UnauthorizedException('Неверный логин или пароль')
+      // Return the same response for an unknown username and a wrong password.
+      throw new UnauthorizedException('Invalid username or password')
     }
 
     const session = await this.auth.issueSession(outcome.user)
@@ -64,8 +64,8 @@ export class AuthController {
   }
 
   /**
-   * Выход обязан работать и с недействительной сессией: иначе пользователь
-   * с протухшим токеном не может ни войти, ни очистить cookie.
+   * Logout must work with an invalid session so a user with an expired token
+   * can still clear the cookie and sign in again.
    */
   @OptionalAuth()
   @Post('logout')
@@ -76,16 +76,15 @@ export class AuthController {
     @Req() request: AuthenticatedRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
-    // Запись в журнал — только если cookie действительно была. Иначе
-    // неаутентифицированные запросы позволяли бы наполнять таблицу,
-    // из которой приложение не может ничего удалить (ТЗ §11).
+    // Audit only when a cookie existed. Otherwise unauthenticated requests could
+    // fill an append-only table that the application cannot purge (spec §11).
     if (request.cookies?.[SESSION_COOKIE_NAME]) {
       await this.auth.recordLogout(user, origin)
     }
     res.clearCookie(SESSION_COOKIE_NAME, this.cookieOptions())
   }
 
-  /** Текущая сессия: используется фронтендом для отрисовки шапки и прав. */
+  /** Current session used by the frontend to render navigation and permissions. */
   @Get('me')
   me(@CurrentUser() user: SessionUser): SessionUser {
     return user

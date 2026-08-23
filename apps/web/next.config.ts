@@ -4,18 +4,18 @@ import { join } from 'node:path'
 const apiUrl = process.env.API_INTERNAL_URL ?? 'http://localhost:3001'
 
 const nextConfig: NextConfig = {
-  // standalone-сборка для docker-образа; корень трассировки — корень монорепо.
+  // Standalone build for the Docker image; trace from the monorepo root.
   output: 'standalone',
   outputFileTracingRoot: join(__dirname, '../../'),
 
-  // Next.js обращается к программному API компилятора, которого у нативного
-  // TypeScript 7 нет; штатный обходной путь — проверка типов через CLI tsc.
+  // Next.js uses a compiler API absent from native TypeScript 7; type-check
+  // with the tsc CLI as the supported workaround.
   experimental: {
     useTypeScriptCli: true,
   },
 
-  // Браузер ходит в API через собственный origin: session-cookie остаётся
-  // httpOnly и SameSite=Lax без CORS и без раскрытия адреса бэкенда.
+  // The browser reaches the API through its own origin, keeping the session
+  // cookie httpOnly and SameSite=Lax without CORS or exposing the backend URL.
   async rewrites() {
     return [{ source: '/api/:path*', destination: `${apiUrl}/:path*` }]
   },

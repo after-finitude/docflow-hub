@@ -49,16 +49,14 @@ import { ExportService } from '../export/export.service'
 import type { UploadedDocument } from './uploaded-document'
 
 /**
- * Ссылка на документ во внешнем запросе. Имя таблицы проставляется явно:
- * внутри sql-шаблона Drizzle печатает колонки без префикса, и `documents.id`
- * превратился бы в голое `"id"`, которое подзапрос разрешает в собственный
- * `id` — условие связи молча становится `document_id = id` и не выполняется
- * никогда. Счётчики проблем и текущий этап при этом просто остаются пустыми,
- * без единой ошибки.
+ * Document reference in an outer query. Qualify the table explicitly: inside
+ * SQL templates Drizzle emits unqualified columns, so `documents.id` would
+ * become `"id"` and resolve to the subquery's own column. The join would silently
+ * become `document_id = id`, leaving issue counts and the current stage empty.
  */
 const documentRef = sql`${sql.identifier('documents')}.${sql.identifier('id')}`
 
-/** Поля, вычисляемые подзапросами: до этапов 4–5 они пустые, но форма ответа уже финальная. */
+/** Fields computed by subqueries; empty before stages 4–5, but the response shape is final. */
 const listColumns = {
   id: documents.id,
   originalFilename: documents.originalFilename,
@@ -123,8 +121,8 @@ export class DocumentsService {
     user: SessionUser,
     origin: RequestContext,
   ): Promise<DocumentListItem> {
-    // Приём общий с синхронизацией источника: checksum, дубликаты и версии
-    // не должны зависеть от того, каким путём файл попал в систему.
+    // Upload and source sync share ingest so checksums, duplicates, and versions
+    // do not depend on how a file entered the system.
     const result = await this.ingest.ingest({
       buffer: file.buffer,
       filename: file.originalname,
@@ -139,15 +137,14 @@ export class DocumentsService {
       userAgent: origin.userAgent,
     })
 
-    // Загрузка через интерфейс не имеет пути источника, поэтому приём всегда
-    // создаёт документ: ветка skipped недостижима.
+    // UI uploads have no source path, so ingest always creates a document and
+    // the skipped branch is unreachable.
     return this.findOne(result.documentId!)
   }
 
   /**
-   * Замена оригинала (ТЗ §10: плохо распознанный скан можно заменить).
-   * Файл не перезаписывается: создаётся следующая версия, прежняя остаётся
-   * неактуальной вместе со всей историей решений по ней.
+   * Original replacement (spec §10). Do not overwrite the file: create a new
+   * version and retain the inactive previous version with its decision history.
    */
   async replaceFile(
     id: string,
@@ -167,23 +164,23 @@ export class DocumentsService {
       .from(documents)
       .where(eq(documents.id, id))
       .limit(1)
-    if (!document) throw new NotFoundException('Документ не найден')
+    if (!document) throw new NotFoundException('Document not found')
 
     if (document.sourceType !== 'upload') {
-      // Иначе следующий проход синхронизации вернул бы содержимое источника
-      // и правка оператора молча пропала бы.
+      // Otherwise the next sync would restore the source contents and silently
+      // discard the operator's replacement.
       throw new BadRequestException(
-        'Документ получен из источника: заменять файл нужно в самом источнике',
+        'This document came from a source; replace the file at the source',
       )
     }
     if (!document.isActive) {
-      throw new BadRequestException('Документ неактуален: заменяется только последняя версия')
+      throw new BadRequestException('Document is inactive; only the latest version can be replaced')
     }
     if (document.status === 'exported') {
-      throw new BadRequestException('Выгруженный документ не заменяется')
+      throw new BadRequestException('An exported document cannot be replaced')
     }
     if (document.status === 'processing') {
-      throw new BadRequestException('Документ ещё обрабатывается')
+      throw new BadRequestException('Document is still processing')
     }
 
     const result = await this.ingest.ingest({
@@ -202,7 +199,7 @@ export class DocumentsService {
     })
 
     if (result.action === 'skipped') {
-      throw new BadRequestException('Загружен тот же файл: заменять нечего')
+      throw new BadRequestException('The same file was uploaded; there is nothing to replace')
     }
     return this.findOne(result.documentId!)
   }
@@ -267,7 +264,7 @@ export class DocumentsService {
       .where(eq(documents.id, id))
       .limit(1)
 
-    if (!row) throw new NotFoundException('Документ не найден')
+    if (!row) throw new NotFoundException('Document not found')
 
     const base = this.toListItem(row)
     const schema =
@@ -285,15 +282,15 @@ export class DocumentsService {
       issues: await this.loadIssues(id),
       thresholds: schema?.thresholds ?? null,
       exports: await this.exports.listForDocument(id),
-      // Approve заблокирован при любой нерешённой blocking-ошибке (ТЗ §9).
+      // Any unresolved blocking issue disables approval (spec §9).
       canApprove: base.status === 'needs_review' && base.blockingIssues === 0,
     }
   }
 
   /**
-   * Правка значения оператором (ТЗ 5.2, §9). Сохраняет before/after в журнал,
-   * синхронно перезапускает валидацию и возвращает документ с обновлённым
-   * списком проблем и доступностью Approve.
+   * Operator value edit (spec 5.2, §9). Store before/after in the audit log,
+   * revalidate synchronously, and return the document with updated issues and
+   * approval availability.
    */
   async updateField(
     id: string,
@@ -307,12 +304,12 @@ export class DocumentsService {
       .from(documents)
       .where(eq(documents.id, id))
       .limit(1)
-    if (!document) throw new NotFoundException('Документ не найден')
+    if (!document) throw new NotFoundException('Document not found')
     if (document.status === 'processing') {
-      throw new BadRequestException('Документ ещё обрабатывается')
+      throw new BadRequestException('Document is still processing')
     }
     if (document.status === 'exported') {
-      throw new BadRequestException('Выгруженный документ не редактируется')
+      throw new BadRequestException('An exported document cannot be edited')
     }
 
     const [field] = await this.db
@@ -320,7 +317,7 @@ export class DocumentsService {
       .from(fields)
       .where(and(eq(fields.documentId, id), eq(fields.name, name)))
       .limit(1)
-    if (!field) throw new NotFoundException(`Поле ${name} не найдено`)
+    if (!field) throw new NotFoundException(`Field ${name} not found`)
 
     const isArray = Array.isArray(value)
     const rawValue = value === null ? null : isArray ? JSON.stringify(value) : value
@@ -347,12 +344,12 @@ export class DocumentsService {
         rawValue,
         normalizedValue,
         isEdited: true,
-        // Значение введено человеком: сигналы извлечения к нему неприменимы,
-        // поэтому они очищаются, а перевалидация оставит уверенность как есть.
+        // Extraction signals do not apply to a human-entered value, so clear
+        // them while revalidation preserves confidence.
         confidenceSignals: null,
         confidence: value === null ? null : 1,
         confidenceReason:
-          value === null ? 'Значение удалено оператором' : 'Значение исправлено оператором',
+          value === null ? 'Value removed by operator' : 'Value corrected by operator',
       })
       .where(eq(fields.id, field.id))
 
@@ -360,29 +357,27 @@ export class DocumentsService {
       correlationId: origin.correlationId,
       actorType: 'user',
       actorId: user.id,
-      // Правка не подтверждает документ за оператора — Approve нажимает он сам.
+      // Editing does not approve on the operator's behalf.
       autoApprove: false,
     })
 
     return this.findOne(id)
   }
 
-  /** Подтверждение оператором (ТЗ 5.2). Проверка blocking выполняется на сервере. */
+  /** Operator approval (spec 5.2). Blocking issues are checked on the server. */
   async approve(id: string, user: SessionUser, origin: RequestContext): Promise<DocumentDetail> {
     const [document] = await this.db
       .select({ id: documents.id, status: documents.status })
       .from(documents)
       .where(eq(documents.id, id))
       .limit(1)
-    if (!document) throw new NotFoundException('Документ не найден')
+    if (!document) throw new NotFoundException('Document not found')
     if (document.status !== 'needs_review') {
-      throw new BadRequestException(
-        `Документ в статусе ${document.status} не требует подтверждения`,
-      )
+      throw new BadRequestException(`A document with status ${document.status} cannot be approved`)
     }
 
-    // Состояние проблем перепроверяется здесь, а не берётся из ответа клиента:
-    // блокировка кнопки в интерфейсе — удобство, а не защита (ТЗ §9).
+    // Recheck issues here instead of trusting the client; disabling a UI button
+    // is convenience, not protection (spec §9).
     const [{ blocking }] = await this.db
       .select({ blocking: sql<number>`count(*)::int` })
       .from(validationIssues)
@@ -395,9 +390,7 @@ export class DocumentsService {
       )
 
     if (blocking > 0) {
-      throw new ConflictException(
-        `Подтверждение невозможно: нерешённых блокирующих ошибок — ${blocking}`,
-      )
+      throw new ConflictException(`Cannot approve: ${blocking} unresolved blocking issue(s)`)
     }
 
     await this.db
@@ -421,7 +414,7 @@ export class DocumentsService {
     return this.findOne(id)
   }
 
-  /** Отклонение с причиной из списка и комментарием (ТЗ 5.2). */
+  /** Reject with a listed reason and comment (spec 5.2). */
   async reject(
     id: string,
     request: RejectRequest,
@@ -433,9 +426,9 @@ export class DocumentsService {
       .from(documents)
       .where(eq(documents.id, id))
       .limit(1)
-    if (!document) throw new NotFoundException('Документ не найден')
+    if (!document) throw new NotFoundException('Document not found')
     if (document.status === 'exported') {
-      throw new BadRequestException('Выгруженный документ не отклоняется')
+      throw new BadRequestException('An exported document cannot be rejected')
     }
 
     const reason = REJECT_REASON_LABELS[request.reason]
@@ -475,7 +468,7 @@ export class DocumentsService {
     })
   }
 
-  /** Смена типа вручную: перезапускает извлечение по новой схеме (ТЗ 6.3, §8). */
+  /** Manual type change: restart extraction with the new schema (spec 6.3, §8). */
   async changeType(
     id: string,
     type: ClassifiableDocumentType,
@@ -488,20 +481,20 @@ export class DocumentsService {
       .where(eq(documents.id, id))
       .limit(1)
 
-    if (!row) throw new NotFoundException('Документ не найден')
-    if (row.status === 'processing') throw new BadRequestException('Документ ещё обрабатывается')
+    if (!row) throw new NotFoundException('Document not found')
+    if (row.status === 'processing') throw new BadRequestException('Document is still processing')
 
     const [{ pagesCount }] = await this.db
       .select({ pagesCount: sql<number>`count(*)::int` })
       .from(pages)
       .where(eq(pages.documentId, id))
     if (!pagesCount) {
-      throw new BadRequestException('Документ ещё не распознан: смена типа недоступна')
+      throw new BadRequestException('Document has not been recognized; type cannot be changed')
     }
 
     await this.db
       .update(documents)
-      // Ручной выбор — достоверность максимальная (ТЗ 6.3).
+      // A manual selection has maximum confidence (spec 6.3).
       .set({ documentType: type, typeConfidence: 1, status: 'processing', statusReason: null })
       .where(eq(documents.id, id))
 
@@ -544,8 +537,8 @@ export class DocumentsService {
       .orderBy(fields.name)
     if (rows.length === 0) return []
 
-    // Метки и обязательность — косметика из активной схемы типа; поля документа
-    // при этом остаются привязанными к версии схемы, по которой извлекались.
+    // Labels and required flags come from the active schema for display, while
+    // document fields remain tied to the schema version used for extraction.
     const schema =
       documentType && documentType !== 'unknown'
         ? await getActiveSchema(this.db, documentType)
@@ -588,14 +581,14 @@ export class DocumentsService {
     }))
   }
 
-  /** Постраничный OCR-результат: текст, блоки с координатами, уверенность (ТЗ 6.2, §8). */
+  /** Per-page OCR result: text, coordinate blocks, and confidence (spec 6.2, §8). */
   async pages(id: string): Promise<DocumentPage[]> {
     const [exists_] = await this.db
       .select({ id: documents.id })
       .from(documents)
       .where(eq(documents.id, id))
       .limit(1)
-    if (!exists_) throw new NotFoundException('Документ не найден')
+    if (!exists_) throw new NotFoundException('Document not found')
 
     const rows = await this.db
       .select({
@@ -613,18 +606,18 @@ export class DocumentsService {
     return rows.map((row) => ({ ...row, blocks: row.blocks ?? [] }))
   }
 
-  /** Исходные данные для рендера страницы просмотрщиком. */
+  /** Source data for rendering a page in the viewer. */
   async fileLocation(id: string): Promise<{ storageKey: string; mimeType: string }> {
     const [row] = await this.db
       .select({ storageKey: documents.storageKey, mimeType: documents.mimeType })
       .from(documents)
       .where(eq(documents.id, id))
       .limit(1)
-    if (!row) throw new NotFoundException('Документ не найден')
+    if (!row) throw new NotFoundException('Document not found')
     return row
   }
 
-  /** Миниатюра отдаётся через API, а не подписанной ссылкой: доступ проверяет guard. */
+  /** Serve thumbnails through the guarded API rather than a signed URL. */
   async thumbnail(id: string): Promise<Readable> {
     const [row] = await this.db
       .select({ key: documents.thumbnailKey })
@@ -632,8 +625,8 @@ export class DocumentsService {
       .where(eq(documents.id, id))
       .limit(1)
 
-    if (!row) throw new NotFoundException('Документ не найден')
-    if (!row.key) throw new NotFoundException('Миниатюра ещё не готова')
+    if (!row) throw new NotFoundException('Document not found')
+    if (!row.key) throw new NotFoundException('Thumbnail is not ready yet')
     return this.storage.getStream(row.key)
   }
 
@@ -644,7 +637,7 @@ export class DocumentsService {
       .where(eq(documents.id, id))
       .limit(1)
 
-    if (!row) throw new NotFoundException('Документ не найден')
+    if (!row) throw new NotFoundException('Document not found')
     return this.storage.signedUrl(row.key)
   }
 
@@ -655,9 +648,9 @@ export class DocumentsService {
       .where(eq(documents.id, id))
       .limit(1)
 
-    if (!row) throw new NotFoundException('Документ не найден')
+    if (!row) throw new NotFoundException('Document not found')
     if (row.status === 'processing') {
-      throw new BadRequestException('Документ уже обрабатывается')
+      throw new BadRequestException('Document is already processing')
     }
 
     await writeAudit(this.db, {

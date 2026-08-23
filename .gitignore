@@ -15,14 +15,11 @@ coverage/
 *.log
 npm-debug.log*
 
-# Локальные тома docker-compose
 .docker-data/
 
-# Секреты интеграций (ТЗ §11 — в репозиторий не попадают)
 secrets/
 *.pem
 *-service-account.json
 
-# Содержимое наблюдаемой папки второго источника (сама папка нужна для монтирования)
 docker/source-inbox/*
 !docker/source-inbox/README.md

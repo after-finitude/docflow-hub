@@ -27,8 +27,8 @@ export function FieldCard({
   const [showRaw, setShowRaw] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // Значение приходит с сервера после каждой перевалидации — местное
-  // состояние подхватывает его, пока поле не редактируется.
+  // The value comes from the server after each revalidation; local state
+  // picks it up while the field is not being edited.
   useEffect(() => setValue(displayValue(field)), [field])
 
   const blocking = issues.filter((issue) => issue.severity === 'blocking')
@@ -55,13 +55,13 @@ export function FieldCard({
         <label className="text-sm font-medium" htmlFor={`field-${field.name}`}>
           {field.label}
           {field.isRequired && (
-            <span className="ml-1 text-danger" title="Обязательное поле">
+            <span className="ml-1 text-danger" title="Required field">
               *
             </span>
           )}
           {field.isCritical && (
             <span className="mono ml-2 text-2xs tracking-[0.06em] text-muted uppercase">
-              критичное
+              critical
             </span>
           )}
         </label>
@@ -75,14 +75,14 @@ export function FieldCard({
           disabled={disabled || saving}
           onChange={(event) => setValue(event.target.value)}
           onBlur={() => dirty && void save()}
-          placeholder="значение отсутствует"
+          placeholder="no value"
           className="field"
         />
         {field.rawValue !== null && field.rawValue !== displayValue(field) && (
           <button
             type="button"
             onClick={() => setShowRaw((current) => !current)}
-            title="Показать значение как в документе"
+            title="Show the value as written in the document"
             className="btn btn--ghost btn--sm"
           >
             raw
@@ -92,11 +92,11 @@ export function FieldCard({
 
       {showRaw && (
         <p className="mt-1 text-2xs text-muted">
-          Как в документе: <span className="mono">{field.rawValue}</span>
+          As written: <span className="mono">{field.rawValue}</span>
         </p>
       )}
 
-      {field.isEdited && <p className="mt-1 text-2xs text-muted">Исправлено оператором</p>}
+      {field.isEdited && <p className="mt-1 text-2xs text-muted">Corrected by operator</p>}
 
       {field.confidenceReason && !field.isEdited && (
         <p className="mt-1 text-2xs text-muted">{field.confidenceReason}</p>
@@ -105,11 +105,11 @@ export function FieldCard({
       <div className="mt-2">
         {field.sourceFound ? (
           <button type="button" onClick={onFocusSource} className="link text-xs">
-            Показать в документе{field.sourcePage ? ` (стр. ${field.sourcePage})` : ''}
+            Show in document{field.sourcePage ? ` (page ${field.sourcePage})` : ''}
           </button>
         ) : (
-          // Ссылки нет и выводится признак — требование ТЗ 5.2.
-          <span className="chip chip--warn">Источник не найден</span>
+          // No source link is available, so show an indicator as required by spec 5.2.
+          <span className="chip chip--warn">Source not found</span>
         )}
       </div>
 
@@ -121,7 +121,7 @@ export function FieldCard({
           {issue.message}
           {issue.expected !== null && issue.actual !== null && (
             <span className="mono block text-2xs text-muted">
-              ожидалось: {issue.expected} · фактически: {issue.actual}
+              expected: {issue.expected} · actual: {issue.actual}
             </span>
           )}
         </p>
@@ -138,10 +138,10 @@ function ConfidenceIndicator({
   threshold: number
 }) {
   if (confidence === null) {
-    return <span className="text-2xs text-rule-2">нет значения</span>
+    return <span className="text-2xs text-rule-2">no value</span>
   }
 
-  // Красный ниже порога, жёлтый пограничный, зелёный выше (ТЗ 5.2).
+  // Red below the threshold, yellow near it, and green above it (spec 5.2).
   const color =
     confidence < threshold
       ? 'bg-danger'
@@ -157,7 +157,7 @@ function ConfidenceIndicator({
           className={`block h-1 rounded-full ${color}`}
           style={{ width: `${Math.round(confidence * 100)}%` }}
         />
-        {/* Засечка порога: число само по себе не говорит, плохо это или нет. */}
+        {/* Threshold marker: the number alone does not show whether the score is good. */}
         <span
           aria-hidden
           className="absolute inset-y-[-2px] w-px bg-rule-2"
@@ -168,7 +168,7 @@ function ConfidenceIndicator({
   )
 }
 
-/** В поле ввода показывается нормализованное значение (ТЗ 5.2). */
+/** The input displays the normalized value (spec 5.2). */
 function displayValue(field: FieldDto): string {
   if (field.normalizedValue === null || field.normalizedValue === undefined) return ''
   if (typeof field.normalizedValue === 'object') return JSON.stringify(field.normalizedValue)

@@ -13,7 +13,7 @@ interface DocumentViewerProps {
   documentId: string
   pageCount: number
   highlights: SourceHighlight[]
-  /** Поле, область которого подсвечена и к которой проскроллено. */
+  /** Field whose source area is highlighted and scrolled into view. */
   activeField: string | null
   onSelectField: (fieldName: string | null) => void
 }
@@ -35,8 +35,8 @@ export function DocumentViewer({
 
   const active = highlights.find((highlight) => highlight.fieldName === activeField)
 
-  // Клик по полю справа переводит просмотрщик на нужную страницу и подводит
-  // область в видимую зону (ТЗ 5.2).
+  // Clicking a field on the right moves the viewer to the relevant page and
+  // scrolls the source area into view (spec 5.2).
   useEffect(() => {
     if (!active) return
     setPage(active.page)
@@ -68,7 +68,7 @@ export function DocumentViewer({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={`/api/documents/${documentId}/pages/${number}/image?width=160`}
-                alt={`Страница ${number}`}
+                alt={`Page ${number}`}
                 className="w-full"
               />
               <span className="mono mt-1 block text-center text-2xs text-muted">{number}</span>
@@ -101,10 +101,10 @@ export function DocumentViewer({
             onClick={() => setRotation((value) => (value + 90) % 360)}
             className="btn btn--ghost btn--sm"
           >
-            Повернуть
+            Rotate
           </button>
           <span className="mono ml-auto text-2xs text-muted">
-            Страница {page} из {pageCount || 1}
+            Page {page} of {pageCount || 1}
           </span>
         </div>
 
@@ -119,12 +119,12 @@ export function DocumentViewer({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`/api/documents/${documentId}/pages/${page}/image?width=${RENDER_WIDTH}`}
-              alt={`Страница ${page}`}
+              alt={`Page ${page}`}
               className="block w-full shadow-sm"
             />
 
-            {/* Координаты нормализованы к 0..1, поэтому оверлеи ложатся
-                процентами и не зависят от масштаба и разрешения рендера. */}
+            {/* Coordinates are normalized to 0..1, so overlays use percentages
+                and do not depend on zoom or render resolution. */}
             {onPage.map((highlight) => {
               const isActive = highlight.fieldName === activeField
               return (

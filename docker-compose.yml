@@ -9,18 +9,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD}
     volumes:
-      # В PostgreSQL 18 образ переехал: PGDATA теперь /var/lib/postgresql/18/docker,
-      # а точка VOLUME — /var/lib/postgresql. Том, подключённый по старому пути
-      # /var/lib/postgresql/data, остался бы пустым, а данные легли бы
-      # в анонимный том и пропадали при каждом down.
       - postgres-data:/var/lib/postgresql
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     ports:
       - '5432:5432'
     healthcheck:
-      # -h 127.0.0.1 обязателен: во время инициализации кластера entrypoint
-      # поднимает временный сервер без TCP, и проба через unix-сокет сообщила бы
-      # о готовности раньше времени — миграции упали бы на отказе соединения.
       test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
       interval: 5s
       timeout: 5s
@@ -57,8 +50,6 @@ services:
       timeout: 5s
       retries: 10
 
-  # Миграции и seed выполняются под ролью-владельцем, отдельным одноразовым
-  # контейнером: приложение стартует только после успешной миграции.
   migrate:
     build:
       context: .
@@ -66,7 +57,6 @@ services:
       args:
         APP: api
     env_file: .env
-    # Тот же образ, что и api, но вместо сервера выполняется deploy схемы.
     command: ['npm', 'run', 'db:deploy', '-w', '@docflow/core']
     depends_on:
       postgres:
@@ -80,9 +70,6 @@ services:
         APP: api
     env_file: .env
     environment:
-      # Порт внутри контейнера зафиксирован и не управляется из .env: иначе
-      # приложение слушало бы один порт, а публикация и healthcheck смотрели
-      # бы в другой.
       API_PORT: 3001
     ports:
       - '${API_HOST_PORT}:3001'
@@ -107,7 +94,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Воркеры pipeline — отдельный контейнер (требование ТЗ, раздел «Стек»).
   worker:
     build:
       context: .
@@ -116,9 +102,6 @@ services:
         APP: worker
     env_file: .env
     volumes:
-      # Наблюдаемая папка второго источника (SOURCE_PROVIDER=local_folder).
-      # Только для чтения: система принимает файлы, но никогда не меняет
-      # содержимое источника.
       - ./docker/source-inbox:/data/source:ro
     depends_on:
       postgres:
@@ -135,13 +118,7 @@ services:
       context: .
       dockerfile: docker/web.Dockerfile
       args:
-        # Адрес API попадает в rewrite на этапе сборки: Next вычисляет rewrites
-        # при next build и вмораживает результат в манифест. Задать его только
-        # через environment недостаточно — браузерные запросы к /api ушли бы
-        # на localhost внутри контейнера web.
         API_INTERNAL_URL: http://api:3001
-    # Без env_file: веб-приложению нужен один адрес, а весь .env отдал бы ему
-    # JWT_SECRET, пароли БД и MinIO без единого сценария использования.
     environment:
       API_INTERNAL_URL: http://api:3001
     ports:

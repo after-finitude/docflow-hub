@@ -13,7 +13,7 @@ import { OcrProcessor } from './ocr.processor'
       useFactory: (env: Env) =>
         env.OCR_PROVIDER === 'google'
           ? new GoogleVisionOcrProvider({
-              // Наличие ключа при OCR_PROVIDER=google проверено в loadEnv.
+              // loadEnv validates the key when OCR_PROVIDER=google.
               keyFile: env.GOOGLE_VISION_KEY_FILE!,
               renderDpi: env.OCR_RENDER_DPI,
               languageHints: env.OCR_LANGUAGE_HINTS.split(',').map((hint) => hint.trim()),

@@ -1,20 +1,20 @@
 import { z } from 'zod'
 import type { ExportStatus } from '../enums'
 
-/** Адаптеры назначения обязательного объёма (ТЗ 6.8). */
+/** Required destination adapters (spec 6.8). */
 export const EXPORT_DESTINATIONS = ['file_json', 'google_sheets'] as const
 export type ExportDestination = (typeof EXPORT_DESTINATIONS)[number]
 
 export const EXPORT_DESTINATION_LABELS: Record<ExportDestination, string> = {
-  file_json: 'JSON-файл',
+  file_json: 'JSON file',
   google_sheets: 'Google Sheets',
 }
 
 export const exportRequestSchema = z.object({
   destination: z.enum(EXPORT_DESTINATIONS).optional(),
   /**
-   * Ключ идемпотентности. По умолчанию выводится из документа и назначения,
-   * поэтому повторный запрос не создаёт второй объект (ТЗ §9).
+   * Idempotency key derived by default from document and destination so a
+   * repeated request does not create another object (spec §9).
    */
   exportKey: z.string().min(1).max(200).optional(),
 })

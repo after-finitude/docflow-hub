@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, type PipeTransform } from '@nestjs/com
 import type { ZodType } from 'zod'
 
 /**
- * Валидация входных данных схемами zod (стек ТЗ), вместо class-validator.
+ * Validate input with Zod schemas (the specified stack) instead of class-validator.
  */
 @Injectable()
 export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
@@ -12,7 +12,7 @@ export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
     const result = this.schema.safeParse(value)
     if (!result.success) {
       throw new BadRequestException({
-        message: 'Некорректные данные запроса',
+        message: 'Invalid request data',
         issues: result.error.issues.map((issue) => ({
           path: issue.path.join('.'),
           message: issue.message,

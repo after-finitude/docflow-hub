@@ -1,7 +1,7 @@
 import type { BoundingBox } from './ocr'
 import type { IssueSeverity, ValueType } from '../enums'
 
-/** Поле документа в ответах API (ТЗ 5.2, §8). */
+/** Document field in API responses (spec 5.2, §8). */
 export interface FieldDto {
   name: string
   label: string
@@ -18,7 +18,7 @@ export interface FieldDto {
   isEdited: boolean
 }
 
-/** Проблема валидации в ответах API (ТЗ 6.6). */
+/** Validation issue in API responses (spec 6.6). */
 export interface IssueDto {
   id: string
   fieldName: string | null

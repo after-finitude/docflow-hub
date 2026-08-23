@@ -3,9 +3,8 @@ import Link from 'next/link'
 import { LogoutButton } from './inbox/logout-button'
 
 /**
- * Верхняя панель рабочих экранов: плоская, с одной волосяной линией снизу.
- * Не «плавающая пилюля» — это инструмент, панель обязана стоять на месте
- * и всегда занимать одну и ту же высоту.
+ * Top bar for work screens: flat, with a single hairline border below.
+ * It is a fixed tool rather than a floating pill and always has the same height.
  */
 export function TopBar({ user, active }: { user: SessionUser; active: 'inbox' | 'runs' }) {
   return (
@@ -20,10 +19,10 @@ export function TopBar({ user, active }: { user: SessionUser; active: 'inbox' | 
 
         <nav className="flex items-center gap-1">
           <TabLink href="/inbox" current={active === 'inbox'}>
-            Очередь
+            Queue
           </TabLink>
           <TabLink href="/runs" current={active === 'runs'}>
-            Журнал
+            Log
           </TabLink>
         </nav>
 
@@ -31,7 +30,7 @@ export function TopBar({ user, active }: { user: SessionUser; active: 'inbox' | 
           <span className="hidden text-xs text-muted sm:inline">
             {user.login}
             <span className="mx-1.5 text-rule-2">·</span>
-            {user.role === 'admin' ? 'администратор' : 'оператор'}
+            {user.role === 'admin' ? 'administrator' : 'operator'}
           </span>
           <LogoutButton />
         </div>
@@ -40,7 +39,7 @@ export function TopBar({ user, active }: { user: SessionUser; active: 'inbox' | 
   )
 }
 
-/** Активный раздел помечен акцентом — это одно из немногих его применений. */
+/** The active section uses the accent color, one of its few uses. */
 function TabLink({
   href,
   current,

@@ -7,13 +7,13 @@ import { AuthService } from './auth.service'
 
 @Module({
   imports: [
-    // global: true — JwtService нужен глобальному JwtAuthGuard.
+    // global: true because the global JwtAuthGuard needs JwtService.
     JwtModule.registerAsync({
       global: true,
       inject: [ENV],
       useFactory: (env: Env) => ({
         secret: env.JWT_SECRET,
-        // Формат вида '8h' валидируется библиотекой ms в рантайме.
+        // The ms library validates values such as '8h' at runtime.
         signOptions: { expiresIn: env.JWT_EXPIRES_IN as JwtSignOptions['expiresIn'] },
       }),
     }),

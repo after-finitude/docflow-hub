@@ -22,7 +22,7 @@ interface Filters {
 
 const EMPTY_FILTERS: Filters = { onlyErrors: false, step: '', from: '', to: '' }
 
-/** Этапы, которые повторяются из журнала: приём и экспорт повторяются иначе. */
+/** Stages retried from the log; ingest and export use different retry paths. */
 const RETRYABLE: WorkflowStep[] = [
   'preprocess',
   'ocr',
@@ -49,13 +49,13 @@ export function RunsClient({ initial }: { initial: RunListPage }) {
     try {
       const response = await fetch(`/api/runs?${params.toString()}`)
       if (!response.ok) {
-        setError('Не удалось загрузить журнал')
+        setError('Could not load the execution log')
         return
       }
       setData((await response.json()) as RunListPage)
       setError(null)
     } catch {
-      setError('Сервис недоступен')
+      setError('Service unavailable')
     }
   }, [])
 
@@ -65,7 +65,7 @@ export function RunsClient({ initial }: { initial: RunListPage }) {
       const response = await fetch(`/api/runs/${run.id}/${action}`, { method: 'POST' })
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { message?: string } | null
-        setError(body?.message ?? 'Действие не выполнено')
+        setError(body?.message ?? 'Action failed')
         return
       }
       setError(null)
@@ -86,7 +86,7 @@ export function RunsClient({ initial }: { initial: RunListPage }) {
 
       <div className="flex items-center justify-between gap-4 text-xs">
         <span className="text-muted">
-          Записей: <span className="mono text-ink">{data.total}</span>
+          Entries: <span className="mono text-ink">{data.total}</span>
           {error && <span className="ml-2 text-danger">{error}</span>}
         </span>
         <button
@@ -94,7 +94,7 @@ export function RunsClient({ initial }: { initial: RunListPage }) {
           onClick={() => void load(filters, data.page)}
           className="link text-xs"
         >
-          обновить
+          refresh
         </button>
       </div>
 
@@ -102,12 +102,12 @@ export function RunsClient({ initial }: { initial: RunListPage }) {
         <table className="table min-w-[1040px]">
           <thead>
             <tr>
-              <th>Документ</th>
-              <th className="w-36">Этап</th>
-              <th className="w-32">Состояние</th>
-              <th className="w-28">Длительность</th>
-              <th className="w-20">Попыток</th>
-              <th className="w-44">Код ошибки</th>
+              <th>Document</th>
+              <th className="w-36">Stage</th>
+              <th className="w-32">State</th>
+              <th className="w-28">Duration</th>
+              <th className="w-20">Attempts</th>
+              <th className="w-44">Error code</th>
               <th className="w-72">correlation_id</th>
               <th className="w-28" />
             </tr>
@@ -116,9 +116,9 @@ export function RunsClient({ initial }: { initial: RunListPage }) {
             {data.items.length === 0 && (
               <tr>
                 <td colSpan={8} className="py-16 text-center">
-                  <p className="text-sm">Записей нет</p>
+                  <p className="text-sm">No entries</p>
                   <p className="mt-1 text-xs text-muted">
-                    Журнал наполняется по мере обработки документов
+                    Entries appear as documents are processed
                   </p>
                 </td>
               </tr>
@@ -198,7 +198,7 @@ function Row({
             aria-expanded={expanded}
             className="btn btn--ghost btn--sm"
           >
-            {expanded ? 'Свернуть' : 'Подробнее'}
+            {expanded ? 'Collapse' : 'Details'}
           </button>
         </td>
       </tr>
@@ -207,7 +207,7 @@ function Row({
         <tr className="bg-paper-2">
           <td colSpan={8} className="space-y-3 p-4">
             <div className="grid gap-4 md:grid-cols-2">
-              <Detail title="Вход этапа">
+              <Detail title="Stage input">
                 <pre className="mono overflow-x-auto text-2xs leading-relaxed">
                   {JSON.stringify(
                     run.deadLetter?.payload ?? { documentId: run.documentId },
@@ -216,14 +216,14 @@ function Row({
                   )}
                 </pre>
               </Detail>
-              <Detail title="Результат">
+              <Detail title="Result">
                 <dl className="space-y-1 text-xs text-ink-2">
-                  <Line label="Начало" value={formatDate(run.startedAt)} />
-                  <Line label="Окончание" value={formatDate(run.finishedAt)} />
-                  <Line label="Очередь" value={run.deadLetter?.queue ?? '—'} />
-                  <Line label="Задача" value={run.deadLetter?.jobId ?? '—'} />
+                  <Line label="Started" value={formatDate(run.startedAt)} />
+                  <Line label="Finished" value={formatDate(run.finishedAt)} />
+                  <Line label="Queue" value={run.deadLetter?.queue ?? '—'} />
+                  <Line label="Job" value={run.deadLetter?.jobId ?? '—'} />
                   <Line
-                    label="Повтор запрошен"
+                    label="Retry requested"
                     value={run.deadLetter?.retriedAt ? formatDate(run.deadLetter.retriedAt) : '—'}
                   />
                 </dl>
@@ -231,13 +231,13 @@ function Row({
             </div>
 
             {run.errorDetail && (
-              <Detail title="Текст ошибки">
+              <Detail title="Error message">
                 <pre className="mono overflow-x-auto text-xs text-danger">{run.errorDetail}</pre>
               </Detail>
             )}
 
             {run.deadLetter?.stack && (
-              <Detail title="Стек">
+              <Detail title="Stack trace">
                 <pre className="mono max-h-64 overflow-auto text-2xs leading-relaxed text-muted">
                   {run.deadLetter.stack}
                 </pre>
@@ -251,12 +251,12 @@ function Row({
                 title={
                   RETRYABLE.includes(run.step)
                     ? undefined
-                    : 'Приём и экспорт повторяются иначе — см. runbook'
+                    : 'Ingest and export use different retry paths; see the runbook'
                 }
                 onClick={() => onAct(run, 'retry')}
                 className="btn btn--primary btn--sm"
               >
-                {busy ? 'Ставим в очередь…' : 'Повторить этап'}
+                {busy ? 'Queueing…' : 'Retry stage'}
               </button>
               <button
                 type="button"
@@ -264,10 +264,10 @@ function Row({
                 onClick={() => onAct(run, 'manual')}
                 className="btn btn--ghost btn--sm"
               >
-                В ручную обработку
+                Send to manual review
               </button>
               <Link href={`/documents/${run.documentId}`} className="btn btn--ghost btn--sm">
-                Открыть документ
+                Open document
               </Link>
             </div>
           </td>
@@ -299,7 +299,7 @@ function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: F
   return (
     <div className="flex flex-wrap items-end gap-2">
       <label className="block">
-        <span className="label mb-1">Этап</span>
+        <span className="label mb-1">Stage</span>
         <select
           className="field w-44"
           value={filters.step}
@@ -307,7 +307,7 @@ function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: F
             onChange({ ...filters, step: event.target.value as Filters['step'] })
           }
         >
-          <option value="">все</option>
+          <option value="">all</option>
           {ALL_WORKFLOW_STEPS.map((step) => (
             <option key={step} value={step}>
               {WORKFLOW_STEP_LABELS[step]}
@@ -317,7 +317,7 @@ function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: F
       </label>
 
       <label className="block">
-        <span className="label mb-1">С</span>
+        <span className="label mb-1">From</span>
         <input
           type="date"
           className="field w-36"
@@ -327,7 +327,7 @@ function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: F
       </label>
 
       <label className="block">
-        <span className="label mb-1">по</span>
+        <span className="label mb-1">to</span>
         <input
           type="date"
           className="field w-36"
@@ -343,7 +343,7 @@ function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: F
           checked={filters.onlyErrors}
           onChange={(event) => onChange({ ...filters, onlyErrors: event.target.checked })}
         />
-        только ошибки
+        errors only
       </label>
 
       <button
@@ -351,7 +351,7 @@ function FilterBar({ filters, onChange }: { filters: Filters; onChange: (next: F
         onClick={() => onChange(EMPTY_FILTERS)}
         className="btn btn--ghost btn--sm"
       >
-        Сбросить
+        Reset
       </button>
     </div>
   )
@@ -367,7 +367,7 @@ function Pagination({ data, onPage }: { data: RunListPage; onPage: (page: number
         onClick={() => onPage(data.page - 1)}
         className="btn btn--ghost btn--sm"
       >
-        Назад
+        Previous
       </button>
       <span className="mono text-xs text-muted">
         {data.page} / {pages}
@@ -378,7 +378,7 @@ function Pagination({ data, onPage }: { data: RunListPage; onPage: (page: number
         onClick={() => onPage(data.page + 1)}
         className="btn btn--ghost btn--sm"
       >
-        Вперёд
+        Next
       </button>
     </div>
   )
@@ -386,8 +386,8 @@ function Pagination({ data, onPage }: { data: RunListPage; onPage: (page: number
 
 function formatDuration(ms: number | null): string {
   if (ms === null) return '—'
-  if (ms < 1000) return `${ms} мс`
-  return `${(ms / 1000).toFixed(1)} с`
+  if (ms < 1000) return `${ms} ms`
+  return `${(ms / 1000).toFixed(1)} s`
 }
 
 function formatDate(iso: string | null): string {

@@ -80,7 +80,7 @@ silently does nothing.
 
 The pipeline is complete through `validate`, which routes the document:
 `approved` when there are no blocking issues **and** every critical field is at
-or above the schema threshold, `needs_review` otherwise (ТЗ 6.7). Export runs
+or above the schema threshold, `needs_review` otherwise (spec 6.7). Export runs
 synchronously in the API (see below), not through the `export` queue — that
 queue stays registered for future batch export and the stage-9 DLQ. Providers
 are config-selected: `OCR_PROVIDER` (`mock` reads the PDF
@@ -138,7 +138,7 @@ in so decisions are reproducible and testable. Rules live in the schema's
 `FieldSpec.required` and is not duplicated as a rule. `ValidationRunnerService`
 (in core, used by both the worker and — from stage 6 — the API on field edits)
 orchestrates: run engine, add the one cross-document check
-(`invoice_number` uniqueness per supplier, the only one ТЗ §9 permits),
+(`invoice_number` uniqueness per supplier, the only one spec §9 permits),
 replace issues, recompute confidence, route, and audit the decision with the
 schema/rule versions.
 
@@ -162,10 +162,10 @@ form *is* the file.
 
 Idempotency keys on `export_key`, defaulting to `<documentId>:<destination>`:
 a repeat request returns the existing succeeded export without sending again
-(ТЗ §9), and retries a failed one with an incremented attempt count. A failing
+(spec §9), and retries a failed one with an incremented attempt count. A failing
 destination never rolls the document back — it stays approved/exported with the
 export row marked `failed`, and retry is manual only (no automatic retries,
-ТЗ 6.10).
+spec 6.10).
 
 ### Review Workspace viewer
 
@@ -251,8 +251,8 @@ record of deviations. Stages 1–2 are implemented. known-limitations.md tracks
 what is deliberately deferred, mocked, or constrained by tooling — check it
 before assuming something is a bug.
 
-The spec (`ТЗ №1 v2`) drives the requirements; code comments reference its
-sections (e.g. "ТЗ 6.1") where behaviour is non-obvious. Keep decisions and
+The spec (`Technical Specification No. 1 v2`) drives the requirements; code comments reference its
+sections (e.g. "spec 6.1") where behaviour is non-obvious. Keep decisions and
 rationale in PLAN.md and known-limitations.md.
 
 ## Commit messages

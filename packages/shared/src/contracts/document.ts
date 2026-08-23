@@ -16,12 +16,12 @@ import type { ExportDto } from './export'
 import type { FieldDto, IssueDto } from './field'
 import type { SchemaThresholds } from './schema'
 
-/** Ограничения приёма файлов, ТЗ 6.1. */
+/** File ingest limits, spec 6.1. */
 export const UPLOAD_MAX_BYTES = 25 * 1024 * 1024
 export const ACCEPTED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const
 export type AcceptedMimeType = (typeof ACCEPTED_MIME_TYPES)[number]
 
-/** Этапы, отображаемые в прогрессе обработки (ТЗ 5.1). */
+/** Stages shown in processing progress (spec 5.1). */
 export const PIPELINE_UI_STEPS: WorkflowStep[] = [
   'preprocess',
   'ocr',
@@ -39,21 +39,21 @@ export interface DocumentListItem {
   documentType: DocumentType | null
   typeConfidence: number | null
   status: DocumentStatus
-  /** Причина отклонения или отказа — показывается оператору как есть. */
+  /** Rejection or failure reason shown verbatim to the operator. */
   statusReason: string | null
-  /** Минимальная уверенность среди критичных полей, ТЗ 5.1. */
+  /** Minimum confidence among critical fields, spec 5.1. */
   minCriticalConfidence: number | null
   blockingIssues: number
   warningIssues: number
   hasThumbnail: boolean
   duplicateOfId: string | null
-  /** Номер версии по пути источника; актуальна последняя (ТЗ 6.9). */
+  /** Version number by source path; the latest is active (spec 6.9). */
   versionNumber: number
-  /** Предыдущая версия того же документа, если она есть. */
+  /** Previous version of the same document, if any. */
   previousVersionId: string | null
-  /** false — вытеснен новой версией или удалён в источнике. */
+  /** false when replaced by a newer version or removed from the source. */
   isActive: boolean
-  /** Последний этап обработки — для индикатора прогресса. */
+  /** Latest processing stage for the progress indicator. */
   currentStep: WorkflowStep | null
   currentStepState: WorkflowState | null
   receivedAt: string
@@ -66,7 +66,7 @@ export interface DocumentListPage {
   pageSize: number
 }
 
-/** Фильтры очереди, ТЗ 5.1. */
+/** Queue filters, spec 5.1. */
 export const documentListQuerySchema = z.object({
   status: z
     .union([z.enum(DOCUMENT_STATUSES), z.array(z.enum(DOCUMENT_STATUSES))])
@@ -97,16 +97,16 @@ export interface DocumentDetail extends DocumentListItem {
   sourcePath: string | null
   processedAt: string | null
   pageCount: number | null
-  /** Извлечённые поля (ТЗ §8: документ с полями и проблемами). */
+  /** Extracted fields (spec §8: document with fields and issues). */
   fields: FieldDto[]
   issues: IssueDto[]
-  /** Пороги активной схемы: по ним UI красит и сортирует поля (ТЗ 5.2). */
+  /** Active-schema thresholds used by the UI to color and sort fields (spec 5.2). */
   thresholds: SchemaThresholds | null
-  /** Выгрузки документа: статус и возможность повтора (ТЗ 6.8). */
+  /** Document exports with status and retry availability (spec 6.8). */
   exports: ExportDto[]
   /**
-   * Доступность Approve. Обновляется в ответе на правку поля, чтобы кнопка
-   * не требовала отдельного запроса (ТЗ 5.2).
+   * Approval availability, updated after field edits so the button needs no
+   * separate request (spec 5.2).
    */
   canApprove: boolean
 }
@@ -122,8 +122,8 @@ export interface SignedFileLink {
 }
 
 /**
- * Событие живого обновления очереди (ТЗ 5.1: SSE, при недоступности — polling).
- * Публикуется воркером в Redis, раздаётся API через SSE.
+ * Live queue update event (spec 5.1: SSE with polling fallback), published by
+ * workers through Redis and served by the API.
  */
 export interface DocumentEvent {
   type: 'document'
@@ -142,44 +142,44 @@ export interface HeartbeatEvent {
 export type StreamEvent = DocumentEvent | HeartbeatEvent
 
 export const WORKFLOW_STEP_LABELS: Record<WorkflowStep, string> = {
-  ingestion: 'Приём',
-  preprocess: 'Подготовка',
+  ingestion: 'Ingest',
+  preprocess: 'Preparation',
   ocr: 'OCR',
-  classification: 'Классификация',
-  extraction: 'Извлечение',
-  validation: 'Проверка',
-  export: 'Экспорт',
+  classification: 'Classification',
+  extraction: 'Extraction',
+  validation: 'Validation',
+  export: 'Export',
 }
 
 export const DOCUMENT_STATUS_LABELS: Record<DocumentStatus, string> = {
-  received: 'Получен',
-  processing: 'Обработка',
-  needs_review: 'На проверке',
-  approved: 'Подтверждён',
-  exported: 'Выгружен',
-  failed: 'Ошибка',
-  rejected: 'Отклонён',
+  received: 'Received',
+  processing: 'Processing',
+  needs_review: 'Needs review',
+  approved: 'Approved',
+  exported: 'Exported',
+  failed: 'Failed',
+  rejected: 'Rejected',
 }
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
-  invoice: 'Инвойс',
-  bank_statement: 'Банковская выписка',
-  tax_letter: 'Налоговое письмо',
-  contract: 'Договор',
-  unknown: 'Не определён',
+  invoice: 'Invoice',
+  bank_statement: 'Bank statement',
+  tax_letter: 'Tax letter',
+  contract: 'Contract',
+  unknown: 'Unknown',
 }
 
 export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
-  upload: 'Загрузка',
-  email: 'Почта',
-  drive: 'Диск',
+  upload: 'Upload',
+  email: 'Email',
+  drive: 'Drive',
 }
 
 export const WORKFLOW_STATE_LABELS: Record<WorkflowState, string> = {
-  pending: 'ожидает',
-  running: 'выполняется',
-  succeeded: 'выполнен',
-  failed: 'ошибка',
+  pending: 'pending',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
 }
 
 export const ALL_WORKFLOW_STEPS = WORKFLOW_STEPS

@@ -32,9 +32,9 @@ export interface ClassifyJob {
 const MULTI_DOCUMENT_RULE = 'multi_document_suspected'
 
 /**
- * Классификация по OCR-тексту первых двух страниц (ТЗ 6.3). Порог — из
- * активной схемы предсказанного типа; ниже порога документ получает unknown
- * и уходит на ручной выбор типа.
+ * Classify from OCR text on the first two pages (spec 6.3). Use the predicted
+ * type's active-schema threshold; below it, mark the document unknown and send
+ * it for manual type selection.
  */
 @Processor(QUEUE.CLASSIFY, { ...PIPELINE_WORKER_OPTIONS })
 export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
@@ -63,7 +63,7 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
       .where(eq(documents.id, documentId))
       .limit(1)
     if (!document) {
-      this.logger.warn(`Документ ${documentId} не найден, задача пропущена`)
+      this.logger.warn(`Document ${documentId} not found; skipping job`)
       return
     }
 
@@ -82,14 +82,14 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
       const hasText = pagesText.some((row) => row.text.trim().length > 0)
 
       if (!hasText) {
-        // Без текста классифицировать нечего — ручной выбор типа.
+        // Without text there is nothing to classify; require manual type selection.
         await this.db
           .update(documents)
           .set({
             documentType: 'unknown',
             typeConfidence: 0,
             status: 'needs_review',
-            statusReason: 'Текст не распознан: тип нужно выбрать вручную',
+            statusReason: 'No text was recognized; select the type manually',
             processedAt: new Date(),
           })
           .where(eq(documents.id, documentId))
@@ -101,7 +101,7 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
       const result = await this.llm.classify({ pagesText })
 
       if (this.llm.external) {
-        // ТЗ §11: фиксируется, какие страницы отправлены внешнему провайдеру.
+        // Spec §11: record which pages were sent to an external provider.
         await writeAudit(this.db, {
           correlationId,
           actorType: 'system',
@@ -117,7 +117,7 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
         })
       }
 
-      // Порог настраивается отдельно для каждого типа (ТЗ 6.3).
+      // The threshold is configured separately for each type (spec 6.3).
       let resolvedType: typeof result.document_type | 'unknown' = 'unknown'
       if (result.document_type) {
         const schema = await getActiveSchema(this.db, result.document_type)
@@ -136,36 +136,34 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
       await finishRun(this.db, runId)
 
       if (resolvedType === 'unknown') {
-        // Unknown не извлекается и не экспортируется — ручной выбор типа.
+        // Unknown documents are not extracted or exported; select the type manually.
         await this.db
           .update(documents)
           .set({
             status: 'needs_review',
-            statusReason: 'Тип документа не определён: выберите вручную',
+            statusReason: 'Document type is unknown; select it manually',
             processedAt: new Date(),
           })
           .where(eq(documents.id, documentId))
         await this.publish(documentId, 'needs_review', 'succeeded')
-        this.logger.log(
-          `Документ ${documentId}: тип не определён (confidence ${result.confidence})`,
-        )
+        this.logger.log(`Document ${documentId}: type unknown (confidence ${result.confidence})`)
         return
       }
 
       await this.extractQueue.add('extract', { documentId, correlationId })
       await this.publish(documentId, 'processing', 'succeeded')
-      this.logger.log(`Документ ${documentId}: тип ${resolvedType} (${result.confidence})`)
+      this.logger.log(`Document ${documentId}: type ${resolvedType} (${result.confidence})`)
     } catch (error) {
       if (error instanceof LlmInvalidResponseError) {
-        // Ручная обработка без потери исходных данных (ТЗ 6.4): OCR-страницы
-        // сохранены, оператор может выбрать тип и перезапустить.
+        // Manual review without data loss (spec 6.4): OCR pages remain available
+        // so an operator can select a type and restart processing.
         await failRun(this.db, runId, 'llm_invalid_response', error.message)
         await this.db
           .update(documents)
           .set({
             documentType: 'unknown',
             status: 'needs_review',
-            statusReason: 'Не удалось классифицировать автоматически: выберите тип вручную',
+            statusReason: 'Automatic classification failed; select the type manually',
             processedAt: new Date(),
           })
           .where(eq(documents.id, documentId))
@@ -177,7 +175,7 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
     }
   }
 
-  /** Warning о нескольких документах в одном файле (ТЗ 6.3): без дублей при повторных прогонах. */
+  /** Warn about multiple documents in one file (spec 6.3), without duplicate issues on reruns. */
   private async syncMultiDocumentWarning(documentId: string, suspected: boolean): Promise<void> {
     await this.db
       .delete(validationIssues)
@@ -194,8 +192,7 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
         fieldName: null,
         ruleId: MULTI_DOCUMENT_RULE,
         severity: 'warning',
-        message:
-          'Файл похож на несколько документов в одном: проверьте и при необходимости разделите вручную',
+        message: 'The file may contain multiple documents; review and split it manually if needed',
         expected: null,
         actual: null,
       })
@@ -215,13 +212,13 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
     const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
     if (!unrecoverable && attemptsLeft > 0) {
       this.logger.warn(
-        `Документ ${documentId}: классификация не удалась, осталось попыток ${attemptsLeft}`,
+        `Document ${documentId}: classification failed; ${attemptsLeft} attempt(s) left`,
       )
       return
     }
 
-    // Сама задача больше не повторится: она уходит в dead-letter queue,
-    // откуда её повторяет оператор из Execution Log (ТЗ 6.10).
+    // The job will not retry automatically; it moves to the dead-letter queue
+    // for an operator to retry from the Execution Log (spec 6.10).
     await recordDeadLetter(this.db, {
       documentId,
       runId,
@@ -234,13 +231,13 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
       attempts: job.attemptsMade + 1,
     })
 
-    const reason = 'Не удалось классифицировать документ. Обработку можно повторить вручную'
+    const reason = 'Document classification failed. Processing can be retried manually'
     await this.db
       .update(documents)
       .set({ status: 'failed', statusReason: reason })
       .where(eq(documents.id, documentId))
     await this.publish(documentId, 'failed', 'failed')
-    this.logger.error(`Документ ${documentId}: классификация — ${detail}`)
+    this.logger.error(`Document ${documentId}: classification — ${detail}`)
   }
 
   private async publish(

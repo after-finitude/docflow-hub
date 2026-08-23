@@ -4,26 +4,26 @@ import { NO_SOURCE_CONFIDENCE_CAP } from '../constants'
 import { scoreConfidence } from './score'
 
 describe('scoreConfidence', () => {
-  it('без источника уверенность ограничена потолком 0.6 (ТЗ §9)', () => {
+  it('caps confidence at 0.6 without a source (spec §9)', () => {
     const score = scoreConfidence({ extraction: 1, ocr: null, sourceFound: false })
     assert.ok(score.confidence <= NO_SOURCE_CONFIDENCE_CAP)
-    assert.ok(score.reasons.some((reason) => reason.includes('не найден')))
+    assert.ok(score.reasons.some((reason) => reason.includes('not found')))
   })
 
-  it('чистый скан с найденным источником даёт высокую уверенность', () => {
+  it('gives high confidence for a clean scan with a source', () => {
     const score = scoreConfidence({ extraction: 0.9, ocr: 0.98, sourceFound: true })
     assert.ok(score.confidence > 0.85)
     assert.equal(score.reasons.length, 0)
   })
 
-  it('низкий OCR снижает уверенность и объясняет причину', () => {
+  it('reduces confidence for poor OCR and explains why', () => {
     const clean = scoreConfidence({ extraction: 0.9, ocr: 0.95, sourceFound: true })
     const noisy = scoreConfidence({ extraction: 0.9, ocr: 0.4, sourceFound: true })
     assert.ok(noisy.confidence < clean.confidence)
-    assert.ok(noisy.reasons.some((reason) => reason.includes('качество распознавания')))
+    assert.ok(noisy.reasons.some((reason) => reason.includes('OCR quality')))
   })
 
-  it('несовпадение страницы снижает уверенность (ТЗ 6.5 п.4)', () => {
+  it('reduces confidence for a page mismatch (spec 6.5.4)', () => {
     const same = scoreConfidence({ extraction: 0.9, ocr: 0.9, sourceFound: true })
     const other = scoreConfidence({
       extraction: 0.9,
@@ -32,10 +32,10 @@ describe('scoreConfidence', () => {
       pageMismatch: true,
     })
     assert.ok(other.confidence < same.confidence)
-    assert.ok(other.reasons.some((reason) => reason.includes('странице')))
+    assert.ok(other.reasons.some((reason) => reason.includes('page')))
   })
 
-  it('провал валидации снижает уверенность', () => {
+  it('reduces confidence after validation failure', () => {
     const ok = scoreConfidence({ extraction: 0.9, ocr: 0.9, sourceFound: true })
     const failed = scoreConfidence({
       extraction: 0.9,

@@ -9,7 +9,7 @@ import type { ImageAnnotatorClient, protos } from '@google-cloud/vision'
 type AnnotateResponse = protos.google.cloud.vision.v1.IAnnotateImageResponse
 type VisionBlock = protos.google.cloud.vision.v1.IBlock
 
-/** Коды gRPC, при которых повтор осмыслен (сеть, лимиты, 5xx). */
+/** Retryable gRPC codes for network, quota, and 5xx failures. */
 const TRANSIENT_GRPC_CODES = new Set([2, 4, 8, 13, 14]) // UNKNOWN, DEADLINE_EXCEEDED, RESOURCE_EXHAUSTED, INTERNAL, UNAVAILABLE
 
 export interface GoogleVisionOptions {
@@ -19,9 +19,9 @@ export interface GoogleVisionOptions {
 }
 
 /**
- * Google Cloud Vision (ТЗ, стек). Страницы PDF растеризуются и отправляются
- * по одной: единый путь для PDF и изображений, без обязательного GCS.
- * Пустые страницы провайдеру не отправляются (ТЗ 6.2).
+ * Google Cloud Vision, as specified. Rasterize and send PDF pages individually
+ * through the same path as images, without requiring GCS. Do not send blank
+ * pages to the provider (spec 6.2).
  */
 @Injectable()
 export class GoogleVisionOcrProvider implements OcrProvider {
@@ -60,7 +60,7 @@ export class GoogleVisionOcrProvider implements OcrProvider {
       throw this.classify(error)
     }
 
-    // API может вернуть ошибку в теле ответа вместо исключения.
+    // The API may return an error in the response body instead of throwing.
     if (response.error?.message) {
       throw this.classify(
         Object.assign(new Error(response.error.message), { code: response.error.code }),
@@ -116,9 +116,9 @@ export class GoogleVisionOcrProvider implements OcrProvider {
   }
 
   /**
-   * Транзиентные ошибки пробрасываются как есть — политика повторов BullMQ
-   * их отработает. Остальные (неверный ключ, выключенный API) повторами не
-   * лечатся: UnrecoverableError останавливает попытки сразу.
+   * Pass transient errors through for BullMQ retries. Other failures, such as
+   * a bad key or disabled API, cannot be fixed by retries, so UnrecoverableError
+   * stops attempts immediately.
    */
   private classify(error: unknown): Error {
     const code = (error as { code?: number }).code
@@ -126,7 +126,7 @@ export class GoogleVisionOcrProvider implements OcrProvider {
     if (code !== undefined && TRANSIENT_GRPC_CODES.has(code)) {
       return error instanceof Error ? error : new Error(message)
     }
-    this.logger.error(`Постоянная ошибка Vision API (код ${code}): ${message}`)
+    this.logger.error(`Permanent Vision API error (code ${code}): ${message}`)
     return new UnrecoverableError(`Vision API: ${message}`)
   }
 

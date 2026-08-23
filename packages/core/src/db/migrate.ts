@@ -5,21 +5,21 @@ import { Pool } from 'pg'
 import { loadEnv } from '../config/env'
 
 /**
- * Миграции выполняются под ролью-владельцем: роль приложения намеренно
- * не имеет прав на DDL (ТЗ §11).
+ * Run migrations as the owner role; the application role intentionally lacks
+ * DDL permissions (spec §11).
  */
 async function main(): Promise<void> {
   const env = loadEnv()
   const pool = new Pool({ connectionString: env.MIGRATION_DATABASE_URL })
   try {
     await migrate(drizzle(pool), { migrationsFolder: join(__dirname, '../../drizzle') })
-    console.log('Миграции применены')
+    console.log('Migrations applied')
   } finally {
     await pool.end()
   }
 }
 
 main().catch((error: unknown) => {
-  console.error('Миграции не применены:', error)
+  console.error('Migration failed:', error)
   process.exit(1)
 })

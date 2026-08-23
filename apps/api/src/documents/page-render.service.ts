@@ -2,15 +2,13 @@ import { StorageService } from '@docflow/core'
 import { Injectable, NotFoundException } from '@nestjs/common'
 
 /**
- * Рендер страницы документа в PNG для просмотрщика (ТЗ 5.2).
+ * Render a document page as PNG for the viewer (spec 5.2).
  *
- * Отклонение от ТЗ: страницы рисует mupdf на сервере, а не pdfjs-dist
- * в браузере. Причина техническая — координаты областей-источников
- * нормализованы к размерам страницы, которые сообщил mupdf на этапе OCR.
- * Рендер тем же движком гарантирует, что оверлеи лягут ровно; у другого
- * движка возможны расхождения в трактовке CropBox/MediaBox. Побочно исчезает
- * настройка worker'а pdfjs в сборке Next.js. Один и тот же путь работает
- * и для PDF, и для сканов: mupdf открывает изображение как документ.
+ * Spec deviation: mupdf renders pages on the server instead of pdfjs-dist in
+ * the browser. Source coordinates are normalized to page sizes reported by
+ * mupdf during OCR, so using the same engine aligns overlays and avoids
+ * CropBox/MediaBox differences. It also removes pdfjs worker configuration;
+ * mupdf handles both PDFs and image scans through the same path.
  */
 @Injectable()
 export class PageRenderService {
@@ -27,13 +25,13 @@ export class PageRenderService {
 
     const document = mupdf.Document.openDocument(buffer, mimeType)
     if (pageNumber < 1 || pageNumber > document.countPages()) {
-      throw new NotFoundException(`Страница ${pageNumber} не найдена`)
+      throw new NotFoundException(`Page ${pageNumber} not found`)
     }
 
     const page = document.loadPage(pageNumber - 1)
     const [x0, , x1] = page.getBounds()
     const width = x1 - x0
-    if (width <= 0) throw new NotFoundException('Страница пуста')
+    if (width <= 0) throw new NotFoundException('Page is empty')
 
     const scale = targetWidth / width
     const pixmap = page.toPixmap(

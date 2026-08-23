@@ -1,12 +1,11 @@
 /**
- * Доменные перечисления. Единственный источник правды: значения совпадают
- * с pg-энумами в схеме БД (packages/core/src/db/schema.ts).
+ * Domain enums, kept in sync with PostgreSQL enums in packages/core/src/db/schema.ts.
  */
 
 export const USER_ROLES = ['operator', 'admin'] as const
 export type UserRole = (typeof USER_ROLES)[number]
 
-/** Статусы документа, ТЗ 5.1. */
+/** Document statuses, spec 5.1. */
 export const DOCUMENT_STATUSES = [
   'received',
   'processing',
@@ -18,7 +17,7 @@ export const DOCUMENT_STATUSES = [
 ] as const
 export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number]
 
-/** Четыре типа документов обязательного объёма + Unknown, ТЗ 6.3. */
+/** Four required document types plus Unknown, spec 6.3. */
 export const DOCUMENT_TYPES = [
   'invoice',
   'bank_statement',
@@ -28,7 +27,7 @@ export const DOCUMENT_TYPES = [
 ] as const
 export type DocumentType = (typeof DOCUMENT_TYPES)[number]
 
-/** Типы, которые может назначить классификация; unknown — только фолбэк. */
+/** Types classification can assign; unknown is fallback only. */
 export const CLASSIFIABLE_DOCUMENT_TYPES = [
   'invoice',
   'bank_statement',
@@ -40,7 +39,7 @@ export type ClassifiableDocumentType = (typeof CLASSIFIABLE_DOCUMENT_TYPES)[numb
 export const SOURCE_TYPES = ['upload', 'email', 'drive'] as const
 export type SourceType = (typeof SOURCE_TYPES)[number]
 
-/** Типы полей схемы документа, ТЗ 6.4. */
+/** Document-schema field types, spec 6.4. */
 export const VALUE_TYPES = [
   'string',
   'number',
@@ -52,11 +51,11 @@ export const VALUE_TYPES = [
 ] as const
 export type ValueType = (typeof VALUE_TYPES)[number]
 
-/** Уровни серьёзности проверок, ТЗ 6.6. */
+/** Validation severity levels, spec 6.6. */
 export const ISSUE_SEVERITIES = ['info', 'warning', 'blocking'] as const
 export type IssueSeverity = (typeof ISSUE_SEVERITIES)[number]
 
-/** Этапы обработки, ТЗ 5.3. */
+/** Processing stages, spec 5.3. */
 export const WORKFLOW_STEPS = [
   'ingestion',
   'preprocess',

@@ -1,75 +1,75 @@
-# Отчёт оценки качества
+# Quality Evaluation Report
 
-Дата прогона: 2026-08-09T13:08:38.568Z
-Набор: 43 документов, из них размеченных: 15
-Провайдеры: OCR — `mock`, LLM — `mock`
-Версия схем: 1 (seed), правил: 13
+Run date: 2026-08-23T07:01:51.632Z
+Dataset: 43 documents, 15 labeled
+Providers: OCR — `mock`, LLM — `mock`
+Schema version: 1 (seed), rules: 13
 
-## Метрики (ТЗ §12)
+## Metrics (spec §12)
 
-| Метрика | Значение | Цель |
+| Metric | Value | Target |
 | --- | --- | --- |
 | Classification accuracy | 97.6% | ≥ 95% |
 | Critical field exact match | 100% | ≥ 90% |
 | Field coverage | 100% | ≥ 98% |
-| Source coverage | 100% | публикуется как есть |
-| Straight-through rate | 95.2% | публикуется как есть |
-| False auto-approval | 0 | 0 на размеченном наборе |
-| Median review time | не измеряется здесь | требует телеметрии оператора |
+| Source coverage | 100% | reported as-is |
+| Straight-through rate | 95.2% | reported as-is |
+| False auto-approval | 0 | 0 on the labeled dataset |
+| Median review time | not measured here | requires operator telemetry |
 
-## Негативные сценарии
+## Negative scenarios
 
-- Повреждённые файлы: отклонено 1 из 1
-- Несколько документов в одном файле: предупреждений 1
+- Corrupted files: rejected 1 of 1
+- Multiple documents in one file: 1 warning(s)
 
-## Как читать этот отчёт
+## How to read this report
 
-Прогон выполнен на **mock-провайдерах**. Mock-LLM знает формат меток демо-набора, поэтому высокие значения извлечения означают исправность конвейера — сопоставления evidence → bbox, нормализации, валидации и маршрутизации, — но НЕ качество языковой модели. Оценка качества модели требует прогона с `LLM_PROVIDER=openai_compatible` и реальным ключом.
+This run used **mock providers**. The mock LLM knows the demo label format, so high extraction scores validate the evidence matcher, normalization, validation, and routing pipeline, NOT language-model quality. Measure the model with `LLM_PROVIDER=openai_compatible` and real credentials.
 
-## Документы
+## Documents
 
-| Файл | Тип | Итог | Критичные поля |
+| File | Type | Outcome | Critical fields |
 | --- | --- | --- | --- |
-| invoice-001.pdf | invoice | автоматически | совпали |
-| invoice-002.pdf | invoice | автоматически | совпали |
-| invoice-003.pdf | invoice | автоматически | совпали |
-| invoice-004.pdf | invoice | автоматически | совпали |
-| invoice-005.pdf | invoice | автоматически | совпали |
-| invoice-006.pdf | invoice | автоматически | совпали |
-| invoice-007.pdf | invoice | автоматически | совпали |
-| invoice-008.pdf | invoice | автоматически | совпали |
-| invoice-009.pdf | invoice | автоматически | совпали |
-| invoice-010.pdf | invoice | автоматически | совпали |
-| invoice-011.pdf | invoice | автоматически | совпали |
-| invoice-012.pdf | invoice | автоматически | совпали |
-| bank_statement-001.pdf | bank_statement | автоматически | совпали |
-| bank_statement-002.pdf | bank_statement | автоматически | совпали |
-| bank_statement-003.pdf | bank_statement | автоматически | совпали |
-| bank_statement-004.pdf | bank_statement | автоматически | совпали |
-| bank_statement-005.pdf | bank_statement | автоматически | совпали |
-| bank_statement-006.pdf | bank_statement | автоматически | совпали |
-| bank_statement-007.pdf | bank_statement | автоматически | совпали |
-| bank_statement-008.pdf | bank_statement | автоматически | совпали |
-| bank_statement-009.pdf | bank_statement | автоматически | совпали |
-| tax_letter-001.pdf | tax_letter | автоматически | совпали |
-| tax_letter-002.pdf | tax_letter | автоматически | совпали |
-| tax_letter-003.pdf | tax_letter | автоматически | совпали |
-| tax_letter-004.pdf | tax_letter | автоматически | совпали |
-| tax_letter-005.pdf | tax_letter | автоматически | совпали |
-| tax_letter-006.pdf | tax_letter | автоматически | совпали |
-| tax_letter-007.pdf | tax_letter | автоматически | совпали |
-| tax_letter-008.pdf | tax_letter | автоматически | совпали |
-| tax_letter-009.pdf | tax_letter | автоматически | совпали |
-| contract-001.pdf | contract | автоматически | совпали |
-| contract-002.pdf | contract | автоматически | совпали |
-| contract-003.pdf | contract | автоматически | совпали |
-| contract-004.pdf | contract | автоматически | совпали |
-| contract-005.pdf | contract | автоматически | совпали |
-| contract-006.pdf | contract | автоматически | совпали |
-| contract-007.pdf | contract | автоматически | совпали |
-| contract-008.pdf | contract | автоматически | совпали |
-| contract-009.pdf | contract | автоматически | совпали |
-| scan-low-quality.jpg | unknown | на проверку | — |
-| duplicate-invoice.pdf | invoice | автоматически | совпали |
-| corrupted.pdf | — | отклонён | — |
-| multi-document.pdf | invoice | на проверку | совпали |
+| invoice-001.pdf | invoice | automatic | matched |
+| invoice-002.pdf | invoice | automatic | matched |
+| invoice-003.pdf | invoice | automatic | matched |
+| invoice-004.pdf | invoice | automatic | matched |
+| invoice-005.pdf | invoice | automatic | matched |
+| invoice-006.pdf | invoice | automatic | matched |
+| invoice-007.pdf | invoice | automatic | matched |
+| invoice-008.pdf | invoice | automatic | matched |
+| invoice-009.pdf | invoice | automatic | matched |
+| invoice-010.pdf | invoice | automatic | matched |
+| invoice-011.pdf | invoice | automatic | matched |
+| invoice-012.pdf | invoice | automatic | matched |
+| bank_statement-001.pdf | bank_statement | automatic | matched |
+| bank_statement-002.pdf | bank_statement | automatic | matched |
+| bank_statement-003.pdf | bank_statement | automatic | matched |
+| bank_statement-004.pdf | bank_statement | automatic | matched |
+| bank_statement-005.pdf | bank_statement | automatic | matched |
+| bank_statement-006.pdf | bank_statement | automatic | matched |
+| bank_statement-007.pdf | bank_statement | automatic | matched |
+| bank_statement-008.pdf | bank_statement | automatic | matched |
+| bank_statement-009.pdf | bank_statement | automatic | matched |
+| tax_letter-001.pdf | tax_letter | automatic | matched |
+| tax_letter-002.pdf | tax_letter | automatic | matched |
+| tax_letter-003.pdf | tax_letter | automatic | matched |
+| tax_letter-004.pdf | tax_letter | automatic | matched |
+| tax_letter-005.pdf | tax_letter | automatic | matched |
+| tax_letter-006.pdf | tax_letter | automatic | matched |
+| tax_letter-007.pdf | tax_letter | automatic | matched |
+| tax_letter-008.pdf | tax_letter | automatic | matched |
+| tax_letter-009.pdf | tax_letter | automatic | matched |
+| contract-001.pdf | contract | automatic | matched |
+| contract-002.pdf | contract | automatic | matched |
+| contract-003.pdf | contract | automatic | matched |
+| contract-004.pdf | contract | automatic | matched |
+| contract-005.pdf | contract | automatic | matched |
+| contract-006.pdf | contract | automatic | matched |
+| contract-007.pdf | contract | automatic | matched |
+| contract-008.pdf | contract | automatic | matched |
+| contract-009.pdf | contract | automatic | matched |
+| scan-low-quality.jpg | unknown | review | — |
+| duplicate-invoice.pdf | invoice | automatic | matched |
+| corrupted.pdf | — | rejected | — |
+| multi-document.pdf | invoice | review | matched |

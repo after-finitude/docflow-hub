@@ -15,12 +15,11 @@ interface StructuredBlock {
 }
 
 /**
- * Детерминированный OCR без внешних вызовов: текстовый слой PDF через mupdf.
+ * Deterministic OCR without external calls, using the PDF text layer through mupdf.
  *
- * Для сгенерированных демо-документов (HTML → PDF, этап 8) текстовый слой
- * полон, поэтому mock даёт настоящие блоки с настоящими координатами — на них
- * же тестируется evidence→bbox (этап 4). Для изображений текстового слоя нет:
- * возвращается пустая страница с реальными размерами.
+ * Generated demo documents have a complete text layer, so the mock returns real
+ * blocks and coordinates used to test evidence→bbox. Images have no text layer,
+ * so return an empty page with actual dimensions.
  */
 @Injectable()
 export class MockOcrProvider implements OcrProvider {
@@ -32,7 +31,7 @@ export class MockOcrProvider implements OcrProvider {
   async recognize(buffer: Buffer, mimeType: string): Promise<OcrResult> {
     if (mimeType !== 'application/pdf') {
       const meta = await sharp(buffer).rotate().metadata()
-      this.logger.warn('Mock-OCR не распознаёт изображения: возвращена пустая страница')
+      this.logger.warn('Mock OCR does not recognize images; returning an empty page')
       return {
         pages: [
           {
@@ -62,9 +61,8 @@ export class MockOcrProvider implements OcrProvider {
         blocks: StructuredBlock[]
       }
 
-      // Блок mupdf может накрывать несколько строк; для сопоставления
-      // evidence → bbox нужна построчная гранулярность, поэтому блоками
-      // становятся строки.
+      // A mupdf block may span lines; evidence → bbox needs line granularity,
+      // so treat each line as a block.
       const blocks: OcrBlock[] = structured.blocks
         .filter((block) => block.type === 'text')
         .flatMap((block) => block.lines)
@@ -77,7 +75,7 @@ export class MockOcrProvider implements OcrProvider {
             width: line.bbox.w / width,
             height: line.bbox.h / height,
           },
-          // Текстовый слой PDF — не распознавание: текст известен точно.
+          // A PDF text layer is not recognition; its text is exact.
           confidence: 1,
         }))
 

@@ -1,41 +1,37 @@
 /**
- * Чистая часть синхронизации источника (ТЗ 6.1, 6.9): сопоставление того,
- * что лежит в источнике, с тем, что уже принято. Сетевые вызовы и запросы
- * к БД остаются в провайдере и сервисе, поэтому решения здесь тестируемы
- * без источника и без базы.
+ * Pure source-sync comparison (spec 6.1, 6.9). Providers and services retain
+ * network and database work so these decisions can be tested in isolation.
  */
 
-/** Файл в источнике. `sourcePath` — устойчивый идентификатор: путь или file id. */
+/** Source file; `sourcePath` is a stable path or file ID. */
 export interface SourceFile {
   sourcePath: string
   name: string
   mimeType: string
   sizeBytes: number
   /**
-   * Хеш содержимого по данным источника. Именно он отличает изменённый файл
-   * от неизменного: время модификации меняется и при перезаписи тем же
-   * содержимым, и тогда синхронизация плодила бы версии на пустом месте.
+   * Source content hash distinguishes changes from identical rewrites, whose
+   * modification time would otherwise create unnecessary versions.
    */
   contentHash: string
 }
 
-/** Уже принятый файл источника: последняя активная версия. */
+/** Already ingested source file: latest active version. */
 export interface KnownSourceFile {
   sourcePath: string
   checksum: string
 }
 
 export interface SourceDiff {
-  /** Новые и изменённые файлы — их нужно скачать и принять. */
+  /** New and changed files to download and ingest. */
   upserted: SourceFile[]
-  /** Пути, исчезнувшие из источника: документы помечаются неактивными. */
+  /** Paths removed from the source whose documents become inactive. */
   deletedPaths: string[]
 }
 
 /**
- * Разница между полным снимком источника и принятыми файлами.
- * Используется источниками без курсора (локальная папка): удаление
- * определяется только отсутствием файла в снимке.
+ * Difference between a full source snapshot and ingested files, used by
+ * cursorless sources where absence is the only deletion signal.
  */
 export function diffSnapshot(snapshot: SourceFile[], known: KnownSourceFile[]): SourceDiff {
   const knownByPath = new Map(known.map((file) => [file.sourcePath, file.checksum]))
@@ -59,9 +55,8 @@ export type IngestDecision =
   | { action: 'version'; versionNumber: number }
 
 /**
- * Решение по файлу источника (ТЗ 6.9): новый content hash по тому же пути
- * создаёт новую версию, прежняя сохраняется и перестаёт быть актуальной.
- * Совпадение хеша — не событие: файл в источнике не менялся.
+ * Source-file decision (spec 6.9): a new content hash at the same path creates
+ * a version and deactivates the previous one; a matching hash is unchanged.
  */
 export function decideIngest(
   current: { checksum: string; versionNumber: number } | null,

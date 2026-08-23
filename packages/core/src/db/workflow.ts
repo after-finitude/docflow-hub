@@ -4,8 +4,7 @@ import type { Database } from './db.module'
 import { workflowRuns } from './schema'
 
 /**
- * Журнал выполнения этапов (ТЗ 5.3). Ведётся с этапа 2, чтобы к моменту
- * появления экрана Execution Log история уже накапливалась.
+ * Stage execution log (spec 5.3), recorded from stage 2 onward.
  */
 
 export async function startRun(
@@ -21,7 +20,7 @@ export async function startRun(
     .limit(1)
 
   if (existing) {
-    // Повтор этапа не создаёт вторую запись: счётчик попыток растёт в той же.
+    // A stage retry increments the same entry rather than creating another one.
     await db
       .update(workflowRuns)
       .set({

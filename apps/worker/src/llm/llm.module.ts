@@ -13,7 +13,7 @@ import { OpenAiCompatibleLlmProvider } from './openai-compatible-llm.provider'
       useFactory: (env: Env) =>
         env.LLM_PROVIDER === 'openai_compatible'
           ? new OpenAiCompatibleLlmProvider({
-              // Полнота настроек при openai_compatible проверена в loadEnv.
+              // loadEnv validates all required openai_compatible settings.
               baseUrl: env.LLM_BASE_URL!,
               apiKey: env.LLM_API_KEY!,
               model: env.LLM_MODEL!,

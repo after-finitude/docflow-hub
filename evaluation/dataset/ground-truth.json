@@ -44,7 +44,7 @@
       "file": "invoice-004.pdf",
       "expectedType": "invoice",
       "criticalFields": {
-        "supplier_name": "ООО «Вектор»",
+        "supplier_name": "Vector LLC",
         "invoice_number": "INV-2026-1003",
         "invoice_date": "2026-07-05",
         "currency": "GBP",
@@ -83,7 +83,7 @@
       "file": "invoice-007.pdf",
       "expectedType": "invoice",
       "criticalFields": {
-        "supplier_name": "ООО «Мегастрой»",
+        "supplier_name": "Megabuild LLC",
         "invoice_number": "INV-2026-1006",
         "invoice_date": "2026-06-14",
         "currency": "USD",
@@ -135,7 +135,7 @@
       "file": "invoice-011.pdf",
       "expectedType": "invoice",
       "criticalFields": {
-        "supplier_name": "ООО «Вектор»",
+        "supplier_name": "Vector LLC",
         "invoice_number": "INV-2026-1010",
         "invoice_date": "2026-06-11",
         "currency": "USD",
@@ -148,7 +148,7 @@
       "file": "invoice-012.pdf",
       "expectedType": "invoice",
       "criticalFields": {
-        "supplier_name": "ООО «Мегастрой»",
+        "supplier_name": "Megabuild LLC",
         "invoice_number": "INV-2026-1011",
         "invoice_date": "2026-06-02",
         "currency": "GBP",
@@ -226,7 +226,7 @@
       "file": "bank_statement-006.pdf",
       "expectedType": "bank_statement",
       "criticalFields": {
-        "bank_name": "ПАО «Первый Банк»",
+        "bank_name": "First Bank PLC",
         "account_number": "DE1867509744",
         "period_start": "2026-06-04",
         "period_end": "2026-07-04",
@@ -252,7 +252,7 @@
       "file": "bank_statement-008.pdf",
       "expectedType": "bank_statement",
       "criticalFields": {
-        "bank_name": "ПАО «Первый Банк»",
+        "bank_name": "First Bank PLC",
         "account_number": "DE1937565038",
         "period_start": "2026-06-16",
         "period_end": "2026-07-16",
@@ -289,7 +289,7 @@
       "file": "tax_letter-002.pdf",
       "expectedType": "tax_letter",
       "criticalFields": {
-        "authority_name": "ИФНС № 12 по г. Москве",
+        "authority_name": "City Revenue Service",
         "letter_number": "TX-0501",
         "letter_date": "2026-06-13",
         "taxpayer_name": "Wayne Enterprises"
@@ -322,7 +322,7 @@
       "file": "tax_letter-005.pdf",
       "expectedType": "tax_letter",
       "criticalFields": {
-        "authority_name": "ИФНС № 12 по г. Москве",
+        "authority_name": "City Revenue Service",
         "letter_number": "TX-0504",
         "letter_date": "2026-06-17",
         "taxpayer_name": "Soylent Corp"
@@ -336,7 +336,7 @@
         "authority_name": "Federal Tax Office",
         "letter_number": "TX-0505",
         "letter_date": "2026-06-21",
-        "taxpayer_name": "ООО «Мегастрой»"
+        "taxpayer_name": "Megabuild LLC"
       },
       "eval": false
     },
@@ -379,7 +379,7 @@
       "criticalFields": {
         "contract_number": "CT-0300",
         "contract_date": "2026-06-22",
-        "party_a": "ООО «Мегастрой»",
+        "party_a": "Megabuild LLC",
         "party_b": "Umbrella SA"
       },
       "eval": false
@@ -391,7 +391,7 @@
         "contract_number": "CT-0301",
         "contract_date": "2026-06-17",
         "party_a": "Globex Ltd",
-        "party_b": "ООО «Мегастрой»"
+        "party_b": "Megabuild LLC"
       },
       "eval": false
     },
@@ -402,7 +402,7 @@
         "contract_number": "CT-0302",
         "contract_date": "2026-06-10",
         "party_a": "Globex Ltd",
-        "party_b": "ООО «Мегастрой»"
+        "party_b": "Megabuild LLC"
       },
       "eval": false
     },
@@ -446,7 +446,7 @@
         "contract_number": "CT-0306",
         "contract_date": "2026-06-08",
         "party_a": "Stark Industries",
-        "party_b": "ООО «Мегастрой»"
+        "party_b": "Megabuild LLC"
       },
       "eval": false
     },
@@ -456,8 +456,8 @@
       "criticalFields": {
         "contract_number": "CT-0307",
         "contract_date": "2026-06-22",
-        "party_a": "ООО «Вектор»",
-        "party_b": "ООО «Мегастрой»"
+        "party_a": "Vector LLC",
+        "party_b": "Megabuild LLC"
       },
       "eval": false
     },
@@ -467,7 +467,7 @@
       "criticalFields": {
         "contract_number": "CT-0308",
         "contract_date": "2026-06-28",
-        "party_a": "ООО «Вектор»",
+        "party_a": "Vector LLC",
         "party_b": "Soylent Corp"
       },
       "eval": false
@@ -484,7 +484,7 @@
         "grand_total": 2391.03
       },
       "eval": false,
-      "note": "Скан низкого качества: поворот, шум, снижение контраста, рукописная пометка"
+      "note": "Poor scan: rotation, noise, reduced contrast, and handwritten note"
     },
     {
       "file": "duplicate-invoice.pdf",
@@ -498,14 +498,14 @@
         "grand_total": 3739.36
       },
       "eval": false,
-      "note": "Дубликат invoice-001.pdf по checksum"
+      "note": "Checksum duplicate of invoice-001.pdf"
     },
     {
       "file": "corrupted.pdf",
       "expectedType": null,
       "criticalFields": {},
       "eval": false,
-      "note": "Повреждённый файл: ожидается отклонение до вызова LLM"
+      "note": "Corrupted file expected to be rejected before an LLM call"
     },
     {
       "file": "multi-document.pdf",
@@ -519,7 +519,7 @@
         "grand_total": 844.75
       },
       "eval": false,
-      "note": "Два документа в одном файле: ожидается предупреждение"
+      "note": "Two documents in one file; warning expected"
     }
   ]
 }

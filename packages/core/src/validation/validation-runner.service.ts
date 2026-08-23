@@ -22,13 +22,12 @@ import { getActiveSchema } from '../db/schemas'
 
 export interface ValidationRunOptions {
   correlationId?: string
-  /** Кто инициировал перевалидацию: система (pipeline) или оператор (правка поля). */
+  /** Revalidation initiator: system pipeline or operator field edit. */
   actorId?: string
   actorType?: 'system' | 'user'
   /**
-   * Разрешать автоматический перевод в approved. Истина для pipeline (ТЗ 6.7),
-   * ложь при правке поля оператором: исправив последнюю ошибку, оператор не
-   * должен обнаружить документ уже подтверждённым — Approve нажимает он сам.
+   * Allow automatic approval. True for the pipeline (spec 6.7), false for an
+   * operator edit so fixing the last issue does not approve without a click.
    */
   autoApprove?: boolean
 }
@@ -40,10 +39,10 @@ export interface ValidationOutcome {
 }
 
 /**
- * Прогон валидации, пересчёт уверенности и маршрутизация (ТЗ 6.6, 6.7).
+ * Validation, confidence recalculation, and routing (spec 6.6, 6.7).
  *
- * Живёт в core, потому что вызывается из двух процессов: воркером после
- * извлечения и API синхронно при правке поля оператором.
+ * Lives in core because both the post-extraction worker and synchronous API
+ * field edits call it.
  */
 @Injectable()
 export class ValidationRunnerService {
@@ -65,10 +64,10 @@ export class ValidationRunnerService {
       .where(eq(documents.id, documentId))
       .limit(1)
 
-    if (!document) throw new Error(`Документ ${documentId} не найден`)
+    if (!document) throw new Error(`Document ${documentId} not found`)
 
     if (!document.documentType || document.documentType === 'unknown') {
-      // Тип не определён — валидировать нечего, нужен ручной выбор типа.
+      // No known type means nothing can be validated; require manual selection.
       return {
         status: 'needs_review',
         decision: {
@@ -76,14 +75,14 @@ export class ValidationRunnerService {
           blockingCount: 0,
           warningCount: 0,
           lowConfidenceFields: [],
-          reasons: ['Тип документа не определён'],
+          reasons: ['Document type is unknown'],
         },
         issues: [],
       }
     }
 
     const schema = await getActiveSchema(this.db, document.documentType)
-    if (!schema) throw new Error(`Нет активной схемы для типа ${document.documentType}`)
+    if (!schema) throw new Error(`No active schema for type ${document.documentType}`)
 
     const fieldRows = await this.db.select().from(fields).where(eq(fields.documentId, documentId))
     const specs = new Map(schema.fields.map((spec) => [spec.name, spec]))
@@ -112,8 +111,7 @@ export class ValidationRunnerService {
     await this.replaceIssues(documentId, issues)
     const confidenceByField = await this.recomputeConfidence(fieldRows, issues)
 
-    // Чужие проблемы (например, предупреждение классификации о нескольких
-    // документах в одном файле) тоже влияют на маршрутизацию.
+    // External issues, such as suspected multiple documents, also affect routing.
     const externalIssues = await this.db
       .select({ ruleId: validationIssues.ruleId, severity: validationIssues.severity })
       .from(validationIssues)
@@ -149,12 +147,12 @@ export class ValidationRunnerService {
       schema.thresholds,
     )
 
-    // Документ проходит автоматически только при отсутствии blocking и всех
-    // критичных полях выше порога (ТЗ 6.7).
+    // Automatic approval requires no blocking issues and every critical field
+    // above its threshold (spec 6.7).
     const autoApprove = options.autoApprove ?? true
     const status = decision.auto && autoApprove ? 'approved' : 'needs_review'
 
-    // Экспортированный документ не откатывается назад перевалидацией.
+    // Revalidation never moves an exported document backward.
     if (document.status !== 'exported') {
       await this.db
         .update(documents)
@@ -166,7 +164,7 @@ export class ValidationRunnerService {
         .where(eq(documents.id, documentId))
     }
 
-    // Решение фиксируется вместе с версией схемы и правил — воспроизводимо (ТЗ 6.7).
+    // Record the decision with schema and rule versions for reproducibility (spec 6.7).
     await writeAudit(this.db, {
       correlationId: options.correlationId,
       actorType: options.actorType ?? 'system',
@@ -190,14 +188,14 @@ export class ValidationRunnerService {
     })
 
     this.logger.log(
-      `Документ ${documentId}: ${status} (blocking ${decision.blockingCount}, warning ${decision.warningCount})`,
+      `Document ${documentId}: ${status} (blocking ${decision.blockingCount}, warning ${decision.warningCount})`,
     )
     return { status, decision, issues }
   }
 
   /**
-   * Единственная разрешённая cross-document проверка: уникальность
-   * invoice_number в рамках поставщика (ТЗ §9, исключение).
+   * The only allowed cross-document check: invoice_number uniqueness per supplier
+   * (spec §9 exception).
    */
   private async checkInvoiceNumberUniqueness(
     documentId: string,
@@ -229,7 +227,7 @@ export class ValidationRunnerService {
           ne(documents.id, documentId),
           eq(documents.isActive, true),
           ne(documents.status, 'rejected'),
-          // normalized_value — jsonb; #>> '{}' достаёт скалярное значение как текст.
+          // normalized_value is jsonb; #>> '{}' extracts its scalar as text.
           sql`${numberField.normalizedValue} #>> '{}' = ${number}`,
           sql`${supplierField.normalizedValue} #>> '{}' = ${supplier}`,
         ),
@@ -242,13 +240,13 @@ export class ValidationRunnerService {
       ruleId: INVOICE_NUMBER_UNIQUE_RULE,
       fieldName: 'invoice_number',
       severity: 'blocking',
-      message: `Инвойс с номером ${number} от поставщика «${supplier}» уже есть в системе: ${duplicate.filename}`,
-      expected: 'уникальный номер в рамках поставщика',
+      message: `Invoice ${number} from supplier “${supplier}” already exists: ${duplicate.filename}`,
+      expected: 'a unique number for this supplier',
       actual: number,
     }
   }
 
-  /** Проблемы движка заменяются целиком; чужие (например, от классификации) не трогаются. */
+  /** Replace engine issues completely while preserving external issues. */
   private async replaceIssues(documentId: string, issues: ValidationIssueResult[]): Promise<void> {
     await this.db
       .delete(validationIssues)
@@ -275,8 +273,8 @@ export class ValidationRunnerService {
   }
 
   /**
-   * Пересчёт уверенности с учётом результата валидации (ТЗ 6.7). Считается
-   * из сохранённых сигналов, поэтому повторный прогон даёт тот же результат.
+   * Recalculate confidence from validation results (spec 6.7) and stored signals
+   * so reruns produce the same value.
    */
   private async recomputeConfidence(
     fieldRows: Array<{
@@ -297,8 +295,8 @@ export class ValidationRunnerService {
     for (const row of fieldRows) {
       const signals = row.confidenceSignals as Parameters<typeof scoreConfidence>[0] | null
       if (!signals) {
-        // Поле без сохранённых сигналов (например, заполненное вручную до
-        // появления расчёта): уверенность оставляем как есть.
+        // Preserve confidence for a field without stored signals, such as one
+        // filled manually before scoring existed.
         result.set(row.name, row.confidence)
         continue
       }

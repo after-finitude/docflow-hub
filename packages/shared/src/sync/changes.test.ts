@@ -7,7 +7,7 @@ function file(sourcePath: string, contentHash: string): SourceFile {
 }
 
 describe('diffSnapshot', () => {
-  it('новый файл попадает в upserted', () => {
+  it('adds a new file to upserted', () => {
     const diff = diffSnapshot([file('a.pdf', 'h1')], [])
     assert.deepEqual(
       diff.upserted.map((f) => f.sourcePath),
@@ -16,12 +16,12 @@ describe('diffSnapshot', () => {
     assert.deepEqual(diff.deletedPaths, [])
   })
 
-  it('неизменённый файл не вызывает повторного приёма', () => {
+  it('does not re-ingest an unchanged file', () => {
     const diff = diffSnapshot([file('a.pdf', 'h1')], [{ sourcePath: 'a.pdf', checksum: 'h1' }])
     assert.deepEqual(diff.upserted, [])
   })
 
-  it('другой хеш по тому же пути — изменение', () => {
+  it('treats a different hash at the same path as a change', () => {
     const diff = diffSnapshot([file('a.pdf', 'h2')], [{ sourcePath: 'a.pdf', checksum: 'h1' }])
     assert.deepEqual(
       diff.upserted.map((f) => f.contentHash),
@@ -29,7 +29,7 @@ describe('diffSnapshot', () => {
     )
   })
 
-  it('исчезнувший из снимка файл считается удалённым', () => {
+  it('treats a file missing from the snapshot as removed', () => {
     const diff = diffSnapshot(
       [file('a.pdf', 'h1')],
       [
@@ -40,22 +40,22 @@ describe('diffSnapshot', () => {
     assert.deepEqual(diff.deletedPaths, ['b.pdf'])
   })
 
-  it('пустой снимок помечает удалёнными все известные файлы', () => {
+  it('marks every known file removed for an empty snapshot', () => {
     const diff = diffSnapshot([], [{ sourcePath: 'a.pdf', checksum: 'h1' }])
     assert.deepEqual(diff.deletedPaths, ['a.pdf'])
   })
 })
 
 describe('decideIngest', () => {
-  it('первого файла по пути ещё не было', () => {
+  it('creates version one for a new path', () => {
     assert.deepEqual(decideIngest(null, 'h1'), { action: 'create', versionNumber: 1 })
   })
 
-  it('совпадение хеша не создаёт версию', () => {
+  it('does not create a version for a matching hash', () => {
     assert.deepEqual(decideIngest({ checksum: 'h1', versionNumber: 3 }, 'h1'), { action: 'skip' })
   })
 
-  it('новый хеш увеличивает номер версии', () => {
+  it('increments the version for a new hash', () => {
     assert.deepEqual(decideIngest({ checksum: 'h1', versionNumber: 3 }, 'h2'), {
       action: 'version',
       versionNumber: 4,

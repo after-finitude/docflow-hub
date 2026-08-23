@@ -35,8 +35,8 @@ export interface OcrJob {
 }
 
 /**
- * Второй этап pipeline: распознавание и постраничное сохранение текста
- * с координатами блоков (ТЗ 6.2). Дальше — классификация.
+ * Second pipeline stage: OCR and per-page text storage with block coordinates
+ * (spec 6.2), followed by classification.
  */
 @Processor(QUEUE.OCR, { ...PIPELINE_WORKER_OPTIONS })
 export class OcrProcessor extends WorkerHost implements OnModuleInit {
@@ -67,7 +67,7 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
       .limit(1)
 
     if (!document) {
-      this.logger.warn(`Документ ${documentId} не найден, задача пропущена`)
+      this.logger.warn(`Document ${documentId} not found; skipping job`)
       return
     }
 
@@ -78,7 +78,7 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
       const buffer = await this.storage.getBuffer(document.storageKey)
       const result = await this.provider.recognize(buffer, document.mimeType)
 
-      // Повторный прогон заменяет страницы целиком: строки не накапливаются.
+      // A rerun replaces all pages instead of accumulating rows.
       await this.db.delete(pages).where(eq(pages.documentId, documentId))
       if (result.pages.length > 0) {
         await this.db.insert(pages).values(
@@ -94,7 +94,7 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
         )
       }
 
-      // ТЗ §11: какие страницы ушли внешнему провайдеру — фиксируется.
+      // Spec §11: record which pages were sent to an external provider.
       const sentPages = result.pages.filter((page) => page.sentToProvider).map((p) => p.pageNumber)
       if (this.provider.external && sentPages.length > 0) {
         await writeAudit(this.db, {
@@ -119,7 +119,7 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
       await this.classifyQueue.add('classify', { documentId, correlationId })
       await this.publish(documentId, 'processing', 'succeeded')
       this.logger.log(
-        `Документ ${documentId}: OCR (${this.provider.name}) выполнен, страниц ${result.pages.length}`,
+        `Document ${documentId}: OCR (${this.provider.name}) completed, ${result.pages.length} page(s)`,
       )
     } catch (error) {
       await this.handleFailure(job, documentId, runId, error)
@@ -128,15 +128,14 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
   }
 
   /**
-   * Предупреждение о качестве распознавания (ТЗ §10). Ставится здесь, а не
-   * движком валидации: движок работает с полями, а качество скана — свойство
-   * страниц. Правило перечислено в EXTERNAL_RULE_IDS, поэтому перевалидация
-   * при правке поля его не стирает, и в FORCE_REVIEW_RULE_IDS — документ
-   * с плохим сканом не проходит автоматически.
+   * OCR quality warning (spec §10). Set it here because validation operates on
+   * fields while scan quality belongs to pages. EXTERNAL_RULE_IDS preserves it
+   * during field revalidation, and FORCE_REVIEW_RULE_IDS prevents poor scans
+   * from passing automatically.
    */
   private async syncQualityWarning(
     documentId: string,
-    // Имя не `pages`: так называется таблица страниц, импортированная выше.
+    // Do not call this `pages`; that name is already used by the imported table.
     recognized: { pageNumber: number; text: string; confidence: number | null }[],
   ): Promise<void> {
     await this.db
@@ -167,10 +166,10 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
       expected: issue.expected,
       actual: issue.actual,
     })
-    this.logger.warn(`Документ ${documentId}: ${issue.actual}`)
+    this.logger.warn(`Document ${documentId}: ${issue.actual}`)
   }
 
-  /** Failed — только когда попытки исчерпаны либо ошибка неустранима. */
+  /** Mark Failed only after attempts are exhausted or the error is unrecoverable. */
   private async handleFailure(
     job: Job<OcrJob>,
     documentId: string,
@@ -183,12 +182,12 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
     const unrecoverable = error instanceof UnrecoverableError
     const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
     if (!unrecoverable && attemptsLeft > 0) {
-      this.logger.warn(`Документ ${documentId}: OCR не удался, осталось попыток ${attemptsLeft}`)
+      this.logger.warn(`Document ${documentId}: OCR failed; ${attemptsLeft} attempt(s) left`)
       return
     }
 
-    // Сама задача больше не повторится: она уходит в dead-letter queue,
-    // откуда её повторяет оператор из Execution Log (ТЗ 6.10).
+    // The job will not retry automatically; it moves to the dead-letter queue
+    // for an operator to retry from the Execution Log (spec 6.10).
     await recordDeadLetter(this.db, {
       documentId,
       runId,
@@ -201,14 +200,14 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
       attempts: job.attemptsMade + 1,
     })
 
-    const reason = 'Не удалось распознать документ. Обработку можно повторить вручную'
+    const reason = 'Document recognition failed. Processing can be retried manually'
     await this.db
       .update(documents)
       .set({ status: 'failed', statusReason: reason })
       .where(eq(documents.id, documentId))
     await this.publish(documentId, 'failed', 'failed')
     this.logger.error(
-      `Документ ${documentId}: OCR — ${unrecoverable ? 'неустранимая ошибка' : 'попытки исчерпаны'}: ${detail}`,
+      `Document ${documentId}: OCR — ${unrecoverable ? 'unrecoverable error' : 'attempts exhausted'}: ${detail}`,
     )
   }
 

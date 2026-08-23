@@ -19,12 +19,11 @@ interface DriveFile {
 }
 
 /**
- * Папка Google Drive с синхронизацией по курсору (ТЗ 6.1, второй этап).
+ * Google Drive folder synchronized by cursor (spec 6.1, second source).
  *
- * Курсор — pageToken changes API: он и есть журнал изменений источника,
- * включая удаления, которых листинг папки не показывает. Первый проход
- * снимает содержимое папки целиком и запоминает точку, с которой дальше
- * читаются только изменения.
+ * The cursor is a changes API pageToken: the source change log includes
+ * deletions that folder listings omit. The first pass snapshots the full folder
+ * and stores the point from which later passes read only changes.
  */
 export class GoogleDriveSource implements SourceProvider {
   readonly name = 'google_drive'
@@ -41,9 +40,8 @@ export class GoogleDriveSource implements SourceProvider {
       const files: SourceFile[] = []
       let pageToken: string | undefined
 
-      // Стартовый токен берётся ДО чтения содержимого: изменения, случившиеся
-      // во время обхода, попадут в следующий проход. Обратный порядок молча
-      // терял бы их.
+      // Read the start token before listing content so changes during the scan
+      // appear in the next pass instead of being lost.
       const start = await drive.changes.getStartPageToken({ supportsAllDrives: true })
 
       do {
@@ -71,8 +69,8 @@ export class GoogleDriveSource implements SourceProvider {
     let nextCursor: string | null = cursor
 
     while (pageToken) {
-      // Тип ответа указан явно: без него вывод типов зацикливается на
-      // pageToken, который читается из этого же ответа.
+      // Declare the response type explicitly to avoid inference cycling through
+      // pageToken read from that same response.
       const page: drive_v3.Schema$ChangeList = (
         await drive.changes.list({
           pageToken,
@@ -87,8 +85,8 @@ export class GoogleDriveSource implements SourceProvider {
 
       for (const change of page.changes ?? []) {
         const file = change.file
-        // Удаление и перемещение из наблюдаемой папки для нас одно и то же:
-        // файла в источнике больше нет.
+        // Deletion and moving out of the watched folder are equivalent: the file
+        // no longer exists in the source.
         const gone =
           change.removed ||
           !file ||
@@ -120,20 +118,20 @@ export class GoogleDriveSource implements SourceProvider {
     return Buffer.from(response.data as ArrayBuffer)
   }
 
-  /** Файлы неподдерживаемых типов и превышающие лимит в источник не попадают. */
+  /** Unsupported and oversized files do not enter the source snapshot. */
   private toSourceFile(file: DriveFile): SourceFile | null {
     const mimeType = file.mimeType ?? ''
     if (!file.id || !(ACCEPTED_MIME_TYPES as readonly string[]).includes(mimeType)) return null
 
     const sizeBytes = Number(file.size ?? 0)
     if (sizeBytes > UPLOAD_MAX_BYTES) {
-      this.logger.warn(`Файл ${file.name} больше лимита ${UPLOAD_MAX_BYTES} Б и пропущен`)
+      this.logger.warn(`File ${file.name} exceeds the ${UPLOAD_MAX_BYTES} B limit and was skipped`)
       return null
     }
 
     return {
-      // Идентификатор файла, а не имя: переименование не должно выглядеть
-      // как удаление старого документа и приём нового.
+      // Use the file ID rather than its name so renaming does not look like a
+      // deletion followed by a new document.
       sourcePath: file.id,
       name: file.name ?? file.id,
       mimeType,

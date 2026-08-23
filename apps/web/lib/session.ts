@@ -4,10 +4,9 @@ import { cookies } from 'next/headers'
 const apiUrl = process.env.API_INTERNAL_URL ?? 'http://localhost:3001'
 
 /**
- * Три состояния, а не два. Отличать «сессии нет» от «бэкенд недоступен»
- * обязательно: если считать недоступность отсутствием сессии, перезапуск
- * контейнера api выбрасывал бы на форму входа пользователей с валидной
- * сессией — и уводил бы диагностику в ложную сторону.
+ * There are three states, not two. “No session” must remain distinct from
+ * “backend unavailable”; otherwise an API container restart would send users
+ * with valid sessions to login and point diagnostics in the wrong direction.
  */
 export type SessionState =
   | { status: 'authenticated'; user: SessionUser }
@@ -22,9 +21,8 @@ export async function readSession(): Promise<SessionState> {
     response = await fetch(`${apiUrl}/auth/me`, {
       headers: { cookie: cookieStore.toString() },
       cache: 'no-store',
-      // Без таймаута зависший API (не отказ соединения, а молчание) держал бы
-      // рендер до таймаута undici — около пяти минут, и экран «недоступен»
-      // как раз в худшем случае не показался бы.
+      // Without a timeout, a silent API would block rendering until undici's
+      // roughly five-minute timeout, hiding the unavailable screen when needed most.
       signal: AbortSignal.timeout(3000),
     })
   } catch {

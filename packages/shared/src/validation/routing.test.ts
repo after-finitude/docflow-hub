@@ -9,13 +9,13 @@ function critical(name: string, confidence: number | null): RoutingField {
 }
 
 describe('decideRouting', () => {
-  it('без blocking и с уверенными критичными полями документ проходит автоматически', () => {
+  it('passes automatically without blocking issues and with confident critical fields', () => {
     const decision = decideRouting([critical('grand_total', 0.95)], [], THRESHOLDS)
     assert.equal(decision.auto, true)
     assert.equal(decision.reasons.length, 0)
   })
 
-  it('нерешённая blocking-ошибка останавливает автопроход', () => {
+  it('blocks automatic approval for an unresolved blocking issue', () => {
     const decision = decideRouting(
       [critical('grand_total', 0.95)],
       [{ severity: 'blocking', resolved: false }],
@@ -25,7 +25,7 @@ describe('decideRouting', () => {
     assert.equal(decision.blockingCount, 1)
   })
 
-  it('решённая blocking-ошибка не мешает', () => {
+  it('ignores a resolved blocking issue', () => {
     const decision = decideRouting(
       [critical('grand_total', 0.95)],
       [{ severity: 'blocking', resolved: true }],
@@ -34,7 +34,7 @@ describe('decideRouting', () => {
     assert.equal(decision.auto, true)
   })
 
-  it('предупреждения не мешают автопроходу, но считаются', () => {
+  it('counts warnings without blocking automatic approval', () => {
     const decision = decideRouting(
       [critical('grand_total', 0.95)],
       [
@@ -47,17 +47,17 @@ describe('decideRouting', () => {
     assert.equal(decision.warningCount, 1)
   })
 
-  it('предупреждение с forcesReview останавливает автопроход (ТЗ 6.3)', () => {
+  it('blocks automatic approval for a forcesReview warning (spec 6.3)', () => {
     const decision = decideRouting(
       [critical('grand_total', 0.95)],
       [{ severity: 'warning', resolved: false, forcesReview: true }],
       THRESHOLDS,
     )
     assert.equal(decision.auto, false)
-    assert.ok(decision.reasons.some((reason) => reason.includes('ручного разбора')))
+    assert.ok(decision.reasons.some((reason) => reason.includes('manual review')))
   })
 
-  it('решённоеforcesReview-предупреждение автопроходу не мешает', () => {
+  it('ignores a resolved forcesReview warning', () => {
     const decision = decideRouting(
       [critical('grand_total', 0.95)],
       [{ severity: 'warning', resolved: true, forcesReview: true }],
@@ -66,18 +66,18 @@ describe('decideRouting', () => {
     assert.equal(decision.auto, true)
   })
 
-  it('критичное поле ниже порога отправляет на проверку', () => {
+  it('routes a critical field below threshold to review', () => {
     const decision = decideRouting([critical('supplier_name', 0.5)], [], THRESHOLDS)
     assert.equal(decision.auto, false)
     assert.deepEqual(decision.lowConfidenceFields, [{ name: 'supplier_name', confidence: 0.5 }])
   })
 
-  it('критичное поле без значения приравнивается к нулевой уверенности', () => {
+  it('treats a valueless critical field as zero confidence', () => {
     const decision = decideRouting([critical('supplier_name', null)], [], THRESHOLDS)
     assert.equal(decision.auto, false)
   })
 
-  it('некритичное поле с низкой уверенностью автопроходу не мешает', () => {
+  it('allows a low-confidence noncritical field to pass automatically', () => {
     const decision = decideRouting(
       [
         critical('grand_total', 0.9),

@@ -1,206 +1,30 @@
-# Конфигурация
+# Configuration
 
-Переменные окружения, схемы типов и пороги (ТЗ §16). Шаблон со значениями по
-умолчанию — [example.env](../example.env); он же документирует ловушки прямо
-рядом с переменными.
+Copy `example.env` to `.env`. Startup validates all required values and fails early on invalid combinations.
 
-Конфигурация читается и проверяется при старте
-(`packages/core/src/config/env.ts`): приложение падает сразу, а не на первом
-обращении к недостающей переменной.
+## Core services
 
-## Чего в конфигурации нет намеренно
+- `POSTGRES_*`: owner and application database credentials and host settings.
+- `REDIS_HOST`, `REDIS_PORT`: BullMQ and event channel.
+- `MINIO_*`: internal object-storage connection, browser-visible URL, bucket, and credentials.
+- `JWT_SECRET`, `JWT_EXPIRES_IN`, `COOKIE_SECURE`: session security.
+- `SEED_ADMIN_*`, `SEED_OPERATOR_*`: demo users.
 
-- **Готовых строк подключения к БД.** `DATABASE_URL` и
-  `MIGRATION_DATABASE_URL` собираются из `POSTGRES_*` и `APP_DB_PASSWORD`
-  в коде. Пароль, записанный в двух местах, рано или поздно разъезжается,
-  и отказ виден только как ошибка аутентификации.
-- **Имени session-cookie и имени роли приложения.** Это константы, а не
-  переменные: одно и то же значение обязано совпадать в двух независимых
-  процессах, а сборка Next выполняется вообще без `.env`.
+The application role name is fixed as `docflow_app`; its password is created only when the PostgreSQL volume is initialized. Changing it on an existing volume requires `ALTER ROLE`.
 
-## Переменные
+## Processing providers
 
-### PostgreSQL
+- `OCR_PROVIDER=mock|google`. Google requires `GOOGLE_VISION_KEY_FILE`.
+- `LLM_PROVIDER=mock|openai_compatible`. A real provider requires `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL`.
+- `EXPORT_DESTINATIONS=file_json,google_sheets`. Sheets requires its key file and spreadsheet ID.
+- `SOURCE_PROVIDER=none|local_folder|google_drive`. Local folder requires `LOCAL_SOURCE_DIR`; Drive requires its key file and folder ID.
 
-| Переменная                             | По умолчанию | Назначение                            |
-| -------------------------------------- | ------------ | ------------------------------------- |
-| `POSTGRES_HOST`                        | —            | Для запуска без Docker — `localhost`  |
-| `POSTGRES_PORT`                        | `5432`       |                                       |
-| `POSTGRES_DB`                          | —            |                                       |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD`  | —            | Владелец схемы: миграции и seed        |
-| `APP_DB_PASSWORD`                      | —            | Пароль роли `docflow_app`             |
+## Operations
 
-Роль `docflow_app` создаётся **только при первичной инициализации кластера**.
-Смена пароля позже требует `ALTER ROLE` вручную либо удаления тома
-`postgres-data`.
+- `WORKER_CONCURRENCY` and stage-specific overrides control BullMQ processing.
+- `SOURCE_SYNC_INTERVAL_SECONDS` controls source synchronization.
+- `RETENTION_DAYS` controls permanent deletion after deactivation.
+- `ORPHAN_OBJECT_TTL_HOURS` controls cleanup of unreferenced storage objects.
+- `SIGNED_URL_TTL_SECONDS` controls original-file link lifetime.
 
-### Redis и очереди
-
-| Переменная                   | По умолчанию | Назначение                            |
-| ---------------------------- | ------------ | ------------------------------------- |
-| `REDIS_HOST` / `REDIS_PORT`  | —            |                                       |
-| `QUEUE_CONCURRENCY_DEFAULT`  | `4`          | Параллелизм по умолчанию              |
-| `QUEUE_CONCURRENCY_OCR`      | —            | Отдельно для дорогого этапа           |
-| `QUEUE_CONCURRENCY_EXTRACT`  | —            | Отдельно для дорогого этапа           |
-
-Очередь `maintenance` всегда выполняется по одной задаче: два параллельных
-прохода по источнику приняли бы один файл дважды.
-
-### MinIO
-
-| Переменная                                | По умолчанию            | Назначение                         |
-| ----------------------------------------- | ----------------------- | ---------------------------------- |
-| `MINIO_ENDPOINT` / `MINIO_PORT`           | —                       | Адрес изнутри контейнеров          |
-| `MINIO_USE_SSL`                           | `false`                 |                                    |
-| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | —                       |                                    |
-| `MINIO_BUCKET`                            | —                       |                                    |
-| `SIGNED_URL_TTL_SECONDS`                  | `900`                   | Срок жизни ссылки на оригинал      |
-| `MINIO_PUBLIC_URL`                        | `http://localhost:9000` | Адрес хранилища со стороны браузера |
-
-**У хранилища два клиента.** Внутренний читает и пишет, публичный подписывает
-ссылки. Подпись покрывает заголовок `Host`, поэтому ссылка, подписанная
-адресом `minio:9000`, из браузера не открывается. Регион публичному клиенту
-передаётся готовым — спросить его сам он не может: `MINIO_PUBLIC_URL` изнутри
-контейнера не отвечает.
-
-### OCR
-
-| Переменная               | По умолчанию | Назначение                                        |
-| ------------------------ | ------------ | ------------------------------------------------- |
-| `OCR_PROVIDER`           | `mock`       | `mock` \| `google`                                |
-| `GOOGLE_VISION_KEY_FILE` | —            | Обязателен при `google`                           |
-| `OCR_RENDER_DPI`         | `200`        | Растеризация страниц перед внешним OCR (150–300)  |
-| `OCR_LANGUAGE_HINTS`     | `ru,en`      |                                                   |
-
-`mock` читает текстовый слой PDF через mupdf — без внешних вызовов и с
-настоящими координатами. Изображения он не распознаёт: у JPEG нет текстового
-слоя, возвращается пустая страница с реальными размерами.
-
-### LLM
-
-| Переменная        | По умолчанию | Назначение                                     |
-| ----------------- | ------------ | ---------------------------------------------- |
-| `LLM_PROVIDER`    | `mock`       | `mock` \| `openai_compatible`                  |
-| `LLM_BASE_URL`    | —            | К нему добавляется `/chat/completions`         |
-| `LLM_API_KEY`     | —            |                                                |
-| `LLM_MODEL`       | —            |                                                |
-| `LLM_TIMEOUT_MS`  | `120000`     |                                                |
-
-При `openai_compatible` обязательны все три: адрес, ключ и модель. Для DeepSeek
-`LLM_BASE_URL=https://api.deepseek.com`; если провайдер требует префикс `/v1`,
-он указывается в самом адресе.
-
-**Модель обязана возвращать значения дословно.** Приведение к ISO-датам,
-числам и валютам выполняется в коде; модель, нормализующая значения сама,
-ломает сопоставление evidence→bbox.
-
-### Второй источник
-
-| Переменная                     | По умолчанию | Назначение                                  |
-| ------------------------------ | ------------ | ------------------------------------------- |
-| `SOURCE_PROVIDER`              | `none`       | `none` \| `local_folder` \| `google_drive`  |
-| `SOURCE_SYNC_INTERVAL_SECONDS` | `300`        | Период синхронизации                        |
-| `LOCAL_SOURCE_DIR`             | —            | Обязателен при `local_folder`               |
-| `GOOGLE_DRIVE_KEY_FILE`        | —            | Обязателен при `google_drive`               |
-| `GOOGLE_DRIVE_FOLDER_ID`       | —            | Обязателен при `google_drive`               |
-
-В `docker-compose.yml` папка `./docker/source-inbox` смонтирована в воркер
-как `/data/source` только для чтения. Отсутствие папки считается ошибкой
-конфигурации, а не пустым источником: пустой снимок пометил бы все документы
-удалёнными.
-
-Первый проход синхронизации выполняется при старте воркера, дальше — по
-интервалу.
-
-### Хранение и удаление
-
-| Переменная                   | По умолчанию | Назначение                                        |
-| ---------------------------- | ------------ | ------------------------------------------------- |
-| `RETENTION_DAYS`             | `90`         | Срок от потери актуальности до удаления           |
-| `ORPHAN_TTL_HOURS`           | `24`         | TTL объектов, на которые не ссылается ни документ |
-| `RETENTION_INTERVAL_SECONDS` | `3600`       | Период задачи уборки                              |
-
-Срок считается от `deactivated_at`, а не от даты приёма: иначе документ,
-удалённый в источнике вчера, но принятый год назад, стирался бы немедленно.
-
-### Экспорт
-
-| Переменная                     | По умолчанию | Назначение                          |
-| ------------------------------ | ------------ | ----------------------------------- |
-| `EXPORT_DEFAULT_DESTINATION`   | `file_json`  | `file_json` \| `google_sheets`      |
-| `GOOGLE_SHEETS_KEY_FILE`       | —            | Обязателен при `google_sheets`      |
-| `GOOGLE_SHEETS_SPREADSHEET_ID` | —            | Обязателен при `google_sheets`      |
-| `GOOGLE_SHEETS_SHEET_NAME`     | `Documents`  |                                     |
-
-Маппинг полей на поля назначения задаётся кодом
-(`packages/core/src/export/mappings.ts`), а не через API.
-
-### Аутентификация
-
-| Переменная                  | По умолчанию | Назначение                          |
-| --------------------------- | ------------ | ----------------------------------- |
-| `JWT_SECRET`                | —            | Не короче 32 символов               |
-| `JWT_EXPIRES_IN`            | `8h`         |                                     |
-| `COOKIE_SECURE`             | `false`      | Обязательно `true` за TLS           |
-| `LOGIN_RATE_LIMIT`          | `10`         | Попыток за окно                     |
-| `LOGIN_RATE_WINDOW_SECONDS` | `60`         |                                     |
-
-`COOKIE_SECURE` — отдельная переменная, а не производная от `NODE_ENV`: при
-`true` и работе по обычному HTTP браузер отбрасывает cookie, сервер отвечает
-200, а сессии нет — вход ломается молча.
-
-Ограничение частоты считается **по логину, а не по адресу**: rewrite Next.js
-не проставляет `X-Forwarded-For`, поэтому адресом клиента всегда оказывается
-контейнер `web`, а доверять заголовку от браузера нельзя.
-
-### Порты и адреса
-
-| Переменная         | По умолчанию | Назначение                                     |
-| ------------------ | ------------ | ---------------------------------------------- |
-| `API_PORT`         | `3001`       | Только для запуска без Docker                  |
-| `API_HOST_PORT`    | `3001`       | Публикация API на хост                         |
-| `WEB_HOST_PORT`    | `3000`       | Публикация веб-приложения на хост              |
-| `API_INTERNAL_URL` | —            | Задаётся в `docker-compose.yml`, не в `.env`   |
-
-`API_INTERNAL_URL` читается **на этапе сборки** (`next.config.ts` вмораживает
-rewrites в манифест) и в рантайме (`lib/api.ts`). В Docker он передаётся
-build-аргументом; заданный только в `environment`, он оставил бы браузер
-проксирующим на `localhost` внутри контейнера `web`.
-
-Веб-приложение намеренно запускается **без `env_file`**: ему нужен один адрес,
-а весь `.env` отдал бы ему `JWT_SECRET` и пароли без единого сценария
-использования.
-
-## Схемы типов и пороги
-
-Схема типа хранится в таблице `document_schemas`: список полей, правила
-проверки и пороги маршрутизации. Правила версионируются вместе со схемой,
-поэтому принятое решение воспроизводимо.
-
-```
-GET /schemas                      активные схемы четырёх типов
-PUT /schemas/{type}/thresholds    настройка порогов, роль: администратор
-```
-
-| Порог                      | Смысл                                                   |
-| -------------------------- | ------------------------------------------------------- |
-| `autoClassify`             | Ниже — тип считается неопределённым                     |
-| `criticalFieldConfidence`  | Критичное поле ниже порога отправляет документ на проверку |
-| `fieldConfidence`          | Порог подсветки некритичных полей в интерфейсе          |
-
-Правка порогов **создаёт новую версию схемы**, а не меняет текущую: решения,
-принятые по прежним правилам, должны оставаться объяснимыми.
-
-Порог качества распознавания (`MIN_OCR_CONFIDENCE`, по умолчанию `0.6`) —
-константа в `packages/shared/src/constants.ts`, а не порог схемы: OCR
-выполняется до классификации, и типа документа в этот момент ещё нет.
-
-Обязательность поля задаётся `FieldSpec.required` и правилом не дублируется.
-Значение поля без найденного источника не может иметь уверенность выше `0.6`
-(константа `NO_SOURCE_CONFIDENCE_CAP`, ТЗ §9).
-
-## Seed
-
-`npm run db:seed` создаёт двух пользователей и активные схемы четырёх типов.
-Логины и пароли задаются `SEED_OPERATOR_*` и `SEED_ADMIN_*`; в промышленной
-среде их следует сменить сразу после первого входа.
+Never commit `.env` or provider credentials. Docker Compose passes only the variables each service needs; the web container does not receive database, storage, or JWT secrets.

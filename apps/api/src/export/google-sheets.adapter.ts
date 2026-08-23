@@ -9,12 +9,12 @@ export interface GoogleSheetsOptions {
   sheetName: string
 }
 
-/** Коды, при которых повтор осмыслен: недоступность и лимиты, но не права. */
+/** Retryable codes: availability and quota failures, but not permission errors. */
 const TRANSIENT_STATUSES = new Set([429, 500, 502, 503, 504])
 
 /**
- * Google Sheets через service account (ТЗ 6.8). Строка добавляется в конец
- * листа по маппингу; заголовок пишется, если лист пуст.
+ * Google Sheets via a service account (spec 6.8). Append a mapped row and write
+ * the header when the sheet is empty.
  */
 @Injectable()
 export class GoogleSheetsAdapter implements ExportAdapter {
@@ -33,7 +33,7 @@ export class GoogleSheetsAdapter implements ExportAdapter {
     const range = `${this.options.sheetName}!A:Z`
 
     try {
-      // Заголовок пишется один раз — при первом экспорте в пустой лист.
+      // Write the header once, on the first export to an empty sheet.
       const existing = await sheets.spreadsheets.values.get({
         spreadsheetId: this.options.spreadsheetId,
         range: `${this.options.sheetName}!A1:A1`,
@@ -63,9 +63,9 @@ export class GoogleSheetsAdapter implements ExportAdapter {
   }
 
   /**
-   * Ошибки назначения всегда превращаются в DestinationUnavailableError:
-   * автоповторов у экспорта нет, повтор инициирует оператор (ТЗ 6.10).
-   * Код сохраняется в записи экспорта, чтобы отличать отказ прав от сбоя сети.
+   * Convert destination failures to DestinationUnavailableError. Export has no
+   * automatic retries; an operator initiates them (spec 6.10). Store the code
+   * to distinguish permission errors from network failures.
    */
   private classify(error: unknown, exportKey: string): DestinationUnavailableError {
     const status =
@@ -73,7 +73,7 @@ export class GoogleSheetsAdapter implements ExportAdapter {
     const message = error instanceof Error ? error.message : String(error)
     const transient = typeof status === 'number' && TRANSIENT_STATUSES.has(status)
 
-    this.logger.error(`Экспорт ${exportKey} в Google Sheets не удался (${status}): ${message}`)
+    this.logger.error(`Export ${exportKey} to Google Sheets failed (${status}): ${message}`)
     return new DestinationUnavailableError(
       transient ? 'sheets_unavailable' : `sheets_error_${status ?? 'unknown'}`,
       `Google Sheets: ${message}`,

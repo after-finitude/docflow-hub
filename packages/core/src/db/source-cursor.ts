@@ -3,9 +3,8 @@ import type { Database } from './db.module'
 import { sourceCursors } from './schema'
 
 /**
- * Состояние синхронизации источника (ТЗ 6.1). Курсор живёт в БД: очередь
- * можно очистить или пересоздать, а точка чтения источника переживать это
- * обязана — иначе следующий проход перечитает папку целиком.
+ * Source sync state (spec 6.1). Store the cursor in the database so clearing or
+ * recreating the queue does not force a full source reread.
  */
 
 export async function readCursor(db: Database, source: string): Promise<string | null> {

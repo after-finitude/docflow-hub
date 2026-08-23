@@ -44,8 +44,8 @@ export class ExportService {
   }
 
   /**
-   * Экспорт подтверждённого документа (ТЗ 6.8). Идемпотентен по export_key:
-   * повторный запрос с тем же ключом не создаёт вторую запись (ТЗ §9).
+   * Export an approved document (spec 6.8), idempotent by export_key. A repeated
+   * request with the same key does not create another record (spec §9).
    */
   async export(
     documentId: string,
@@ -58,20 +58,20 @@ export class ExportService {
       .from(documents)
       .where(eq(documents.id, documentId))
       .limit(1)
-    if (!document) throw new NotFoundException('Документ не найден')
+    if (!document) throw new NotFoundException('Document not found')
 
     if (document.status !== 'approved' && document.status !== 'exported') {
       throw new BadRequestException(
-        `Экспортировать можно только подтверждённый документ (текущий статус: ${document.status})`,
+        `Only an approved document can be exported (current status: ${document.status})`,
       )
     }
     if (!document.documentType || document.documentType === 'unknown') {
-      // Unknown не экспортируется автоматически (ТЗ 6.3).
-      throw new BadRequestException('Документ без определённого типа не экспортируется')
+      // Unknown documents are never exported automatically (spec 6.3).
+      throw new BadRequestException('A document without a known type cannot be exported')
     }
     if (document.duplicateOfId) {
-      // Дубликат повторно не экспортируется (ТЗ §10).
-      throw new BadRequestException('Дубликат уже принятого документа не экспортируется')
+      // Do not export a duplicate again (spec §10).
+      throw new BadRequestException('A duplicate of an accepted document cannot be exported')
     }
 
     const destination: ExportDestination = request.destination ?? 'file_json'
@@ -79,14 +79,14 @@ export class ExportService {
 
     const existing = await this.findByKey(exportKey)
     if (existing?.status === 'succeeded') {
-      // Второй объект не создаётся и повторно не отправляется (критерий 10).
-      this.logger.log(`Экспорт ${exportKey} уже выполнен, возвращается существующий`)
+      // Do not create or send a second object (criterion 10).
+      this.logger.log(`Export ${exportKey} already completed; returning the existing record`)
       return this.toDto(existing)
     }
 
     const adapter = this.adapters.find((candidate) => candidate.destination === destination)
     if (!adapter) {
-      throw new BadRequestException(`Назначение ${destination} не настроено`)
+      throw new BadRequestException(`Destination ${destination} is not configured`)
     }
 
     const canonical = await this.buildCanonical(document)
@@ -141,8 +141,8 @@ export class ExportService {
       const code = error instanceof DestinationUnavailableError ? error.code : 'export_failed'
       const message = error instanceof Error ? error.message : String(error)
 
-      // Документ остаётся Approved: отказ назначения не отменяет подтверждения,
-      // экспорт доступен для повтора вручную (ТЗ 6.8, критерий 11).
+      // The document remains Approved because a destination failure does not
+      // undo approval; manual retry remains available (spec 6.8, criterion 11).
       await this.db
         .update(documentExports)
         .set({ status: 'failed', errorCode: code, attempts })
@@ -161,7 +161,7 @@ export class ExportService {
         userAgent: origin.userAgent,
       })
 
-      this.logger.warn(`Экспорт ${exportKey} не удался: ${message}`)
+      this.logger.warn(`Export ${exportKey} failed: ${message}`)
       return this.toDto({ ...record, status: 'failed', errorCode: code, attempts })
     }
   }

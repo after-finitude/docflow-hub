@@ -17,7 +17,7 @@ function parseNumber(text: string): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-/** Таблица позиций с добавлением и удалением строк (ТЗ 5.2). */
+/** Line-items table with row addition and removal (spec 5.2). */
 export function LineItemsEditor({ value, disabled, onSave }: LineItemsEditorProps) {
   const [items, setItems] = useState<LineItem[]>(value)
   const [dirty, setDirty] = useState(false)
@@ -39,18 +39,18 @@ export function LineItemsEditor({ value, disabled, onSave }: LineItemsEditorProp
 
   return (
     <div className="panel p-4">
-      <h3 className="mb-3 text-sm font-medium">Позиции</h3>
+      <h3 className="mb-3 text-sm font-medium">Line items</h3>
 
       {items.length === 0 ? (
-        <p className="text-xs text-muted">Позиции отсутствуют</p>
+        <p className="text-xs text-muted">No line items</p>
       ) : (
         <table className="w-full text-sm">
           <thead>
             <tr className="mono text-left text-2xs tracking-[0.06em] text-muted uppercase">
-              <th className="pb-1 font-medium">Описание</th>
-              <th className="w-20 pb-1 font-medium">Кол-во</th>
-              <th className="w-24 pb-1 font-medium">Цена</th>
-              <th className="w-24 pb-1 font-medium">Сумма</th>
+              <th className="pb-1 font-medium">Description</th>
+              <th className="w-20 pb-1 font-medium">Qty</th>
+              <th className="w-24 pb-1 font-medium">Price</th>
+              <th className="w-24 pb-1 font-medium">Amount</th>
               <th className="w-8" />
             </tr>
           </thead>
@@ -102,7 +102,7 @@ export function LineItemsEditor({ value, disabled, onSave }: LineItemsEditorProp
                       setDirty(true)
                     }}
                     className="text-muted transition-colors duration-[120ms] hover:text-danger disabled:opacity-40"
-                    title="Удалить строку"
+                    title="Remove row"
                   >
                     ×
                   </button>
@@ -123,7 +123,7 @@ export function LineItemsEditor({ value, disabled, onSave }: LineItemsEditorProp
           }}
           className="btn btn--ghost btn--sm"
         >
-          Добавить строку
+          Add row
         </button>
         {dirty && (
           <button
@@ -132,7 +132,7 @@ export function LineItemsEditor({ value, disabled, onSave }: LineItemsEditorProp
             onClick={() => void save()}
             className="btn btn--primary btn--sm"
           >
-            {saving ? 'Сохранение…' : 'Сохранить позиции'}
+            {saving ? 'Saving…' : 'Save line items'}
           </button>
         )}
       </div>

@@ -3,12 +3,11 @@ import type { SourceFile, SourceType } from '@docflow/shared'
 export const SOURCE_PROVIDER = Symbol('SOURCE_PROVIDER')
 
 /**
- * Результат одного прохода по источнику.
+ * Result of one source pass.
  *
- * Два режима, потому что источники отличаются принципиально: у Google Drive
- * есть changes API с курсором и явными событиями удаления, у наблюдаемой
- * папки — только текущее содержимое. Сводить их к одному виду пришлось бы
- * ценой выдумывания событий, которых источник не сообщал.
+ * Two modes reflect fundamentally different sources: Google Drive has a
+ * cursor-based changes API with deletion events, while a watched folder exposes
+ * only current content. A single shape would require inventing events.
  */
 export type SourceListing =
   | { mode: 'snapshot'; files: SourceFile[]; cursor: string | null }
@@ -17,7 +16,7 @@ export type SourceListing =
 export interface SourceProvider {
   readonly name: string
   readonly sourceType: SourceType
-  /** Курсор — то, что вернул предыдущий проход; null при первом запуске. */
+  /** Cursor returned by the previous pass, or null on the first run. */
   list(cursor: string | null): Promise<SourceListing>
   download(file: SourceFile): Promise<Buffer>
 }

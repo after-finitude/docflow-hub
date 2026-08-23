@@ -4,9 +4,8 @@ import { LoginForm } from './login-form'
 
 export default async function LoginPage() {
   const session = await readSession()
-  // Увести отсюда можно только при действительно живой сессии — проверенной
-  // API, а не по факту наличия cookie. При недоступном бэкенде показываем
-  // форму: пользователь хотя бы видит осмысленный экран.
+  // Redirect only for a live session verified by the API, not merely because
+  // a cookie exists. Show the form when the backend is unavailable.
   if (session.status === 'authenticated') redirect('/inbox')
 
   return <LoginForm />

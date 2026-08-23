@@ -1,14 +1,12 @@
 import type { BoundingBox, OcrBlock } from '../contracts/ocr'
 
 /**
- * Сопоставление evidence → bbox (ТЗ 6.5). Ключевой механизм системы:
- * LLM возвращает дословный фрагмент и страницу, координаты ищутся здесь.
+ * Evidence → bbox matching (spec 6.5). The LLM returns a verbatim excerpt and
+ * page; this code locates its coordinates.
  *
- * Порядок: точное вхождение → нечёткое (нормализация пробелов и регистра,
- * Левенштейн ≤ 15% длины фрагмента); один блок → его bbox, последовательность
- * соседних блоков → объединённый bbox; фрагмент на другой странице →
- * фактическая страница со снижением уверенности; не найден нигде —
- * поле остаётся без источника (confidence cap 0.6 накладывает вызывающий).
+ * Order: exact match, then fuzzy after whitespace/case normalization with
+ * Levenshtein ≤15%. A block returns its bbox; adjacent blocks return a union.
+ * A match on another page lowers confidence; no match leaves the field unsourced.
  */
 
 export interface EvidencePage {
@@ -21,18 +19,18 @@ export type EvidenceMatch =
       found: true
       page: number
       bbox: BoundingBox
-      /** Страница не совпала с заявленной LLM (ТЗ 6.5 п.4). */
+      /** Page differs from the one reported by the LLM (spec 6.5.4). */
       pageMismatch: boolean
-      /** Средняя OCR-уверенность блоков, накрытых совпадением. */
+      /** Mean OCR confidence of matched blocks. */
       ocrConfidence: number
-      /** exact — вхождение после нормализации; fuzzy — в пределах допуска Левенштейна. */
+      /** exact after normalization; fuzzy within the Levenshtein allowance. */
       method: 'exact' | 'fuzzy'
     }
   | { found: false }
 
-/** Максимум соседних блоков, склеиваемых в окно (перенос значения на строки). */
+/** Maximum adjacent blocks joined into a multiline window. */
 const MAX_WINDOW = 4
-/** Допуск нечёткого сопоставления — доля длины фрагмента (ТЗ 6.5 п.2). */
+/** Fuzzy-match allowance as a fraction of excerpt length (spec 6.5.2). */
 const FUZZY_TOLERANCE = 0.15
 
 export function matchEvidence(
@@ -43,16 +41,15 @@ export function matchEvidence(
   const needle = normalize(evidence)
   if (!needle) return { found: false }
 
-  // Заявленная страница ищется первой; остальные — по возрастанию номера.
+  // Search the reported page first, then the others in page order.
   const ordered = pages.toSorted((a, b) => {
     if (a.pageNumber === claimedPage) return -1
     if (b.pageNumber === claimedPage) return 1
     return a.pageNumber - b.pageNumber
   })
 
-  // Два прохода: сначала точное совпадение на любой странице, затем нечёткое.
-  // Иначе нечёткое совпадение на заявленной странице обгоняло бы точное на
-  // фактической, и bbox указывал бы не туда.
+  // Search exact matches on every page before fuzzy matches so a fuzzy hit on
+  // the reported page cannot outrank an exact hit elsewhere.
   for (const method of ['exact', 'fuzzy'] as const) {
     for (const page of ordered) {
       const hit = matchOnPage(needle, page.blocks, method === 'fuzzy')
@@ -78,14 +75,14 @@ interface PageHit {
 }
 
 function matchOnPage(needle: string, blocks: OcrBlock[], fuzzy: boolean): PageHit | null {
-  // Одиночные блоки — приоритетнее окон: точнее bbox.
+  // Prefer single blocks because their bbox is more precise.
   for (const block of blocks) {
     if (contains(normalize(block.text), needle, fuzzy)) {
       return { bbox: block.bbox, ocrConfidence: block.confidence }
     }
   }
 
-  // Окна соседних блоков: значение перенесено на несколько строк (ТЗ 6.5 п.3).
+  // Adjacent block windows handle values split across lines (spec 6.5.3).
   for (let size = 2; size <= MAX_WINDOW; size++) {
     for (let start = 0; start + size <= blocks.length; start++) {
       const window = blocks.slice(start, start + size)
@@ -104,9 +101,8 @@ function matchOnPage(needle: string, blocks: OcrBlock[], fuzzy: boolean): PageHi
 }
 
 /**
- * Варианты склейки окна: через пробел (обычный перенос), вплотную (разрыв
- * внутри числа: «1 200,00» разбитое OCR на блоки) и со снятым дефисом
- * переноса («Мега-» + «строй» → «Мегастрой»).
+ * Window variants join with a space, directly for split numbers, or after
+ * removing a line-break hyphen.
  */
 function joinVariants(window: OcrBlock[]): string[] {
   const texts = window.map((block) => normalize(block.text))
@@ -122,14 +118,14 @@ function joinVariants(window: OcrBlock[]): string[] {
   return [...variants]
 }
 
-/** Нормализация для сопоставления: регистр и пробелы (ТЗ 6.5 п.2). */
+/** Normalize case and whitespace for matching (spec 6.5.2). */
 function normalize(text: string): string {
   return text.toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
 /**
- * Для нечёткого прохода дополнительно снимается пунктуация; дефисы становятся
- * пробелами, чтобы «DF-1001-A» сопоставлялся с «DF 1001 A» пословно.
+ * Fuzzy matching also removes punctuation and turns hyphens into spaces so
+ * “DF-1001-A” can match “DF 1001 A”.
  */
 function stripPunctuation(text: string): string {
   return text
@@ -151,8 +147,7 @@ function contains(haystack: string, needle: string, fuzzy: boolean): boolean {
   const budget = Math.floor(cleanNeedle.length * FUZZY_TOLERANCE)
   if (budget === 0) return false
 
-  // Скользящее сравнение по словам: фрагмент может лежать внутри длинного
-  // блока, поэтому сравнивается с каждым отрезком близкой длины.
+  // Slide over words because the excerpt may be inside a longer block.
   const words = cleanHaystack.split(' ')
   const needleWords = cleanNeedle.split(' ').length
   for (let span = Math.max(1, needleWords - 1); span <= needleWords + 1; span++) {
@@ -165,7 +160,7 @@ function contains(haystack: string, needle: string, fuzzy: boolean): boolean {
   return false
 }
 
-/** Расстояние Левенштейна с ранним выходом при превышении бюджета. */
+/** Levenshtein distance with early exit above the budget. */
 export function levenshtein(a: string, b: string, budget = Infinity): number {
   if (a === b) return 0
   if (Math.abs(a.length - b.length) > budget) return budget + 1

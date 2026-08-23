@@ -27,8 +27,8 @@ function money(name: string, value: number | null): ValidationField {
   })
 }
 
-describe('обязательность', () => {
-  it('пропуск критичного обязательного поля блокирует', () => {
+describe('required fields', () => {
+  it('blocks a missing critical required field', () => {
     const issues = validateDocument(
       [field({ name: 'supplier_name', isRequired: true, isCritical: true })],
       [],
@@ -38,12 +38,12 @@ describe('обязательность', () => {
     assert.equal(issues[0]!.severity, 'blocking')
   })
 
-  it('пропуск некритичного обязательного поля даёт предупреждение', () => {
+  it('warns for a missing noncritical required field', () => {
     const issues = validateDocument([field({ name: 'subject', isRequired: true })], [], CONTEXT)
     assert.equal(issues[0]!.severity, 'warning')
   })
 
-  it('заполненное поле не создаёт проблемы', () => {
+  it('does not flag a populated field', () => {
     const issues = validateDocument(
       [
         field({
@@ -59,7 +59,7 @@ describe('обязательность', () => {
     assert.equal(issues.length, 0)
   })
 
-  it('пустой массив позиций считается незаполненным', () => {
+  it('treats an empty line-item array as missing', () => {
     const issues = validateDocument(
       [field({ name: 'line_items', valueType: 'array', isRequired: true, normalizedValue: [] })],
       [],
@@ -69,7 +69,7 @@ describe('обязательность', () => {
   })
 })
 
-describe('арифметика сумм (ТЗ §13, blocking)', () => {
+describe('amount arithmetic (spec §13, blocking)', () => {
   const rule: ValidationRule = {
     id: 'invoice_totals',
     type: 'sum',
@@ -79,7 +79,7 @@ describe('арифметика сумм (ТЗ §13, blocking)', () => {
     tolerance: 0.02,
   }
 
-  it('сходящиеся суммы не создают проблем', () => {
+  it('accepts matching amounts', () => {
     const issues = validateDocument(
       [money('subtotal', 1200), money('tax_total', 240), money('grand_total', 1440)],
       [rule],
@@ -88,7 +88,7 @@ describe('арифметика сумм (ТЗ §13, blocking)', () => {
     assert.equal(issues.length, 0)
   })
 
-  it('расхождение даёт blocking с ожидаемым и фактическим значением', () => {
+  it('returns a blocking issue with expected and actual values for a mismatch', () => {
     const issues = validateDocument(
       [money('subtotal', 1200), money('tax_total', 240), money('grand_total', 1400)],
       [rule],
@@ -101,7 +101,7 @@ describe('арифметика сумм (ТЗ §13, blocking)', () => {
     assert.match(issues[0]!.message, /1200\.00.*240\.00.*1440\.00.*1400\.00/)
   })
 
-  it('расхождение в пределах допуска принимается', () => {
+  it('accepts a mismatch within tolerance', () => {
     const issues = validateDocument(
       [money('subtotal', 1200), money('tax_total', 240), money('grand_total', 1440.02)],
       [rule],
@@ -110,7 +110,7 @@ describe('арифметика сумм (ТЗ §13, blocking)', () => {
     assert.equal(issues.length, 0)
   })
 
-  it('отсутствующий налог считается нулём, а не ошибкой', () => {
+  it('treats missing tax as zero', () => {
     const issues = validateDocument(
       [money('subtotal', 1200), money('tax_total', null), money('grand_total', 1200)],
       [rule],
@@ -119,7 +119,7 @@ describe('арифметика сумм (ТЗ §13, blocking)', () => {
     assert.equal(issues.length, 0)
   })
 
-  it('без итоговой суммы правило молчит: об этом скажет проверка обязательности', () => {
+  it('leaves a missing total to the required-field check', () => {
     const issues = validateDocument(
       [money('subtotal', 1200), money('tax_total', 240), money('grand_total', null)],
       [rule],
@@ -129,8 +129,8 @@ describe('арифметика сумм (ТЗ §13, blocking)', () => {
   })
 })
 
-describe('диапазоны дат', () => {
-  it('дата инвойса не позже сегодня + 7 дней', () => {
+describe('date ranges', () => {
+  it('limits invoice date to today plus seven days', () => {
     const rule: ValidationRule = {
       id: 'invoice_date_future',
       type: 'date_offset',
@@ -151,10 +151,10 @@ describe('диапазоны дат', () => {
       CONTEXT,
     )
     assert.equal(late.length, 1)
-    assert.equal(late[0]!.expected, 'не позже 2026-07-27')
+    assert.equal(late[0]!.expected, 'no later than 2026-07-27')
   })
 
-  it('срок оплаты не раньше даты инвойса', () => {
+  it('requires due date on or after invoice date', () => {
     const rule: ValidationRule = {
       id: 'due_after_invoice',
       type: 'date_order',
@@ -165,13 +165,13 @@ describe('диапазоны дат', () => {
     const fields = [
       field({
         name: 'invoice_date',
-        label: 'Дата инвойса',
+        label: 'Invoice date',
         valueType: 'date',
         normalizedValue: '2026-07-15',
       }),
       field({
         name: 'due_date',
-        label: 'Срок оплаты',
+        label: 'Due date',
         valueType: 'date',
         normalizedValue: '2026-07-10',
       }),
@@ -182,8 +182,8 @@ describe('диапазоны дат', () => {
   })
 })
 
-describe('справочник значений и диапазоны чисел', () => {
-  it('валюта вне справочника отклоняется', () => {
+describe('allowed values and numeric ranges', () => {
+  it('rejects a currency outside the allowed values', () => {
     const rule: ValidationRule = {
       id: 'currency_allowed',
       type: 'enum',
@@ -197,10 +197,10 @@ describe('справочник значений и диапазоны чисел
       CONTEXT,
     )
     assert.equal(issues.length, 1)
-    assert.equal(issues[0]!.expected, 'одно из: EUR, USD, GBP')
+    assert.equal(issues[0]!.expected, 'one of: EUR, USD, GBP')
   })
 
-  it('отрицательная сумма отклоняется', () => {
+  it('rejects a negative amount', () => {
     const rule: ValidationRule = {
       id: 'subtotal_non_negative',
       type: 'number_range',
@@ -213,25 +213,25 @@ describe('справочник значений и диапазоны чисел
   })
 })
 
-describe('прочее', () => {
-  it('текст правила из конфигурации перекрывает сгенерированный', () => {
+describe('other rules', () => {
+  it('uses configured rule text instead of generated text', () => {
     const rule: ValidationRule = {
       id: 'custom',
       type: 'enum',
       severity: 'info',
       field: 'currency',
       values: ['EUR'],
-      message: 'Принимаем только евро',
+      message: 'Only euros are accepted',
     }
     const issues = validateDocument(
       [field({ name: 'currency', normalizedValue: 'USD' })],
       [rule],
       CONTEXT,
     )
-    assert.equal(issues[0]!.message, 'Принимаем только евро')
+    assert.equal(issues[0]!.message, 'Only euros are accepted')
   })
 
-  it('line_items принимает массив и отсутствие, но не строку', () => {
+  it('accepts an array or missing line_items but not a string', () => {
     const rule: ValidationRule = {
       id: 'line_items_shape',
       type: 'array_or_absent',
@@ -249,13 +249,13 @@ describe('прочее', () => {
       0,
     )
     assert.equal(
-      validateDocument([field({ name: 'line_items', normalizedValue: 'нет' })], [rule], CONTEXT)
+      validateDocument([field({ name: 'line_items', normalizedValue: 'none' })], [rule], CONTEXT)
         .length,
       1,
     )
   })
 
-  it('правило на несуществующее поле не роняет движок', () => {
+  it('does not crash on a rule for a missing field', () => {
     const rule: ValidationRule = {
       id: 'ghost',
       type: 'regex',

@@ -7,9 +7,8 @@ import { randomBytes } from 'node:crypto'
 import type { RequestContext } from './decorators'
 
 /**
- * Исход попытки входа. Различает «нет такой учётной записи» и «пароль неверен»
- * не для ответа клиенту — тот в обоих случаях одинаков, — а для журнала:
- * логин несуществующей учётной записи записывать нельзя, см. recordAttempt.
+ * Login attempt result. It distinguishes an unknown account from a wrong password
+ * for auditing only; the client response is identical. See recordAttempt.
  */
 export type LoginOutcome =
   | { status: 'success'; user: SessionUser }
@@ -25,9 +24,8 @@ export interface IssuedSession {
 @Injectable()
 export class AuthService {
   /**
-   * Хэш от случайного значения. Проверка пароля против него выполняется при
-   * несуществующем логине, чтобы ответ занимал столько же времени, сколько
-   * при существующем: иначе учётные записи перечисляются по времени ответа.
+   * Hash of a random value used for unknown usernames so response timing does
+   * not reveal which accounts exist.
    */
   private readonly decoyHash: Promise<string> = hashPassword(randomBytes(32).toString('hex'))
 
@@ -57,16 +55,16 @@ export class AuthService {
 
     const decoded = this.jwt.decode(token) as { exp?: unknown } | null
     if (typeof decoded?.exp !== 'number') {
-      throw new Error('JWT выпущен без exp: проверьте значение JWT_EXPIRES_IN')
+      throw new Error('JWT was issued without exp; check JWT_EXPIRES_IN')
     }
 
     return { token, expiresAt: new Date(decoded.exp * 1000), user }
   }
 
   /**
-   * Журнал попытки входа. Логин пишется только когда учётная запись существует:
-   * в поле логина регулярно по ошибке набирают пароль, а таблица журнала
-   * не допускает ни изменения, ни удаления записей (ТЗ §11).
+   * Audit a login attempt. Store the username only for an existing account:
+   * users sometimes type passwords into this field, and audit rows are immutable
+   * and cannot be deleted (spec §11).
    */
   async recordAttempt(outcome: LoginOutcome, origin: RequestContext): Promise<void> {
     const known = outcome.status !== 'unknown_login'
@@ -94,8 +92,8 @@ export class AuthService {
       action: 'auth.logout',
       objectType: 'user',
       objectId: user?.id,
-      // Выход с уже недействительной сессией — штатный случай, он тоже
-      // должен попадать в журнал, иначе вход остаётся без парного выхода.
+      // Logging out with an invalid session is normal and is still audited so
+      // a login is not left without a matching logout.
       after: user ? undefined : { sessionAlreadyInvalid: true },
       result: 'success',
       ip: origin.ip,

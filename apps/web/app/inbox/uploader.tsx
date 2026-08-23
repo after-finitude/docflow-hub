@@ -25,14 +25,14 @@ export function Uploader({ onUploaded }: UploaderProps) {
     const failures: Rejected[] = []
 
     for (const file of files) {
-      // Размер и тип проверяются и на сервере; здесь — чтобы не гонять
-      // заведомо негодный файл по сети и сразу назвать причину.
+      // Size and type are also checked by the server. Checking here avoids
+      // uploading an invalid file and gives an immediate reason.
       if (file.size > UPLOAD_MAX_BYTES) {
-        failures.push({ name: file.name, reason: 'больше 25 МБ' })
+        failures.push({ name: file.name, reason: 'larger than 25 MB' })
         continue
       }
       if (!(ACCEPTED_MIME_TYPES as readonly string[]).includes(file.type)) {
-        failures.push({ name: file.name, reason: 'допустимы только PDF, JPEG и PNG' })
+        failures.push({ name: file.name, reason: 'only PDF, JPEG, and PNG are allowed' })
         continue
       }
 
@@ -42,10 +42,10 @@ export function Uploader({ onUploaded }: UploaderProps) {
         const response = await fetch('/api/documents', { method: 'POST', body })
         if (!response.ok) {
           const detail = (await response.json().catch(() => null)) as { message?: string } | null
-          failures.push({ name: file.name, reason: detail?.message ?? `ошибка ${response.status}` })
+          failures.push({ name: file.name, reason: detail?.message ?? `error ${response.status}` })
         }
       } catch {
-        failures.push({ name: file.name, reason: 'сервис недоступен' })
+        failures.push({ name: file.name, reason: 'service unavailable' })
       }
     }
 
@@ -62,8 +62,8 @@ export function Uploader({ onUploaded }: UploaderProps) {
 
   return (
     <div>
-      {/* Приём файлов — не главный герой экрана, а узкая полоса над очередью:
-          оператор большую часть времени разбирает уже принятое. */}
+      {/* File ingest is a narrow strip above the queue, not the screen's focus:
+          operators spend most of their time reviewing accepted files. */}
       <div
         onDragOver={(event) => {
           event.preventDefault()
@@ -86,10 +86,10 @@ export function Uploader({ onUploaded }: UploaderProps) {
         }`}
       >
         <span className="text-sm font-medium">
-          {busy ? 'Загружаем…' : 'Перетащите файлы или нажмите, чтобы выбрать'}
+          {busy ? 'Uploading…' : 'Drop files here or click to select'}
         </span>
         <span className="mono text-2xs whitespace-nowrap text-muted sm:ml-auto">
-          PDF · JPEG · PNG · до 25 МБ
+          PDF · JPEG · PNG · up to 25 MB
         </span>
         <input
           ref={inputRef}

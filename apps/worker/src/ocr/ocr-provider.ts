@@ -1,21 +1,20 @@
 import type { OcrBlock } from '@docflow/shared'
 
 /**
- * Контракт OCR-этапа (ТЗ 6.2). Интерфейс спроектирован под формат Google
- * Cloud Vision (блоки с полигонами → прямоугольники, confidence по блокам);
- * mock-реализация обязана выдавать ту же форму.
+ * OCR stage contract (spec 6.2), shaped after Google Cloud Vision: polygon
+ * blocks become rectangles with per-block confidence. The mock returns the same shape.
  */
 
 export interface OcrPageResult {
   pageNumber: number
-  /** Размеры страницы в единицах, к которым нормализованы bbox (пиксели растра или пункты PDF). */
+  /** Page dimensions used to normalize bbox values (raster pixels or PDF points). */
   width: number
   height: number
   text: string
-  /** Средняя уверенность по блокам; null, если блоков нет. */
+  /** Mean block confidence, or null when there are no blocks. */
   confidence: number | null
   blocks: OcrBlock[]
-  /** Страница уходила внешнему провайдеру — для журнала отправок (ТЗ §11). */
+  /** Whether the page was sent to an external provider, for the transfer log (spec §11). */
   sentToProvider: boolean
 }
 
@@ -25,7 +24,7 @@ export interface OcrResult {
 
 export interface OcrProvider {
   readonly name: string
-  /** true — провайдер отправляет данные за пределы системы. */
+  /** true when the provider sends data outside the system. */
   readonly external: boolean
   recognize(buffer: Buffer, mimeType: string): Promise<OcrResult>
 }

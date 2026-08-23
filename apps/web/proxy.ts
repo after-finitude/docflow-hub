@@ -3,14 +3,13 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 /**
- * Next.js 16: proxy.ts вместо middleware.ts, runtime только nodejs.
+ * Next.js 16 uses proxy.ts instead of middleware.ts and supports only the Node.js runtime here.
  *
- * Здесь только один переход: без cookie — на форму входа. Обратного правила
- * («cookie есть — уводить с /login») намеренно нет. Наличие cookie ничего
- * не говорит о её действительности, а страницы проверяют сессию через API,
- * поэтому два источника правды зациклили бы редиректы на любой протухшей
- * сессии. Решение о действительности принимает только API; отсюда — исключительно
- * защита навигации, подделка cookie ничего не даёт.
+ * There is only one redirect: no cookie means login. The reverse rule is
+ * intentionally absent because a cookie does not prove validity. Pages verify
+ * sessions through the API; a second source of truth would cause redirect loops
+ * for expired sessions. Only the API decides validity, so this merely protects
+ * navigation and a forged cookie grants nothing.
  */
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl
@@ -22,7 +21,6 @@ export function proxy(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  // Границы сегментов обязательны: без них будущий маршрут /api-docs
-  // молча оказался бы вне проверки.
+  // Segment boundaries keep a future /api-docs route from silently bypassing this check.
   matcher: ['/((?!api/|_next/|favicon\\.ico$).*)'],
 }

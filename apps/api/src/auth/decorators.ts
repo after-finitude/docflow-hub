@@ -6,17 +6,16 @@ export const IS_PUBLIC_KEY = 'auth:public'
 export const IS_OPTIONAL_AUTH_KEY = 'auth:optional'
 export const ROLES_KEY = 'auth:roles'
 
-/** Эндпоинт доступен без аутентификации (логин, health). */
+/** Endpoint available without authentication (login and health). */
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true)
 
 /**
- * Аутентификация необязательна: обработчик выполняется и с недействительной
- * сессией, но получает пользователя, если она валидна. Нужно для выхода —
- * очистить cookie обязано быть возможно именно тогда, когда токен уже протух.
+ * Authentication is optional: the handler runs for invalid sessions but receives
+ * the user when valid. Logout needs this so an expired token can be cleared.
  */
 export const OptionalAuth = () => SetMetadata(IS_OPTIONAL_AUTH_KEY, true)
 
-/** Ограничение по роли, ТЗ 3.1: действия администратора недоступны оператору. */
+/** Role restriction, spec 3.1: operators cannot perform administrator actions. */
 export const Roles = (...roles: UserRole[]) => SetMetadata(ROLES_KEY, roles)
 
 export interface AuthenticatedRequest extends Request {
@@ -29,7 +28,7 @@ export const CurrentUser = createParamDecorator(
     ctx.switchToHttp().getRequest<AuthenticatedRequest>().user,
 )
 
-/** Происхождение запроса — попадает в журнал вместе с действием. */
+/** Request origin, stored in the audit log with the action. */
 export interface RequestContext {
   ip?: string
   userAgent?: string

@@ -9,8 +9,8 @@ import { SOURCE_PROVIDER, type SourceProvider } from './source-provider'
 import { SyncService } from './sync.service'
 
 /**
- * Второй источник и периодические задачи. Провайдер выбирается конфигурацией
- * так же, как OCR и LLM: код синхронизации о конкретном источнике не знает.
+ * Secondary source and maintenance jobs. Configuration selects the provider,
+ * like OCR and LLM, so sync logic does not depend on a specific source.
  */
 @Module({
   providers: [
@@ -27,7 +27,7 @@ import { SyncService } from './sync.service'
             folderId: env.GOOGLE_DRIVE_FOLDER_ID!,
           })
         }
-        // Источник не настроен: остаётся только загрузка через интерфейс.
+        // No source configured; UI upload remains available.
         return null
       },
     },

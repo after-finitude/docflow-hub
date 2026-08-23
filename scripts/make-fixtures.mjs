@@ -1,5 +1,5 @@
-// Генерация фикстур для verify.sh и оффлайн-проверок. Минимальный PDF
-// с построчными текстовыми объектами: каждая строка — отдельный OCR-блок.
+// Generate fixtures for verify.sh and offline checks. Each line in the minimal
+// PDF is a separate OCR text block.
 import { writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -34,7 +34,7 @@ function buildPdf(lines) {
   return Buffer.from(pdf, 'latin1')
 }
 
-// Формат «Метка: значение» — контракт mock-LLM-провайдера.
+// “Label: value” is the mock LLM provider contract.
 writeFileSync(
   join(out, 'sample-invoice.pdf'),
   buildPdf([
@@ -50,7 +50,7 @@ writeFileSync(
   ]),
 )
 
-// Тот же инвойс с несходящейся суммой: 1200 + 240 ≠ 1400 (ТЗ критерий 6).
+// The same invoice with mismatched totals: 1200 + 240 ≠ 1400 (criterion 6).
 writeFileSync(
   join(out, 'invoice-sum-mismatch.pdf'),
   buildPdf([
@@ -68,7 +68,7 @@ writeFileSync(
 
 writeFileSync(
   join(out, 'corrupted.pdf'),
-  Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.from('сломанное содержимое без объектов')]),
+  Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.from('broken content without objects')]),
 )
 
-console.log('Фикстуры записаны в', out)
+console.log('Fixtures written to', out)

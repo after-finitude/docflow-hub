@@ -10,7 +10,7 @@ import { CurrentUser, Origin, type RequestContext } from '../auth/decorators'
 import { ZodValidationPipe } from '../common/zod-validation.pipe'
 import { RunsService } from './runs.service'
 
-/** Журнал выполнения этапов, экран Execution Log (ТЗ 5.3, §8). */
+/** Processing-stage history for the Execution Log screen (spec 5.3, §8). */
 @Controller('runs')
 export class RunsController {
   constructor(private readonly runs: RunsService) {}
@@ -31,7 +31,7 @@ export class RunsController {
     return this.runs.retry(id, user, origin)
   }
 
-  /** Отказ от автоматической обработки: документ уходит оператору (ТЗ 5.3). */
+  /** Stop automatic processing and send the document to an operator (spec 5.3). */
   @Post(':id/manual')
   toManual(
     @Param('id', ParseUUIDPipe) id: string,

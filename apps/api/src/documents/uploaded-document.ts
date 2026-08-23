@@ -1,9 +1,8 @@
 /**
- * Загруженный файл в том виде, в каком его передаёт multer.
+ * Uploaded file in the shape provided by multer.
  *
- * Тип объявлен явно, а не взят из глобального `Express.Multer.File`:
- * ambient-дополнение из @types/multer не подхватывается TypeScript 7, а из
- * всех полей multer здесь нужны только эти четыре.
+ * Declared explicitly instead of using global `Express.Multer.File`: TypeScript 7
+ * does not load the @types/multer ambient extension, and only four fields are needed.
  */
 export interface UploadedDocument {
   originalname: string
@@ -12,7 +11,7 @@ export interface UploadedDocument {
   buffer: Buffer
 }
 
-/** Сигнатура fileFilter multer — объявлена по той же причине. */
+/** Multer fileFilter signature, declared explicitly for the same reason. */
 export type MulterFileFilter = (
   request: unknown,
   file: { mimetype: string; originalname: string },

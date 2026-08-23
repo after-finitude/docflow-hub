@@ -17,10 +17,8 @@ export interface AuditEntry {
 }
 
 /**
- * Запись в журнал. Таблица только на добавление: роль приложения не имеет
- * UPDATE/DELETE (ТЗ §11), поэтому изменить или удалить запись отсюда нельзя.
- * Из этого же следует, что в журнал нельзя писать то, что потом придётся
- * вычищать, — см. осторожность с логином в AuthService.
+ * Append an audit record. The application role has no UPDATE/DELETE permission
+ * (spec §11), so never store data here that may need removal; see AuthService.
  */
 export async function writeAudit(db: Database, entry: AuditEntry): Promise<void> {
   await db.insert(auditEvents).values({

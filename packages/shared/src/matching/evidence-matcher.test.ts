@@ -8,9 +8,9 @@ import {
   type EvidencePage,
 } from './evidence-matcher'
 
-/** Unit-тесты модуля сопоставления на подготовленных OCR-фикстурах (ТЗ 6.5). */
+/** Matcher unit tests on prepared OCR fixtures (spec 6.5). */
 
-/** assert.ok сужает только выражение, не объединение — нужен явный guard. */
+/** assert.ok narrows only the expression, not the union, so use an explicit guard. */
 function expectFound(
   match: EvidenceMatch,
 ): asserts match is Extract<EvidenceMatch, { found: true }> {
@@ -31,101 +31,101 @@ function page(pageNumber: number, blocks: OcrBlock[]): EvidencePage {
   return { pageNumber, blocks }
 }
 
-describe('точное вхождение', () => {
-  it('находит фрагмент внутри одного блока и возвращает его bbox', () => {
-    const b = block('Поставщик: ООО «Мегастрой»')
-    const match = matchEvidence('ООО «Мегастрой»', 1, [page(1, [b])])
+describe('exact match', () => {
+  it('finds an excerpt inside one block and returns its bbox', () => {
+    const b = block('Supplier: Megabuild LLC')
+    const match = matchEvidence('Megabuild LLC', 1, [page(1, [b])])
     expectFound(match)
     assert.equal(match.method, 'exact')
     assert.deepEqual(match.bbox, b.bbox)
     assert.equal(match.pageMismatch, false)
   })
 
-  it('не зависит от регистра', () => {
+  it('is case-insensitive', () => {
     const match = matchEvidence('acme gmbh', 1, [page(1, [block('Supplier: ACME GMBH')])])
     expectFound(match)
     assert.equal(match.method, 'exact')
   })
 
-  it('схлопывает множественные пробелы', () => {
+  it('collapses repeated whitespace', () => {
     const match = matchEvidence('Invoice   DF-1001', 1, [page(1, [block('Invoice DF-1001')])])
     expectFound(match)
   })
 })
 
-describe('перенос значения на две строки', () => {
-  it('склеивает соседние блоки и объединяет bbox', () => {
-    const first = block('Общество с ограниченной')
-    const second = block('ответственностью «Вектор»')
-    const match = matchEvidence('Общество с ограниченной ответственностью «Вектор»', 1, [
-      page(1, [block('шапка документа'), first, second]),
+describe('value split across two lines', () => {
+  it('joins adjacent blocks and unions their bbox', () => {
+    const first = block('Vector Limited')
+    const second = block('Liability Company')
+    const match = matchEvidence('Vector Limited Liability Company', 1, [
+      page(1, [block('document header'), first, second]),
     ])
     expectFound(match)
-    // Объединённый bbox накрывает оба блока.
+    // The union bbox covers both blocks.
     assert.ok(match.bbox.y <= first.bbox.y)
     assert.ok(match.bbox.y + match.bbox.height >= second.bbox.y + second.bbox.height)
   })
 
-  it('усредняет OCR-уверенность блоков окна', () => {
-    const match = matchEvidence('первая часть вторая часть', 1, [
-      page(1, [block('первая часть', 1), block('вторая часть', 0.5)]),
+  it('averages OCR confidence across window blocks', () => {
+    const match = matchEvidence('first part second part', 1, [
+      page(1, [block('first part', 1), block('second part', 0.5)]),
     ])
     expectFound(match)
     assert.equal(match.ocrConfidence, 0.75)
   })
 })
 
-describe('дефисы', () => {
-  it('находит слово, разорванное переносом с дефисом', () => {
-    const match = matchEvidence('Мегастрой', 1, [page(1, [block('Мега-'), block('строй')])])
+describe('hyphens', () => {
+  it('finds a word split by a line-break hyphen', () => {
+    const match = matchEvidence('Megabuild', 1, [page(1, [block('Mega-'), block('build')])])
     expectFound(match)
   })
 
-  it('различие в дефисах покрывается нечётким сопоставлением', () => {
-    const match = matchEvidence('DF-1001-A', 1, [page(1, [block('Номер: DF 1001 A')])])
+  it('handles hyphen differences with fuzzy matching', () => {
+    const match = matchEvidence('DF-1001-A', 1, [page(1, [block('Number: DF 1001 A')])])
     expectFound(match)
     assert.equal(match.method, 'fuzzy')
   })
 })
 
-describe('разрывы в числах', () => {
-  it('находит сумму, разбитую OCR на отдельные блоки', () => {
+describe('split numbers', () => {
+  it('finds an amount split into OCR blocks', () => {
     const match = matchEvidence('1200,00', 1, [page(1, [block('1'), block('200,00')])])
     expectFound(match)
   })
 
-  it('находит сумму с пробелом-разделителем тысяч в одном блоке', () => {
-    const match = matchEvidence('1 200,00 EUR', 1, [page(1, [block('Итого: 1 200,00 EUR')])])
+  it('finds an amount with a space thousands separator in one block', () => {
+    const match = matchEvidence('1 200,00 EUR', 1, [page(1, [block('Total: 1 200,00 EUR')])])
     expectFound(match)
     assert.equal(match.method, 'exact')
   })
 })
 
-describe('пунктуация', () => {
-  it('находит фрагмент при расхождении в кавычках и запятых', () => {
-    const match = matchEvidence('ООО Вектор', 1, [page(1, [block('ООО «Вектор»,')])])
+describe('punctuation', () => {
+  it('finds an excerpt despite quote and comma differences', () => {
+    const match = matchEvidence('Vector LLC', 1, [page(1, [block('“Vector LLC”,')])])
     expectFound(match)
   })
 
-  it('терпит мелкие OCR-ошибки в пределах 15%', () => {
-    // Потерянная буква в «Munich» и съеденная запятая: в пределах 15% от 16 символов.
+  it('tolerates small OCR errors within 15%', () => {
+    // A missing letter in “Munich” and comma remain within 15% of 16 characters.
     const match = matchEvidence('Acme GmbH, Munich', 1, [page(1, [block('Acme GmbH Munch')])])
     expectFound(match)
     assert.equal(match.method, 'fuzzy')
   })
 
-  it('не принимает фрагмент с расхождением больше допуска', () => {
-    const match = matchEvidence('совершенно другой текст', 1, [
-      page(1, [block('ничего похожего здесь нет')]),
+  it('rejects an excerpt beyond the tolerance', () => {
+    const match = matchEvidence('completely different text', 1, [
+      page(1, [block('nothing similar is here')]),
     ])
     assert.equal(match.found, false)
   })
 })
 
-describe('страница не совпала', () => {
-  it('находит фрагмент на другой странице и помечает расхождение', () => {
+describe('page mismatch', () => {
+  it('finds an excerpt on another page and marks the mismatch', () => {
     const match = matchEvidence('DF-1001', 1, [
-      page(1, [block('титульный лист')]),
+      page(1, [block('cover page')]),
       page(2, [block('Invoice DF-1001')]),
     ])
     expectFound(match)
@@ -133,7 +133,7 @@ describe('страница не совпала', () => {
     assert.equal(match.pageMismatch, true)
   })
 
-  it('точное совпадение на чужой странице сильнее нечёткого на заявленной', () => {
+  it('prefers an exact match on another page over a fuzzy match on the reported page', () => {
     const match = matchEvidence('Total: 1440.00', 2, [
       page(1, [block('Total: 1440.00')]),
       page(2, [block('Tota1 1440 00')]),
@@ -144,27 +144,27 @@ describe('страница не совпала', () => {
   })
 })
 
-describe('фрагмент не найден', () => {
-  it('возвращает found=false, когда фрагмента нет нигде', () => {
-    const match = matchEvidence('несуществующее значение', 1, [
-      page(1, [block('текст страницы')]),
-      page(2, [block('другой текст')]),
+describe('excerpt not found', () => {
+  it('returns found=false when the excerpt is absent', () => {
+    const match = matchEvidence('nonexistent value', 1, [
+      page(1, [block('page text')]),
+      page(2, [block('other text')]),
     ])
     assert.equal(match.found, false)
   })
 
-  it('возвращает found=false на пустом evidence', () => {
-    assert.equal(matchEvidence('   ', 1, [page(1, [block('текст')])]).found, false)
+  it('returns found=false for empty evidence', () => {
+    assert.equal(matchEvidence('   ', 1, [page(1, [block('text')])]).found, false)
   })
 })
 
-describe('левенштейн', () => {
-  it('считает расстояние', () => {
+describe('Levenshtein', () => {
+  it('calculates distance', () => {
     assert.equal(levenshtein('kitten', 'sitting'), 3)
-    assert.equal(levenshtein('одинаково', 'одинаково'), 0)
+    assert.equal(levenshtein('same', 'same'), 0)
   })
 
-  it('обрывается на бюджете', () => {
-    assert.ok(levenshtein('completely different', 'ничего общего', 3) > 3)
+  it('stops above the budget', () => {
+    assert.ok(levenshtein('completely different', 'nothing alike', 3) > 3)
   })
 })

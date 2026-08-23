@@ -1,11 +1,9 @@
-// Съёмка экранов из состава поставки (ТЗ §16): Review Workspace,
-// Execution Log с повтором упавшей задачи, отчёт evaluation.
+// Capture delivery screenshots (spec §16): Review Workspace, Execution Log,
+// and evaluation report.
 //
-// Скрипт управляет браузером, уже установленным в системе (channel: 'chrome'),
-// и ничего не скачивает — то же решение, что и в генераторе демо-набора.
-// Требует поднятый стек: docker compose up -d --wait
+// Use the system Chrome without downloads. Requires docker compose up -d --wait.
 //
-//   node scripts/screenshots.mjs [адрес]
+//   node scripts/screenshots.mjs [address]
 
 import { chromium } from 'playwright-core'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -48,29 +46,43 @@ async function shot(name) {
   console.log(`  ${name}.png`)
 }
 
-/** Документ на проверке: поля, уверенность, подсвеченная область-источник. */
+/** Review document with fields, confidence, and highlighted source area. */
 async function reviewWorkspace() {
-  const response = await page.request.get(`${baseUrl}/api/documents?status=needs_review&pageSize=1`)
+  const response = await page.request.get(
+    `${baseUrl}/api/documents?status=needs_review&hasBlocking=true&pageSize=100`,
+  )
   const { items } = await response.json()
-  if (!items?.length) throw new Error('Нет документа в статусе needs_review')
+  if (!items?.length) throw new Error('No document with needs_review status')
 
-  await page.goto(`${baseUrl}/documents/${items[0].id}`)
-  await page.waitForSelector('img[alt*="Страница"]', { timeout: 15_000 })
-  // «Показать в документе» подсвечивает область-источник в оригинале —
-  // именно это и должен показывать скриншот (критерий приёмки 5).
-  const link = page.getByRole('button', { name: /Показать в документе/ }).first()
+  const document = items.find((item) => item.isActive)
+  if (!document) throw new Error('No active document with needs_review status')
+
+  // Revalidate persisted demo data so screenshots never retain messages from
+  // an older schema language.
+  await page.request.post(`${baseUrl}/api/documents/${document.id}/reprocess`)
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const detail = await page.request.get(`${baseUrl}/api/documents/${document.id}`)
+    const current = await detail.json()
+    if (!['received', 'processing'].includes(current.status)) break
+    await page.waitForTimeout(1000)
+  }
+
+  await page.goto(`${baseUrl}/documents/${document.id}`)
+  await page.waitForSelector('img[alt*="Page"]', { timeout: 15_000 })
+  // “Show in document” highlights the source area required by acceptance criterion 5.
+  const link = page.getByRole('button', { name: /Show in document/ }).first()
   if (await link.count()) await link.click()
   await page.waitForTimeout(1200)
   await shot('review-workspace')
 }
 
-/** Журнал выполнения: упавший этап раскрыт, видны ошибка, стек и повтор. */
+/** Execution Log with a failed stage expanded to show error, stack, and retry. */
 async function executionLog() {
   await page.goto(`${baseUrl}/runs`)
-  await page.getByText('только ошибки').click()
+  await page.getByText('errors only').click()
   await page.waitForTimeout(1500)
 
-  const expand = page.getByRole('button', { name: 'Подробнее' }).first()
+  const expand = page.getByRole('button', { name: 'Details' }).first()
   if (await expand.count()) {
     await expand.click()
     await page.waitForTimeout(600)
@@ -78,7 +90,7 @@ async function executionLog() {
   await shot('execution-log')
 }
 
-/** Отчёт evaluation: тот же файл, что лежит в репозитории. */
+/** Evaluation report from the same file committed to the repository. */
 async function evaluationReport() {
   const report = await readFile(join(root, 'evaluation/last-run.md'), 'utf8')
   const html = `<!doctype html><meta charset="utf-8"><style>
@@ -87,8 +99,7 @@ async function evaluationReport() {
     pre { margin: 0; white-space: pre-wrap; }
   </style><pre>${report.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])}</pre>`
 
-  // Промежуточная страница живёт во временном каталоге: в поставку идёт
-  // только снимок.
+  // The temporary page stays outside the delivery; only the screenshot is included.
   const file = join(tmpdir(), 'docflow-evaluation-report.html')
   await writeFile(file, html)
   await page.goto(`file://${file}`)
@@ -98,7 +109,7 @@ async function evaluationReport() {
 }
 
 try {
-  console.log(`Съёмка с ${baseUrl}:`)
+  console.log(`Capturing from ${baseUrl}:`)
   await login()
   await reviewWorkspace()
   await executionLog()

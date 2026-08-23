@@ -7,15 +7,14 @@ import { matchEvidence, type EvidencePage } from '../matching/evidence-matcher'
 import { normalizeByType } from '../normalize/values'
 
 /**
- * Сборка поля из ответа LLM: нормализация, поиск источника (ТЗ 6.5) и расчёт
- * уверенности (ТЗ 6.7).
+ * Build a field from the LLM response: normalize, locate its source (spec 6.5),
+ * and calculate confidence (spec 6.7).
  *
- * Живёт в shared, потому что этим кодом пользуются два потребителя: процессор
- * извлечения в воркере и harness оценки качества (`npm run eval`). Оценка
- * обязана мерить тот же код, который работает в проде, а не его копию.
+ * Shared by the extraction worker and `npm run eval` so evaluation measures the
+ * production code rather than a copy.
  */
 
-/** Базовая уверенность извлечения до учёта остальных сигналов. */
+/** Base extraction confidence before other signals. */
 export const EXTRACTION_BASE_CONFIDENCE = 0.9
 
 export interface LlmFieldValue {
@@ -48,14 +47,14 @@ export function buildExtractedField(
     isCritical: spec.critical,
   }
 
-  // Отсутствующее поле — null с признаком Missing, а не догадка (ТЗ §9).
+  // A missing field is null with a Missing marker, never a guess (spec §9).
   if (!llmField || llmField.value === null) {
     return {
       ...base,
       rawValue: null,
       normalizedValue: null,
       confidence: null,
-      confidenceReason: 'Значение отсутствует в документе',
+      confidenceReason: 'Value is missing from the document',
       confidenceSignals: null,
       sourcePage: null,
       sourceBbox: null,
@@ -69,13 +68,12 @@ export function buildExtractedField(
     ? llmField.value
     : normalizeByType(llmField.value as string, spec.type)
 
-  // Поле без evidence — поле без источника (ТЗ 6.4).
+  // A field without evidence has no source (spec 6.4).
   const match = llmField.evidence
     ? matchEvidence(llmField.evidence.text, llmField.evidence.page, pages)
     : ({ found: false } as const)
 
-  // Сигналы сохраняются: перевалидация пересчитывает уверенность из них
-  // заново, а не накладывает штраф поверх уже посчитанного значения.
+  // Persist signals so revalidation recalculates instead of stacking penalties.
   const signals: ConfidenceSignals = {
     extraction: EXTRACTION_BASE_CONFIDENCE,
     ocr: match.found ? match.ocrConfidence : null,
@@ -86,7 +84,7 @@ export function buildExtractedField(
 
   const reasons = [...score.reasons]
   if (normalizedValue === null && !isArray) {
-    reasons.push(`Не удалось привести значение к типу ${spec.type}`)
+    reasons.push(`Could not convert the value to type ${spec.type}`)
   }
 
   return {

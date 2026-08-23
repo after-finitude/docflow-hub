@@ -27,9 +27,9 @@ export function LogoutButton() {
   return (
     <div className="text-right">
       <button type="button" onClick={handleLogout} className="btn btn--ghost btn--sm">
-        Выйти
+        Sign out
       </button>
-      {failed && <p className="mt-1 text-xs text-danger">Не удалось выйти, повторите</p>}
+      {failed && <p className="mt-1 text-xs text-danger">Could not sign out. Try again</p>}
     </div>
   )
 }

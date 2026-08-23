@@ -1,17 +1,15 @@
--- Права роли приложения (ТЗ §11).
+-- Application role permissions (spec §11).
 --
--- Приложение работает под ролью docflow_app, у которой нет UPDATE и DELETE
--- на audit_events: журнал доступен только на добавление и чтение. DDL и
--- миграции выполняются под ролью-владельцем, у приложения прав на них нет.
+-- docflow_app has no UPDATE or DELETE on audit_events; the log is append/read
+-- only. The owner role runs DDL and migrations.
 --
--- Имя роли зафиксировано: то же значение в docker/postgres/init/01-app-role.sh
--- и в DATABASE_URL.
+-- Keep this role name in sync with docker/postgres/init/01-app-role.sh and DATABASE_URL.
 
 GRANT USAGE ON SCHEMA public TO docflow_app;--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO docflow_app;--> statement-breakpoint
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO docflow_app;--> statement-breakpoint
 REVOKE UPDATE, DELETE, TRUNCATE ON audit_events FROM docflow_app;--> statement-breakpoint
--- Таблицы следующих миграций создаёт владелец: права на них выдаются
--- автоматически, отзыв по audit_events уже зафиксирован выше.
+-- The owner creates later tables and grants default privileges; the audit_events
+-- revocation above remains in effect.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO docflow_app;--> statement-breakpoint
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO docflow_app;

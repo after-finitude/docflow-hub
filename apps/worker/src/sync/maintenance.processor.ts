@@ -14,9 +14,8 @@ import { RetentionService } from './retention.service'
 import { SyncService } from './sync.service'
 
 /**
- * Периодические задачи: синхронизация источника и retention (ТЗ 6.1, 6.9).
- * Отдельная очередь, а не таймер в процессе: при нескольких воркерах задача
- * должна выполняться один раз, и это гарантирует именно очередь.
+ * Periodic source sync and retention jobs (spec 6.1, 6.9). A dedicated queue,
+ * rather than an in-process timer, ensures one execution across multiple workers.
  */
 @Processor(QUEUE.MAINTENANCE, { ...PIPELINE_WORKER_OPTIONS })
 export class MaintenanceProcessor extends WorkerHost implements OnModuleInit {
@@ -48,6 +47,6 @@ export class MaintenanceProcessor extends WorkerHost implements OnModuleInit {
       return
     }
 
-    this.logger.warn(`Неизвестная периодическая задача ${job.name}`)
+    this.logger.warn(`Unknown maintenance job ${job.name}`)
   }
 }

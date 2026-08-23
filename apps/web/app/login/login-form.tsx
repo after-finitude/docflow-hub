@@ -28,21 +28,20 @@ export function LoginForm() {
         return
       }
 
-      if (response.status === 401) setError('Неверный логин или пароль')
-      else if (response.status === 429) setError('Слишком много попыток, попробуйте позже')
-      else setError('Не удалось войти')
+      if (response.status === 401) setError('Invalid username or password')
+      else if (response.status === 429) setError('Too many attempts. Try again later')
+      else setError('Could not sign in')
     } catch {
-      // Без этой ветки сетевая ошибка оставила бы кнопку заблокированной
-      // навсегда: setPending(false) ниже не выполнился бы.
-      setError('Сервис недоступен, попробуйте позже')
+      // Without this branch, a network error would leave the button disabled
+      // forever because setPending(false) below would never run.
+      setError('Service unavailable. Try again later')
     }
 
     setPending(false)
   }
 
   return (
-    // Форма прижата к левой трети и посажена на 18vh, а не выровнена по
-    // центру экрана: у входа нет причин вести себя как афиша.
+    // Place the form in the left third at 18vh instead of centering it like a poster.
     <main className="min-h-screen px-6 pt-[18vh] pb-16">
       <div className="mx-auto grid max-w-[1600px] gap-12 md:grid-cols-[minmax(0,22rem)_1fr]">
         <form onSubmit={handleSubmit}>
@@ -50,12 +49,12 @@ export function LoginForm() {
             <span className="font-display text-xl font-semibold tracking-tight">Docflow</span>
             <span className="mono text-2xs uppercase tracking-[0.14em] text-muted">hub</span>
           </h1>
-          <p className="mt-1 text-sm text-muted">Приём, распознавание и проверка документов</p>
+          <p className="mt-1 text-sm text-muted">Document ingest, recognition, and review</p>
 
           <div className="mt-8 space-y-4">
             <div>
               <label className="label mb-1" htmlFor="login">
-                Логин
+                Username
               </label>
               <input
                 id="login"
@@ -72,7 +71,7 @@ export function LoginForm() {
 
             <div>
               <label className="label mb-1" htmlFor="password">
-                Пароль
+                Password
               </label>
               <input
                 id="password"
@@ -89,8 +88,7 @@ export function LoginForm() {
             </div>
           </div>
 
-          {/* Высота строки сообщения зарезервирована: появление ошибки
-              не должно сдвигать кнопку под курсором. */}
+          {/* Reserve the message row so an error does not move the button under the cursor. */}
           <p
             id="auth-error"
             role={error ? 'alert' : undefined}
@@ -100,22 +98,22 @@ export function LoginForm() {
           </p>
 
           <button type="submit" disabled={pending} className="btn btn--primary mt-2 w-full">
-            {pending ? 'Проверяем…' : 'Войти'}
+            {pending ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
 
         <aside className="hidden self-end border-l border-rule pl-12 md:block">
           <p className="max-w-[38ch] text-sm leading-relaxed text-ink-2">
-            Каждое извлечённое значение хранит ссылку на область в оригинале, из которой оно взято.
-            Система не выдаёт результат, не показывая источник.
+            Every extracted value links back to its source area in the original document. The system
+            never shows a result without its source.
           </p>
           <dl className="mt-8 grid max-w-md grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-xs">
-            <dt className="text-muted">Типы документов</dt>
-            <dd className="mono">инвойс · выписка · письмо · договор</dd>
-            <dt className="text-muted">Источники</dt>
-            <dd className="mono">загрузка · папка · Диск</dd>
-            <dt className="text-muted">Проверка</dt>
-            <dd className="mono">правила схемы + уверенность полей</dd>
+            <dt className="text-muted">Document types</dt>
+            <dd className="mono">invoice · statement · letter · contract</dd>
+            <dt className="text-muted">Sources</dt>
+            <dd className="mono">upload · folder · Drive</dd>
+            <dt className="text-muted">Review</dt>
+            <dd className="mono">schema rules + field confidence</dd>
           </dl>
         </aside>
       </div>

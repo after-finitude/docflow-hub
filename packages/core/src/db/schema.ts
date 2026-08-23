@@ -29,8 +29,7 @@ import {
 } from 'drizzle-orm/pg-core'
 
 /**
- * Модель данных по ТЗ §7.
- * Идентификаторы — uuidv7() из PostgreSQL 18: сортируемость по времени.
+ * Data model from spec §7. PostgreSQL 18 uuidv7() IDs are time-sortable.
  */
 
 export const userRoleEnum = pgEnum('user_role', USER_ROLES)
@@ -65,8 +64,8 @@ export const documents = pgTable(
   'documents',
   {
     id: id(),
-    // Одна организация в обязательном объёме; задел на multi-tenant без
-    // реализации изоляции (ТЗ §7, примечание).
+    // The required scope has one organization; retain a multi-tenant seam
+    // without implementing isolation (spec §7 note).
     tenantId: uuid('tenant_id').notNull(),
 
     sourceType: sourceTypeEnum('source_type').notNull(),
@@ -78,7 +77,7 @@ export const documents = pgTable(
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
     checksum: text('checksum').notNull(),
 
-    // Ссылки на объектное хранилище: в БД сам файл не лежит (ТЗ 6.1).
+    // Object-storage references; the database does not contain file data (spec 6.1).
     storageKey: text('storage_key').notNull(),
     thumbnailKey: text('thumbnail_key'),
 
@@ -86,24 +85,20 @@ export const documents = pgTable(
     typeConfidence: real('type_confidence'),
     pageCount: integer('page_count'),
 
-    // Дубликат по checksum: документ принимается, но связывается с оригиналом
-    // и повторно не экспортируется (ТЗ §10).
+    // Accept checksum duplicates, link them to the original, and do not export twice (spec §10).
     duplicateOfId: uuid('duplicate_of_id').references((): AnyPgColumn => documents.id),
 
     status: documentStatusEnum('status').notNull().default('received'),
     statusReason: text('status_reason'),
     versionNumber: integer('version_number').notNull().default(1),
-    // Предыдущая версия того же документа. Для файлов из источника цепочку
-    // можно было бы вывести из source_path, но у загруженных вручную его нет,
-    // а заменённый оператором файл обязан оставаться связанным с прежним.
+    // Previous version. Source paths could derive this for synced files, but UI
+    // uploads lack one and operator replacements must stay linked.
     previousVersionId: uuid('previous_version_id').references((): AnyPgColumn => documents.id, {
       onDelete: 'set null',
     }),
     isActive: boolean('is_active').notNull().default(true),
-    // Момент, когда документ перестал быть актуальным: удалён в источнике или
-    // вытеснен новой версией. От него, а не от даты приёма, отсчитывается
-    // retention policy (ТЗ 6.9) — иначе давно принятый и только что удалённый
-    // файл стирался бы сразу.
+    // Deactivation time after source removal or replacement. Retention starts
+    // here, not at ingest, to avoid immediately deleting old but newly inactive files.
     deactivatedAt: timestamp('deactivated_at', { withTimezone: true }),
 
     receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
@@ -114,15 +109,14 @@ export const documents = pgTable(
     index('documents_checksum_idx').on(t.checksum),
     index('documents_received_at_idx').on(t.receivedAt),
     index('documents_type_idx').on(t.documentType),
-    // Поиск текущей версии по пути источника — горячий путь синхронизации.
+    // Finding the current version by source path is a hot sync path.
     index('documents_source_path_idx').on(t.sourceType, t.sourcePath),
   ],
 )
 
 /**
- * Состояние синхронизации источника (ТЗ 6.1, второй этап). Курсор хранится
- * в БД, а не в Redis: очередь можно очистить, а точка, с которой источник
- * читается дальше, переживать это обязана.
+ * Source sync state (spec 6.1, second source). Store the cursor in the database
+ * so it survives queue clearing.
  */
 export const sourceCursors = pgTable(
   'source_cursors',
@@ -160,7 +154,7 @@ export const documentSchemas = pgTable(
     documentType: documentTypeEnum('document_type').notNull(),
     version: integer('version').notNull(),
     jsonSchema: jsonb('json_schema').notNull(),
-    // Пороги маршрутизации, ТЗ 6.7: меняются через API администратора.
+    // Routing thresholds from spec 6.7, managed through the administrator API.
     thresholds: jsonb('thresholds').notNull(),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -184,13 +178,12 @@ export const fields = pgTable(
 
     confidence: real('confidence'),
     confidenceReason: text('confidence_reason'),
-    // Сигналы, из которых посчитана уверенность. Хранятся, чтобы перевалидация
-    // пересчитывала confidence заново, а не накладывала штраф поверх штрафа.
+    // Store confidence inputs so revalidation recalculates instead of stacking penalties.
     confidenceSignals: jsonb('confidence_signals').$type<ConfidenceSignals>(),
 
     sourcePage: integer('source_page'),
     sourceBbox: jsonb('source_bbox').$type<BoundingBox>(),
-    // Поле без найденного источника не может иметь confidence > 0.6 (ТЗ §9).
+    // A field without a source cannot have confidence above 0.6 (spec §9).
     sourceFound: boolean('source_found').notNull().default(false),
 
     isCritical: boolean('is_critical').notNull().default(false),
@@ -221,8 +214,7 @@ export const validationIssues = pgTable(
   ],
 )
 
-// Имя documentExports, а не exports: CommonJS резервирует `exports`
-// в области видимости модуля. Таблица в БД называется exports.
+// Use documentExports because CommonJS reserves `exports` in module scope.
 export const documentExports = pgTable(
   'exports',
   {
@@ -231,8 +223,7 @@ export const documentExports = pgTable(
       .notNull()
       .references(() => documents.id, { onDelete: 'cascade' }),
     destination: text('destination').notNull(),
-    // Идемпотентность выгрузки, ТЗ §9: повторный запрос с тем же ключом
-    // не создаёт второй объект.
+    // Export idempotency (spec §9): the same key cannot create a second object.
     exportKey: text('export_key').notNull(),
     status: exportStatusEnum('status').notNull().default('pending'),
     payloadRef: text('payload_ref'),
@@ -270,9 +261,8 @@ export const workflowRuns = pgTable(
 )
 
 /**
- * Dead-letter queue: задачи, исчерпавшие попытки (ТЗ 6.10, второй этап).
- * Хранит вход задачи и полный текст ошибки — по ним строится раскрытие
- * строки в Execution Log и ручной повтор.
+ * Dead-letter queue for exhausted jobs (spec 6.10, second stage). Stores job
+ * input and full error text for the Execution Log and manual retry.
  */
 export const deadLetters = pgTable(
   'dead_letters',
@@ -302,8 +292,8 @@ export const deadLetters = pgTable(
 )
 
 /**
- * Журнал действий. Защищён от изменения на уровне ролей БД: роль приложения
- * не имеет UPDATE/DELETE на эту таблицу (ТЗ §11, миграция 0001).
+ * Audit log protected by database roles. The application has no UPDATE/DELETE
+ * permission on this table (spec §11, migration 0001).
  */
 export const auditEvents = pgTable(
   'audit_events',
@@ -320,8 +310,7 @@ export const auditEvents = pgTable(
     before: jsonb('before'),
     after: jsonb('after'),
     result: text('result').notNull(),
-    // Без адреса и клиента журнал аутентификации бесполезен: неудачные входы
-    // невозможно отличить от перебора с одного адреса.
+    // Address and client distinguish ordinary failed logins from brute force.
     ip: text('ip'),
     userAgent: text('user_agent'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

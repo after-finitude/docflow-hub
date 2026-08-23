@@ -8,15 +8,14 @@ import type { Env } from '../config/env'
 const CHANNEL = 'docflow:document-events'
 
 /**
- * Живые обновления очереди (ТЗ 5.1). Статусы меняет воркер, а SSE раздаёт API —
- * это разные контейнеры, поэтому нужен внешний канал. Используется pub/sub
- * Redis, который уже есть в стеке под очереди.
+ * Live queue updates (spec 5.1). Workers change statuses while the API serves
+ * SSE from another container, so use the existing Redis pub/sub channel.
  */
 @Injectable()
 export class DocumentEventsService implements OnModuleDestroy {
   private readonly logger = new Logger(DocumentEventsService.name)
   private readonly publisher: Redis
-  /** Соединение в режиме подписки не может выполнять обычные команды — отсюда второе. */
+  /** A subscribed connection cannot run regular commands, so use a second connection. */
   private subscriber?: Redis
 
   constructor(@Inject(ENV) private readonly env: Env) {
@@ -27,9 +26,9 @@ export class DocumentEventsService implements OnModuleDestroy {
     try {
       await this.publisher.publish(CHANNEL, JSON.stringify(event))
     } catch (error) {
-      // Потеря уведомления не должна ронять обработку документа: клиент
-      // всё равно получит актуальное состояние через polling-фолбэк.
-      this.logger.warn(`Не удалось опубликовать событие: ${String(error)}`)
+      // A lost notification must not fail document processing; polling still
+      // gives clients the latest state.
+      this.logger.warn(`Could not publish event: ${String(error)}`)
     }
   }
 
@@ -43,10 +42,10 @@ export class DocumentEventsService implements OnModuleDestroy {
         try {
           subscriber.next(JSON.parse(payload) as DocumentEvent)
         } catch {
-          this.logger.warn('Получено событие в нечитаемом формате')
+          this.logger.warn('Received an unreadable event')
         }
       })
-      connection.on('error', (error) => this.logger.warn(`Канал событий: ${error.message}`))
+      connection.on('error', (error) => this.logger.warn(`Event channel: ${error.message}`))
 
       return () => void connection.quit()
     })

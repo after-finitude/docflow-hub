@@ -1,14 +1,11 @@
 /**
- * Генератор демонстрационного набора (ТЗ §13).
+ * Demo dataset generator (spec §13).
  *
- * Документы синтетические, реальных персональных данных нет; эталонные
- * значения берутся из данных генератора, поэтому размеченный набор всегда
- * согласован с файлами. Генерация детерминирована (фиксированное зерно),
- * повторный запуск даёт тот же корпус.
+ * Documents are synthetic and contain no real personal data. Ground truth comes
+ * from generator inputs, and a fixed seed keeps reruns deterministic.
  *
- * Отклонение от плана: PDF рисует pdf-lib, а не Playwright из HTML-шаблонов.
- * Причина — Playwright тянет загрузку Chromium (~150 МБ) и внешнюю сеть,
- * а нужного качества макета достаточно и от прямой отрисовки.
+ * Plan deviation: pdf-lib draws PDFs directly because Playwright would download
+ * Chromium (~150 MB) and require external network access.
  */
 import fontkit from '@pdf-lib/fontkit'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -22,7 +19,7 @@ const outDir = join(root, 'evaluation', 'dataset')
 const fontPath = join(root, 'node_modules', 'dejavu-fonts-ttf', 'ttf', 'DejaVuSans.ttf')
 const fontBoldPath = join(root, 'node_modules', 'dejavu-fonts-ttf', 'ttf', 'DejaVuSans-Bold.ttf')
 
-/** Детерминированный ГПСЧ: корпус и эталоны обязаны совпадать при каждом прогоне. */
+/** Deterministic RNG keeps the corpus and ground truth aligned across runs. */
 function mulberry32(seed) {
   return () => {
     seed = (seed + 0x6d2b79f5) | 0
@@ -43,16 +40,16 @@ const SUPPLIERS = [
   'Umbrella SA',
   'Stark Industries',
   'Wayne Enterprises',
-  'ООО «Мегастрой»',
-  'ООО «Вектор»',
+  'Megabuild LLC',
+  'Vector LLC',
   'Soylent Corp',
   'Hooli Inc',
 ]
-const BANKS = ['Nordbank AG', 'Alpha Banking', 'ПАО «Первый Банк»', 'Meridian Trust']
-const AUTHORITIES = ['Federal Tax Office', 'ИФНС № 12 по г. Москве', 'HM Revenue & Customs']
-const SUBJECTS = ['Уточнение налоговой базы', 'Request for clarification', 'Payment reminder']
+const BANKS = ['Nordbank AG', 'Alpha Banking', 'First Bank PLC', 'Meridian Trust']
+const AUTHORITIES = ['Federal Tax Office', 'City Revenue Service', 'HM Revenue & Customs']
+const SUBJECTS = ['Tax base clarification', 'Request for clarification', 'Payment reminder']
 const CONTRACT_SUBJECTS = [
-  'Оказание услуг разработки',
+  'Software development services',
   'Supply of office equipment',
   'Consulting services',
 ]
@@ -75,7 +72,7 @@ function addDays(date, days) {
   return copy
 }
 
-/** База отсчёта дат фиксирована: иначе эталон «протухал» бы со временем. */
+/** Fixed date baseline prevents ground truth from expiring over time. */
 const BASE_DATE = new Date(Date.UTC(2026, 5, 1))
 
 async function renderPdf(lines, layout) {
@@ -117,7 +114,7 @@ async function renderPdf(lines, layout) {
   return Buffer.from(await pdf.save())
 }
 
-/** Инвойс: три варианта макета, значения и валюта варьируются (ТЗ §13). */
+/** Invoice with three layout variants and varied values and currencies (spec §13). */
 function invoice(index) {
   const supplier = pick(SUPPLIERS)
   const currency = pick(CURRENCIES)
@@ -280,7 +277,7 @@ function contract(index) {
   }
 }
 
-/** Скан низкого качества: поворот, шум, падение контраста (ТЗ §13). */
+/** Poor scan with rotation, noise, and reduced contrast (spec §13). */
 async function degrade(pdfBuffer) {
   const mupdf = await import('mupdf')
   const document = mupdf.Document.openDocument(pdfBuffer, 'application/pdf')
@@ -295,7 +292,7 @@ async function degrade(pdfBuffer) {
 
   return sharp(png)
     .rotate(2.5, { background: '#ffffff' })
-    .linear(0.72, 30) // падение контраста
+    .linear(0.72, 30) // Reduce contrast.
     .composite([
       {
         input: noise,
@@ -303,10 +300,10 @@ async function degrade(pdfBuffer) {
         blend: 'overlay',
         tile: true,
       },
-      // «Рукописная» пометка на полях.
+      // Handwritten-style margin note.
       {
         input: Buffer.from(
-          `<svg width="${meta.width}" height="${meta.height}"><text x="${(meta.width ?? 0) * 0.62}" y="${(meta.height ?? 0) * 0.18}" font-family="cursive" font-size="34" fill="#2b4fa2" transform="rotate(-7 ${(meta.width ?? 0) * 0.62} ${(meta.height ?? 0) * 0.18})">оплачено</text></svg>`,
+          `<svg width="${meta.width}" height="${meta.height}"><text x="${(meta.width ?? 0) * 0.62}" y="${(meta.height ?? 0) * 0.18}" font-family="cursive" font-size="34" fill="#2b4fa2" transform="rotate(-7 ${(meta.width ?? 0) * 0.62} ${(meta.height ?? 0) * 0.18})">paid</text></svg>`,
         ),
         blend: 'over',
       },
@@ -342,13 +339,13 @@ async function main() {
         file,
         expectedType: spec.expectedType,
         criticalFields: spec.critical,
-        // Размеченный eval-набор — 15 документов (ТЗ §12).
+        // The labeled evaluation set contains 15 documents (spec §12).
         eval: manifest.length < 15,
       })
     }
   }
 
-  // Скан низкого качества: тот же инвойс, испорченный программно.
+  // Poor scan: the same invoice degraded programmatically.
   const scanSource = invoice(900)
   const scanPdf = await renderPdf(scanSource.lines, 'classic')
   writeFileSync(join(outDir, 'scan-low-quality.jpg'), await degrade(scanPdf))
@@ -357,33 +354,33 @@ async function main() {
     expectedType: 'invoice',
     criticalFields: scanSource.critical,
     eval: false,
-    note: 'Скан низкого качества: поворот, шум, снижение контраста, рукописная пометка',
+    note: 'Poor scan: rotation, noise, reduced contrast, and handwritten note',
   })
 
-  // Дубликат уже обработанного документа: тот же файл побайтно.
+  // Byte-for-byte duplicate of an existing document.
   writeFileSync(join(outDir, 'duplicate-invoice.pdf'), firstInvoiceBytes)
   manifest.push({
     file: 'duplicate-invoice.pdf',
     expectedType: 'invoice',
     criticalFields: manifest.find((item) => item.file === firstInvoiceFile).criticalFields,
     eval: false,
-    note: `Дубликат ${firstInvoiceFile} по checksum`,
+    note: `Checksum duplicate of ${firstInvoiceFile}`,
   })
 
-  // Повреждённый файл: сигнатура PDF есть, объектов нет.
+  // Corrupted file with a PDF signature but no objects.
   writeFileSync(
     join(outDir, 'corrupted.pdf'),
-    Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.from('содержимое повреждено')]),
+    Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.from('corrupted content')]),
   )
   manifest.push({
     file: 'corrupted.pdf',
     expectedType: null,
     criticalFields: {},
     eval: false,
-    note: 'Повреждённый файл: ожидается отклонение до вызова LLM',
+    note: 'Corrupted file expected to be rejected before an LLM call',
   })
 
-  // Несколько документов в одном файле: повторная шапка INVOICE.
+  // Multiple documents in one file indicated by a repeated INVOICE heading.
   const multi = invoice(901)
   const multiPdf = await renderPdf([...multi.lines, { gap: 30 }, ...invoice(902).lines], 'compact')
   writeFileSync(join(outDir, 'multi-document.pdf'), multiPdf)
@@ -392,7 +389,7 @@ async function main() {
     expectedType: 'invoice',
     criticalFields: multi.critical,
     eval: false,
-    note: 'Два документа в одном файле: ожидается предупреждение',
+    note: 'Two documents in one file; warning expected',
   })
 
   writeFileSync(
@@ -401,11 +398,11 @@ async function main() {
   )
 
   const evalCount = manifest.filter((item) => item.eval).length
-  console.log(`Сгенерировано документов: ${manifest.length}, из них размеченных: ${evalCount}`)
-  console.log(`Каталог: ${outDir}`)
+  console.log(`Generated ${manifest.length} documents, ${evalCount} labeled`)
+  console.log(`Directory: ${outDir}`)
 }
 
 main().catch((error) => {
-  console.error('Генерация не удалась:', error)
+  console.error('Generation failed:', error)
   process.exit(1)
 })

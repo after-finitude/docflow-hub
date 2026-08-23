@@ -3,9 +3,8 @@ import type { Database } from './db.module'
 import { deadLetters } from './schema'
 
 /**
- * Dead-letter queue (ТЗ 6.10, второй этап). Запись создаётся только когда
- * попытки исчерпаны: промежуточные отказы — это ещё не потерянная задача,
- * и складывать их в DLQ значило бы хоронить то, что повторится само.
+ * Dead-letter queue (spec 6.10, second stage). Create a record only after all
+ * attempts are exhausted; intermediate failures will retry automatically.
  */
 export interface DeadLetterInput {
   documentId: string
@@ -13,7 +12,7 @@ export interface DeadLetterInput {
   step: WorkflowStep
   queue: string
   jobId?: string | null
-  /** Вход задачи: по нему строится раскрытие строки в Execution Log. */
+  /** Job input used by the expanded Execution Log row. */
   payload?: unknown
   errorCode: string
   error: unknown

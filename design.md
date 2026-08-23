@@ -1,136 +1,33 @@
-# Design — Docflow Hub
+# Docflow Hub Design System
 
-Единая система для всех экранов приложения. Каждая страница читает этот файл
-перед изменением интерфейса. Не порождать систему заново на каждой странице —
-расширять или править этот файл.
+The interface is an operator workbench used throughout the day: compact, quiet, and information-first.
 
-Интерфейс — рабочий инструмент оператора, который смотрит в него весь день.
-Отсюда всё остальное: плотность выше средней, никаких украшений, цвет несёт
-смысл, а не настроение.
+## Principles
 
-## Genre
+- Application pages use a fixed top bar and full-width work area.
+- The queue and execution log use dense tables; review uses a document/fields split.
+- The login page uses one card in the left third of the viewport.
+- Color communicates state, never decoration, and is always paired with text.
+- Use hairline borders instead of decorative shadows or nested cards.
+- Keep one primary action per context and show errors next to the failed action.
 
-modern-minimal — приборная панель, не витрина.
+## Tokens
 
-## Macrostructure family
+`apps/web/app/tokens.css` is the single source of color, type, spacing, geometry, motion, and layer values. Markup uses token names rather than inline color values.
 
-Маркетинговых страниц в продукте нет. Все экраны — прикладные.
+- Display: Space Grotesk 500/600.
+- Body: Inter 400/500.
+- Technical values: JetBrains Mono 400/500.
+- Spacing follows a 4px scale.
+- Controls are 36px high and grow to 44px for coarse pointers.
+- Motion is limited to transform and opacity and respects reduced-motion settings.
 
-- **App pages** (`/inbox`, `/documents/[id]`, `/runs`): Workbench. Верхняя
-  панель с волосяной линией, затем рабочая область во всю ширину. Варьируется
-  только форма рабочей области: таблица (очередь), две колонки
-  «оригинал | поля» (проверка), таблица с раскрытием строки (журнал).
-- **Auth page** (`/login`): одна карточка, прижатая к левой трети, без
-  центрирования по вертикали.
+## Accessibility
 
-Enrichment на прикладных страницах запрещён: содержание несёт работу.
+- Body text meets WCAG AA contrast.
+- Focus rings appear immediately and never animate.
+- Status color is duplicated by a word or icon label.
+- Keyboard controls use native elements and maintain visible focus.
+- Long technical values wrap without stretching tables.
 
-## Theme — Cobalt
-
-Холодная почти-белая бумага, один электрический синий сигнал, волосяные линии
-вместо теней, радиусы «по линейке».
-
-```
---color-paper       oklch(98.5% 0.004 250)   основная поверхность
---color-paper-2     oklch(96.8% 0.005 250)   строка при наведении, фон панели
---color-paper-3     oklch(94.5% 0.006 252)   заголовок таблицы, вложенный блок
---color-ink         oklch(24%   0.02  258)   основной текст
---color-ink-2       oklch(34%   0.018 257)   вторичный текст
---color-muted       oklch(52%   0.014 256)   подписи, метаданные
---color-rule        oklch(90%   0.006 252)   волосяная линия
---color-rule-2      oklch(84%   0.008 252)   граница поля ввода
---color-accent      oklch(53%   0.20  256)   сигнал: активное, ссылка, фокус
---color-accent-ink  oklch(99%   0.005 250)   текст на заливке акцентом
---color-focus       oklch(52%   0.20  256)   кольцо фокуса
-```
-
-Акцент занимает менее 5 % экрана. Он не украшение: активный пункт, кольцо
-фокуса, одна главная кнопка, подчёркивание ссылки.
-
-Светлота акцента — 53 %, а не 58 % из исходной темы: на 58 % ссылка даёт
-4.17:1 против бумаги, то есть ниже порога 4.5 для основного текста. Значение
-подобрано замером на живой странице (`--color-accent-strong` для заливок —
-46 %, чтобы белый текст на кнопке проходил с запасом).
-
-### Сигнальный слой
-
-Статусы документа — данные, а не оформление, поэтому у них отдельные токены с
-низкой хромой, подтянутые к холодной бумаге. Каждый статус несёт **и** цвет,
-**и** слово: цветом одним ничего не сообщается.
-
-```
---color-ok      oklch(52% 0.13 155)   подтверждён, выгружен
---color-warn    oklch(50% 0.12  75)   на проверке, предупреждение
---color-danger  oklch(55% 0.19  27)   ошибка, отклонён, блокирующая проблема
-```
-
-## Typography
-
-- **Display**: Space Grotesk 500/600, трекинг −0.02em — заголовки экранов.
-- **Body**: Inter 400/500 — весь интерфейсный текст.
-- **Outlier**: JetBrains Mono 400/500 — только техническое: `correlation_id`,
-  контрольные суммы, коды ошибок, ключи выгрузок, JSON и стек. Ровно одна роль.
-
-Три семейства — потолок правила 2+1. Шрифты ставятся пакетами `@fontsource`
-и лежат в бандле: сборка не ходит в сеть за шрифтами.
-
-Цифры в таблицах — `font-variant-numeric: tabular-nums`, иначе колонки сумм и
-уверенности не выстраиваются.
-
-## Spacing
-
-4-точечная шкала именованными токенами (`--space-*` в `apps/web/app/tokens.css`).
-Плотность компактная: высота строки таблицы 44 px, высота элемента управления
-36 px, на грубом указателе — 44 px.
-
-## Motion
-
-- Easings: `--ease-out` `cubic-bezier(0.16, 1, 0.3, 1)`, `--ease-in`, `--ease-in-out`.
-- Длительности: `--dur-micro` 120ms, `--dur-short` 220ms.
-- Анимируются только `transform` и `opacity`.
-- Появлений по скроллу нет вовсе. Страница уже собрана, когда её открыли.
-- `prefers-reduced-motion: reduce` — движение сводится к смене прозрачности ≤150ms.
-
-## Microinteractions
-
-- Успех молчаливый: подтверждённый документ виден по статусу, тост не нужен.
-- Сообщения — только об отказах, рядом с действием, которое не удалось.
-- Кольцо фокуса появляется мгновенно и никогда не анимируется.
-- Ширина рамки поля постоянна во всех состояниях: фокус меняет `outline`,
-  а не `border-width`, иначе вёрстка дёргается.
-
-## CTA voice
-
-- Главное действие: заливка `--color-accent`, текст `--color-accent-ink`,
-  радиус 6 px, высота 36 px. На экране оно одно.
-- Второстепенное: волосяная граница, прозрачный фон, тот же радиус и высота.
-- Опасное (Отклонить): волосяная граница, текст `--color-danger`. Заливкой
-  красным ничего не делается — это не главное действие экрана.
-- Подписи — глаголы в инфинитиве: «Подтвердить», «Отклонить», «Повторить этап».
-
-## Что общее у всех страниц
-
-- Верхняя панель: слово-знак, ссылки разделов, пользователь и выход справа.
-- Волосяная линия как единственный разделитель.
-- Радиусы: 6 px элементы управления, 10 px панели.
-- Голос кнопок и высота элементов управления.
-- Технические значения — моноширинным, всегда.
-
-## Чем страницы отличаются
-
-- Формой рабочей области (таблица / две колонки / таблица с раскрытием).
-- Плотностью внутри области: у просмотрщика поля крупнее, чем строки журнала.
-
-## Exports
-
-### tokens.css
-
-Полный набор токенов — [`apps/web/app/tokens.css`](apps/web/app/tokens.css).
-Он импортируется в `globals.css` и является единственным местом, где заданы
-значения цветов, шрифтов, отступов, радиусов и кривых.
-
-### Tailwind v4 `@theme`
-
-Токены прокинуты в Tailwind через `@theme inline` в `globals.css`, поэтому
-утилиты вида `text-ink`, `bg-paper-2`, `border-rule` берут те же значения.
-Правило: в разметке используются имена токенов, а не сырые значения.
+Extend these tokens and established components instead of creating page-specific visual systems.

@@ -2,17 +2,14 @@ import { Injectable } from '@nestjs/common'
 import { ThrottlerGuard } from '@nestjs/throttler'
 
 /**
- * Ограничение частоты входа считается по логину, а не по адресу.
+ * Login rate limits are keyed by username rather than IP address.
  *
- * Причина: браузер обращается к API через rewrite Next.js, а тот не проставляет
- * X-Forwarded-For (создаёт прокси без опции xfwd). Адресом клиента для API
- * всегда оказывается контейнер web, поэтому лимит по IP был бы общим на всю
- * установку — одиннадцатый вход подряд отказывал бы постороннему пользователю.
- * Доверять же заголовку от клиента нельзя: он подделывается тривиально.
+ * Next.js rewrites do not set X-Forwarded-For, so the API always sees the web
+ * container. An IP limit would be shared by the entire installation, while a
+ * client-provided header cannot be trusted.
  *
- * Логин из тела запроса подделать в свою пользу невозможно — подставив чужой,
- * атакующий ограничит сам себя. Ценой остаётся возможность занять лимит
- * конкретной учётной записи; при 10 попытках в минуту это приемлемо.
+ * Spoofing another username does not help an attacker authenticate. It can
+ * exhaust one account's limit, an acceptable trade-off at 10 attempts per minute.
  */
 @Injectable()
 export class LoginThrottlerGuard extends ThrottlerGuard {

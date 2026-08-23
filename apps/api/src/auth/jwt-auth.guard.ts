@@ -26,25 +26,24 @@ export class JwtAuthGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>()
     const token = request.cookies?.[SESSION_COOKIE_NAME] as string | undefined
-    if (!token) return this.reject(optional, 'Требуется вход в систему')
+    if (!token) return this.reject(optional, 'Authentication required')
 
     let payload: JwtPayload
     try {
       payload = await this.jwt.verifyAsync<JwtPayload>(token)
     } catch {
-      return this.reject(optional, 'Сессия недействительна или истекла')
+      return this.reject(optional, 'Session is invalid or expired')
     }
 
-    // Роль и само существование пользователя перечитываются из БД: иначе
-    // понижение прав или удаление учётной записи вступали бы в силу только
-    // после истечения токена.
+    // Reload the user and role from the database so deletion or reduced
+    // permissions take effect before the token expires.
     const [user] = await this.db
       .select({ id: users.id, login: users.login, role: users.role })
       .from(users)
       .where(eq(users.id, payload.sub))
       .limit(1)
 
-    if (!user) return this.reject(optional, 'Учётная запись недоступна')
+    if (!user) return this.reject(optional, 'Account unavailable')
 
     request.user = user
     return true

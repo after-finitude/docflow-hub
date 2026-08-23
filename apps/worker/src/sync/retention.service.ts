@@ -16,15 +16,14 @@ export interface RetentionSummary {
   removedObjects: number
 }
 
-/** Префикс, под которым лежат все файлы документов (packages/core/src/storage/keys.ts). */
+/** Prefix containing all document files (packages/core/src/storage/keys.ts). */
 const DOCUMENTS_PREFIX = 'documents/'
 
 /**
- * Хранение и удаление (ТЗ 6.9, §11).
+ * Retention and deletion (spec 6.9, §11).
  *
- * Две независимые уборки: документы, потерявшие актуальность дольше
- * RETENTION_DAYS назад, удаляются физически вместе с файлами; объекты
- * хранилища, на которые не ссылается ни один документ, удаляются по TTL.
+ * Two independent cleanups: permanently delete documents inactive longer than
+ * RETENTION_DAYS with their files, and delete unreferenced storage objects by TTL.
  */
 @Injectable()
 export class RetentionService {
@@ -44,9 +43,9 @@ export class RetentionService {
   }
 
   /**
-   * Физическое удаление по retention policy. Срок считается от момента
-   * потери актуальности, а не от приёма: иначе документ, удалённый в
-   * источнике вчера, но принятый год назад, стирался бы немедленно.
+   * Permanent deletion by retention policy. Measure age from deactivation,
+   * not ingest, so an old document removed from the source yesterday is not
+   * deleted immediately.
    */
   private async purgeExpired(correlationId: string, now: Date): Promise<number> {
     const threshold = new Date(now.getTime() - this.env.RETENTION_DAYS * 86_400_000)
@@ -69,16 +68,15 @@ export class RetentionService {
     for (const document of expired) {
       await this.storage.removePrefix(documentPrefix(document.storageKey))
 
-      // Ссылка дубликата на удаляемый оригинал снимается: связь исчезает
-      // вместе с оригиналом, но сам дубликат остаётся обычным документом.
+      // Clear duplicate links to the original being deleted; the duplicate
+      // remains as a regular document.
       await this.db
         .update(documents)
         .set({ duplicateOfId: null })
         .where(eq(documents.duplicateOfId, document.id))
 
-      // Страницы, поля, проблемы, выгрузки и записи журнала выполнения
-      // удаляются каскадом; audit_events переживают документ намеренно —
-      // таблица неизменяема (ТЗ §11).
+      // Pages, fields, issues, exports, and execution entries cascade. Audit
+      // events intentionally outlive the document in their immutable table (spec §11).
       await this.db.delete(documents).where(eq(documents.id, document.id))
 
       await writeAudit(this.db, {
@@ -93,14 +91,13 @@ export class RetentionService {
       })
     }
 
-    if (expired.length) this.logger.log(`Удалено по retention: ${expired.length}`)
+    if (expired.length) this.logger.log(`Deleted by retention policy: ${expired.length}`)
     return expired.length
   }
 
   /**
-   * Объекты без документа. Появляются, когда файл записан в хранилище,
-   * а вставка строки не удалась — запись идёт в таком порядке намеренно,
-   * чтобы документ никогда не ссылался на отсутствующий объект.
+   * Objects without a document appear when storage succeeds but row insertion
+   * fails. This ordering ensures a document never references a missing object.
    */
   private async removeOrphans(now: Date): Promise<number> {
     const threshold = new Date(now.getTime() - this.env.ORPHAN_TTL_HOURS * 3_600_000)
@@ -122,7 +119,7 @@ export class RetentionService {
       removed += await this.storage.removePrefix(prefix)
     }
 
-    if (removed) this.logger.log(`Удалено объектов без документа: ${removed}`)
+    if (removed) this.logger.log(`Deleted unreferenced objects: ${removed}`)
     return removed
   }
 }

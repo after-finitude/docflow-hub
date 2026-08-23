@@ -1,16 +1,14 @@
 import { MIN_OCR_CONFIDENCE } from '../constants'
 
 /**
- * Оценка качества распознавания (ТЗ §10: скан очень низкого качества уходит
- * на проверку с предупреждением об OCR quality).
+ * OCR quality assessment (spec §10): very poor scans require review with a warning.
  *
- * Чистая функция: решение принимается по данным страниц, без обращения к БД,
- * поэтому оно воспроизводимо и проверяется тестами.
+ * Pure function using page data only, making the decision reproducible and testable.
  */
 
 export interface OcrPageQuality {
   pageNumber: number
-  /** Средняя уверенность по блокам; null — провайдер её не сообщил. */
+  /** Mean block confidence, or null when the provider omitted it. */
   confidence: number | null
   textLength: number
 }
@@ -19,7 +17,7 @@ export interface OcrQualityIssue {
   message: string
   expected: string
   actual: string
-  /** Страницы, вызвавшие предупреждение — для сообщения оператору. */
+  /** Pages that triggered the warning, shown to the operator. */
   pages: number[]
 }
 
@@ -29,11 +27,9 @@ export function assessOcrQuality(
 ): OcrQualityIssue | null {
   if (pages.length === 0) return null
 
-  // Страница без единого распознанного символа — худший случай: дальше
-  // извлекать нечего. Уверенность при этом обычно не сообщается вовсе.
+  // A page with no recognized characters is the worst case; extraction has no input.
   const empty = pages.filter((page) => page.textLength === 0)
-  // Отсутствие уверенности само по себе не признак плохого скана: провайдер
-  // мог её не вернуть. Низкой считается только сообщённая и малая.
+  // Missing confidence alone does not mean a poor scan; only a reported low value does.
   const weak = pages.filter(
     (page) => page.textLength > 0 && page.confidence !== null && page.confidence < minConfidence,
   )
@@ -48,14 +44,12 @@ export function assessOcrQuality(
 
   const details =
     empty.length > 0
-      ? `текст не распознан на страницах: ${empty.map((p) => p.pageNumber).join(', ')}`
-      : `уверенность распознавания ${worst!.toFixed(2)} на страницах: ${weak
-          .map((p) => p.pageNumber)
-          .join(', ')}`
+      ? `no text recognized on pages: ${empty.map((p) => p.pageNumber).join(', ')}`
+      : `OCR confidence ${worst!.toFixed(2)} on pages: ${weak.map((p) => p.pageNumber).join(', ')}`
 
   return {
-    message: `Низкое качество распознавания: ${details}. Проверьте значения или замените файл`,
-    expected: `уверенность не ниже ${minConfidence.toFixed(2)} и непустой текст`,
+    message: `Low OCR quality: ${details}. Review the values or replace the file`,
+    expected: `confidence at least ${minConfidence.toFixed(2)} and non-empty text`,
     actual: details,
     pages: affected,
   }

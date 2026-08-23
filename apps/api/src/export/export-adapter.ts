@@ -1,21 +1,22 @@
 import type { CanonicalDocument, ExportDestination, ExportMapping } from '@docflow/shared'
 
 /**
- * Адаптер системы назначения (ТЗ 6.8). Получает канонический JSON и маппинг;
- * ничего не знает о том, как документ обрабатывался.
+ * Destination adapter (spec 6.8). Receives canonical JSON and a mapping without
+ * knowing how the document was processed.
  */
 export interface ExportAdapter {
   readonly destination: ExportDestination
   /**
-   * @returns payloadRef — ссылка на созданный объект в системе назначения.
-   * @throws DestinationUnavailableError при недоступности назначения.
+   * @returns payloadRef referencing the created destination object.
+   * @throws DestinationUnavailableError when the destination is unavailable.
    */
   send(canonical: CanonicalDocument, mapping: ExportMapping, exportKey: string): Promise<string>
 }
 
 /**
- * Назначение недоступно. Документ остаётся Approved, экспорт получает статус
- * Failed и доступен ручной повтор; автоповторов нет (ТЗ 6.8, 6.10).
+ * Destination unavailable. The document remains Approved, the export becomes
+ * Failed, and operators can retry manually; there are no automatic retries
+ * (spec 6.8, 6.10).
  */
 export class DestinationUnavailableError extends Error {
   constructor(

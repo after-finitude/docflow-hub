@@ -13,8 +13,8 @@ import { GoogleSheetsAdapter } from './google-sheets.adapter'
       inject: [ENV, FileJsonAdapter, StorageService],
       useFactory: (env: Env, fileJson: FileJsonAdapter): ExportAdapter[] => {
         const adapters: ExportAdapter[] = [fileJson]
-        // Sheets подключается только при настроенном ключе: без него адаптер
-        // упал бы не на отсутствии конфигурации, а где-то внутри вызова API.
+        // Enable Sheets only when credentials are configured so a missing key
+        // fails at configuration time rather than inside an API call.
         if (env.GOOGLE_SHEETS_KEY_FILE && env.GOOGLE_SHEETS_SPREADSHEET_ID) {
           adapters.push(
             new GoogleSheetsAdapter({

@@ -29,8 +29,8 @@ export interface PreprocessJob {
 }
 
 /**
- * Первый этап pipeline: проверка файла, миниатюра, число страниц.
- * Успешно подготовленный документ уходит в очередь OCR.
+ * First pipeline stage: inspect the file, create a thumbnail, and count pages.
+ * Successfully prepared documents move to the OCR queue.
  */
 @Processor(QUEUE.PREPROCESS, { ...PIPELINE_WORKER_OPTIONS })
 export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
@@ -47,8 +47,8 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
   }
 
   onModuleInit(): void {
-    // Параллелизм задаётся из проверенной конфигурации, а не константой
-    // в декораторе: декоратор вычисляется до инициализации контейнера.
+    // Read concurrency from validated configuration rather than a decorator
+    // constant because decorators run before the container initializes.
     this.worker.concurrency = queueConcurrency(this.env, QUEUE.PREPROCESS)
   }
 
@@ -67,8 +67,8 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
       .limit(1)
 
     if (!document) {
-      // Документ удалён, пока задача ждала очереди — это не ошибка обработки.
-      this.logger.warn(`Документ ${documentId} не найден, задача пропущена`)
+      // Deletion while a job waited in the queue is not a processing error.
+      this.logger.warn(`Document ${documentId} not found; skipping job`)
       return
     }
 
@@ -79,7 +79,7 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
     try {
       buffer = await this.storage.getBuffer(document.storageKey)
     } catch (error) {
-      // Хранилище недоступно — ошибка транзиентная, задача должна повториться.
+      // Storage unavailability is transient, so the job should retry.
       await this.handleTransientFailure(job, documentId, runId, 'storage_unavailable', error)
       throw error
     }
@@ -87,8 +87,8 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
     const result = await inspect(buffer, document.mimeType)
 
     if (!result.ok) {
-      // Дефект самого файла. Повтор бессмысленен, поэтому исключение не
-      // бросается: иначе BullMQ трижды перечитывал бы заведомо битый файл.
+      // A permanent file defect cannot be fixed by retrying. Do not throw, or
+      // BullMQ would reread a known-bad file three times.
       await failRun(this.db, runId, result.code, result.reason)
       await this.db
         .update(documents)
@@ -106,7 +106,7 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
       })
 
       await this.updateStatus(documentId, 'rejected', result.reason, 'failed')
-      this.logger.log(`Документ ${documentId} отклонён: ${result.code}`)
+      this.logger.log(`Document ${documentId} rejected: ${result.code}`)
       return
     }
 
@@ -120,10 +120,10 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
         .where(eq(documents.id, documentId))
 
       await finishRun(this.db, runId)
-      // Документ остаётся в processing и передаётся следующему этапу.
+      // Keep the document processing and pass it to the next stage.
       await this.ocrQueue.add('ocr', { documentId, correlationId })
       await this.updateStatus(documentId, 'processing', null, 'succeeded')
-      this.logger.log(`Документ ${documentId} подготовлен, страниц: ${result.pageCount}`)
+      this.logger.log(`Document ${documentId} prepared, pages: ${result.pageCount}`)
     } catch (error) {
       await this.handleTransientFailure(job, documentId, runId, 'thumbnail_failed', error)
       throw error
@@ -131,9 +131,8 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
   }
 
   /**
-   * Статус Failed выставляется только когда попытки исчерпаны: до этого
-   * документ остаётся в обработке, иначе очередь мигала бы ошибкой на каждой
-   * промежуточной попытке.
+   * Mark Failed only after attempts are exhausted. Until then the document
+   * remains processing so the queue does not flash an error on every retry.
    */
   private async handleTransientFailure(
     job: Job<PreprocessJob>,
@@ -147,12 +146,12 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
 
     const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
     if (attemptsLeft > 0) {
-      this.logger.warn(`Документ ${documentId}: ${code}, осталось попыток ${attemptsLeft}`)
+      this.logger.warn(`Document ${documentId}: ${code}, ${attemptsLeft} attempt(s) left`)
       return
     }
 
-    // Сама задача больше не повторится: она уходит в dead-letter queue,
-    // откуда её повторяет оператор из Execution Log (ТЗ 6.10).
+    // The job will not retry automatically; it moves to the dead-letter queue
+    // for an operator to retry from the Execution Log (spec 6.10).
     await recordDeadLetter(this.db, {
       documentId,
       runId,
@@ -165,13 +164,13 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
       attempts: job.attemptsMade + 1,
     })
 
-    const reason = 'Не удалось подготовить документ. Обработку можно повторить вручную'
+    const reason = 'Document preparation failed. Processing can be retried manually'
     await this.db
       .update(documents)
       .set({ status: 'failed', statusReason: reason })
       .where(eq(documents.id, documentId))
     await this.updateStatus(documentId, 'failed', reason, 'failed')
-    this.logger.error(`Документ ${documentId}: ${code} — попытки исчерпаны`)
+    this.logger.error(`Document ${documentId}: ${code} — attempts exhausted`)
   }
 
   private async updateStatus(

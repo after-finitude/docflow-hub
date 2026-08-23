@@ -1,5 +1,3 @@
-# Общий образ для backend-приложений: api, worker и одноразового migrate.
-# Выбор приложения — build-арг APP (api | worker | core).
 FROM node:24-alpine AS build
 WORKDIR /app
 
@@ -29,6 +27,4 @@ COPY --from=build /app/packages packages
 COPY --from=build /app/apps apps
 
 USER node
-# exec обязателен: без него PID 1 остаётся sh, SIGTERM не доходит до Node,
-# и graceful shutdown (закрытие пула БД) не выполняется.
 CMD ["sh", "-c", "exec node apps/${APP}/dist/main.js"]

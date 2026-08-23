@@ -16,7 +16,7 @@ export type Database = NodePgDatabase<typeof schema>
     {
       provide: DB_POOL,
       inject: [ENV],
-      // Приложение подключается под ролью без UPDATE/DELETE на audit_events.
+      // Connect with the role that lacks UPDATE/DELETE on audit_events.
       useFactory: (env: Env) => new Pool({ connectionString: env.DATABASE_URL }),
     },
     {

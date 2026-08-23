@@ -26,7 +26,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe'
 export class SchemasController {
   constructor(@Inject(DB) private readonly db: Database) {}
 
-  /** Активные схемы всех типов (ТЗ §8). */
+  /** Active schemas for every type (spec §8). */
   @Get()
   async list(): Promise<DocumentSchemaDto[]> {
     const rows = await this.db
@@ -49,9 +49,9 @@ export class SchemasController {
   }
 
   /**
-   * Настройка порогов (ТЗ 6.7, §8): только администратор. Создаётся новая
-   * версия схемы, а не правка текущей: принятые решения фиксируются вместе
-   * с версией правил и должны оставаться воспроизводимыми.
+   * Configure thresholds (spec 6.7, §8), administrator only. Create a new
+   * schema version instead of editing the current one so recorded decisions
+   * remain reproducible with their rule version.
    */
   @Put(':type/thresholds')
   @Roles('admin')
@@ -62,12 +62,12 @@ export class SchemasController {
     @Origin() origin: RequestContext,
   ): Promise<DocumentSchemaDto> {
     if (!(CLASSIFIABLE_DOCUMENT_TYPES as readonly string[]).includes(type)) {
-      throw new BadRequestException(`Неизвестный тип документа: ${type}`)
+      throw new BadRequestException(`Unknown document type: ${type}`)
     }
     const documentType = type as ClassifiableDocumentType
 
     const active = await getActiveSchema(this.db, documentType)
-    if (!active) throw new NotFoundException(`Нет активной схемы для типа ${type}`)
+    if (!active) throw new NotFoundException(`No active schema for type ${type}`)
 
     const [created] = await this.db.transaction(async (tx) => {
       await tx
@@ -79,7 +79,7 @@ export class SchemasController {
         .values({
           documentType,
           version: active.version + 1,
-          // Поля и правила переносятся как есть: меняются только пороги.
+          // Copy fields and rules unchanged; only thresholds are updated.
           jsonSchema: { fields: active.fields, rules: active.rules },
           thresholds,
           isActive: true,

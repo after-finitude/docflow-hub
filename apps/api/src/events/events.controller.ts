@@ -10,15 +10,15 @@ export class EventsController {
   constructor(private readonly events: DocumentEventsService) {}
 
   /**
-   * Живые обновления очереди (ТЗ 5.1). Аутентификация — обычная, по cookie:
-   * EventSource отправляет её сам, так как ходит на тот же origin.
+   * Live queue updates (spec 5.1). EventSource sends the normal session cookie
+   * because it connects through the same origin.
    */
   @Sse('stream')
   stream(): Observable<MessageEvent> {
     const documents = this.events.stream()
 
-    // Пульс не даёт промежуточным прокси закрыть простаивающее соединение
-    // и позволяет клиенту заметить обрыв.
+    // Heartbeats keep intermediary proxies from closing an idle connection
+    // and let the client detect disconnects.
     const heartbeat = interval(HEARTBEAT_INTERVAL_MS).pipe(
       map((): StreamEvent => ({ type: 'heartbeat', at: new Date().toISOString() })),
     )

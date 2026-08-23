@@ -46,9 +46,9 @@ import { PageRenderService } from './page-render.service'
 import type { MulterFileFilter, UploadedDocument } from './uploaded-document'
 
 /**
- * Ограничения приёма файла (ТЗ 6.1). Общие для загрузки и замены оригинала:
- * превышение лимита Nest превращает в 413, неподдерживаемый тип отсекается
- * фильтром — до записи в хранилище и до вызова LLM.
+ * File ingest limits (spec 6.1), shared by upload and original replacement.
+ * Nest returns 413 above the limit; the filter rejects unsupported types before
+ * storage writes or LLM calls.
  */
 const UPLOAD_INTERCEPTOR_OPTIONS = {
   limits: { fileSize: UPLOAD_MAX_BYTES },
@@ -58,7 +58,7 @@ const UPLOAD_INTERCEPTOR_OPTIONS = {
       return
     }
     callback(
-      new BadRequestException(`Тип ${file.mimetype} не поддерживается. Допустимы PDF, JPEG и PNG`),
+      new BadRequestException(`Type ${file.mimetype} is unsupported. Use PDF, JPEG, or PNG`),
       false,
     )
   }) satisfies MulterFileFilter,
@@ -80,13 +80,12 @@ export class DocumentsController {
     @CurrentUser() user: SessionUser,
     @Origin() origin: RequestContext,
   ): Promise<DocumentListItem> {
-    if (!file) throw new BadRequestException('Файл не передан')
+    if (!file) throw new BadRequestException('No file provided')
     return this.documents.upload(file, user, origin)
   }
 
   /**
-   * Замена оригинала (ТЗ §10). Ограничения приёма те же, что при загрузке,
-   * поэтому фильтр и лимит переиспользуются.
+   * Original replacement (spec §10). Reuse the upload filter and limit.
    */
   @Post(':id/file')
   @UseInterceptors(FileInterceptor('file', UPLOAD_INTERCEPTOR_OPTIONS))
@@ -96,7 +95,7 @@ export class DocumentsController {
     @CurrentUser() user: SessionUser,
     @Origin() origin: RequestContext,
   ): Promise<DocumentListItem> {
-    if (!file) throw new BadRequestException('Файл не передан')
+    if (!file) throw new BadRequestException('No file provided')
     return this.documents.replaceFile(id, file, user, origin)
   }
 
@@ -118,23 +117,22 @@ export class DocumentsController {
   }
 
   /**
-   * Ответ отдаётся потоком, поэтому passthrough здесь недопустим: Nest
-   * завершил бы ответ по возврату из метода, пока поток ещё пишет, — это
-   * ERR_STREAM_WRITE_AFTER_END, необработанное событие error у сокета
-   * и падение процесса целиком.
+   * The response is streamed, so passthrough is unsafe: Nest would end the
+   * response when the method returns while the stream is still writing,
+   * causing ERR_STREAM_WRITE_AFTER_END and potentially terminating the process.
    */
   @Get(':id/thumbnail')
   async thumbnail(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response): Promise<void> {
     const stream = await this.documents.thumbnail(id)
     res.setHeader('Content-Type', 'image/png')
     res.setHeader('Cache-Control', 'private, max-age=300')
-    // Обрыв чтения из хранилища на середине ответа: заголовки уже ушли,
-    // поэтому корректного кода ошибки не существует — соединение рвётся.
+    // If storage reading fails after headers are sent, no valid error status
+    // remains; terminate the connection.
     stream.on('error', () => res.destroy())
     stream.pipe(res)
   }
 
-  /** Оригинал выдаётся подписанной ссылкой с ограниченным сроком (ТЗ §8, §11). */
+  /** Return the original through a short-lived signed URL (spec §8, §11). */
   @Get(':id/file')
   async file(@Param('id', ParseUUIDPipe) id: string): Promise<SignedFileLink> {
     return {
@@ -143,7 +141,7 @@ export class DocumentsController {
     }
   }
 
-  /** Страница документа в PNG для просмотрщика (ТЗ 5.2). */
+  /** Document page rendered as PNG for the viewer (spec 5.2). */
   @Get(':id/pages/:page/image')
   async pageImage(
     @Param('id', ParseUUIDPipe) id: string,
@@ -152,8 +150,7 @@ export class DocumentsController {
     @Res() res: Response,
   ): Promise<void> {
     const location = await this.documents.fileLocation(id)
-    // Ширина ограничена: запрос произвольного размера — это управляемая
-    // клиентом нагрузка на рендер.
+    // Cap width so clients cannot request arbitrarily expensive renders.
     const targetWidth = Math.min(Math.max(Number(width) || 1200, 120), 2400)
     const png = await this.pageRender.render(
       location.storageKey,
@@ -167,7 +164,7 @@ export class DocumentsController {
     res.send(png)
   }
 
-  /** Правка значения оператором: синхронно перевалидирует документ (ТЗ 5.2, §9). */
+  /** Operator value edit: synchronously revalidate the document (spec 5.2, §9). */
   @Patch(':id/fields/:name')
   updateField(
     @Param('id', ParseUUIDPipe) id: string,
@@ -198,7 +195,7 @@ export class DocumentsController {
     return this.documents.reject(id, body, user, origin)
   }
 
-  /** Ручная смена типа с перезапуском извлечения по новой схеме (ТЗ 6.3). */
+  /** Manual type change restarting extraction with the new schema (spec 6.3). */
   @Post(':id/type')
   changeType(
     @Param('id', ParseUUIDPipe) id: string,
@@ -209,7 +206,7 @@ export class DocumentsController {
     return this.documents.changeType(id, body.type, user, origin)
   }
 
-  /** Экспорт подтверждённого документа; идемпотентен по export_key (ТЗ 6.8, §9). */
+  /** Export an approved document, idempotent by export_key (spec 6.8, §9). */
   @Post(':id/export')
   exportDocument(
     @Param('id', ParseUUIDPipe) id: string,

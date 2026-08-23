@@ -3,8 +3,8 @@ import { cookies } from 'next/headers'
 const apiUrl = process.env.API_INTERNAL_URL ?? 'http://localhost:3001'
 
 /**
- * Серверный запрос к API с пробросом cookie текущего пользователя.
- * Таймаут обязателен: без него зависший бэкенд держал бы рендер страницы.
+ * Server-side API request forwarding the current user's cookie.
+ * A timeout prevents a stalled backend from blocking page rendering.
  */
 export async function apiFetch(path: string, timeoutMs = 5000): Promise<Response> {
   const cookieStore = await cookies()

@@ -1,25 +1,24 @@
 import { NO_SOURCE_CONFIDENCE_CAP } from '../constants'
 
 /**
- * Итоговая уверенность поля из нескольких сигналов (ТЗ 6.7): уверенность
- * извлечения, OCR по области источника, наличие источника. Сигнал валидации
- * добавит этап 5 — функция принимает его уже сейчас как необязательный.
+ * Final field confidence from extraction, source-area OCR, source presence,
+ * and optional validation signals (spec 6.7).
  */
 export interface ConfidenceSignals {
-  /** Базовая уверенность извлечения (0..1). */
+  /** Base extraction confidence (0..1). */
   extraction: number
-  /** Средняя OCR-уверенность области источника; null — источник не найден. */
+  /** Mean OCR confidence in the source area, or null when no source was found. */
   ocr: number | null
   sourceFound: boolean
-  /** Страница источника не совпала с заявленной LLM (ТЗ 6.5 п.4). */
+  /** Source page differs from the page reported by the LLM (spec 6.5.4). */
   pageMismatch?: boolean
-  /** Есть blocking-ошибка валидации по этому полю (этап 5). */
+  /** Whether this field has a blocking validation issue. */
   failedValidation?: boolean
 }
 
 export interface ConfidenceScore {
   confidence: number
-  /** Причины снижения — для confidence_reason (ТЗ 6.4). */
+  /** Reduction reasons stored in confidence_reason (spec 6.4). */
   reasons: string[]
 }
 
@@ -27,26 +26,25 @@ export function scoreConfidence(signals: ConfidenceSignals): ConfidenceScore {
   const reasons: string[] = []
 
   if (!signals.sourceFound) {
-    // Поле без найденного источника не может иметь высокую уверенность (ТЗ §9).
+    // A field without a source cannot have high confidence (spec §9).
     const confidence = Math.min(NO_SOURCE_CONFIDENCE_CAP, signals.extraction * 0.7)
-    reasons.push('Источник значения не найден в документе')
+    reasons.push('Value source not found in the document')
     return { confidence: round(confidence), reasons }
   }
 
-  // OCR-уверенность области взвешивает базу: чистый скан почти не снижает,
-  // мутный — ощутимо. OCR confidence не приравнивается к бизнес-уверенности
-  // (ТЗ 6.2), поэтому входит долей, а не множителем напрямую.
+  // Source-area OCR confidence weights the base score but is not equivalent to
+  // business confidence (spec 6.2), so include it only proportionally.
   let confidence = signals.extraction * (0.6 + 0.4 * (signals.ocr ?? 0))
-  if ((signals.ocr ?? 1) < 0.7) reasons.push('Низкое качество распознавания в области источника')
+  if ((signals.ocr ?? 1) < 0.7) reasons.push('Low OCR quality in the source area')
 
   if (signals.pageMismatch) {
     confidence *= 0.85
-    reasons.push('Источник найден не на той странице, которую указала модель')
+    reasons.push('Source found on a different page than the model reported')
   }
 
   if (signals.failedValidation) {
     confidence *= 0.7
-    reasons.push('Значение не прошло проверку')
+    reasons.push('Value failed validation')
   }
 
   return { confidence: round(confidence), reasons }

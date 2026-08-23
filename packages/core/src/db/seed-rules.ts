@@ -1,9 +1,8 @@
 import type { ClassifiableDocumentType, ValidationRule } from '@docflow/shared'
 
 /**
- * Правила валидации по типам (ТЗ 6.6). Для инвойса — дословно по таблице
- * ТЗ §13. Уникальность invoice_number сюда не входит: это единственная
- * cross-document проверка, она выполняется в ValidationRunnerService.
+ * Validation rules by type (spec 6.6). Invoice follows spec §13. The only
+ * cross-document rule, invoice_number uniqueness, runs in ValidationRunnerService.
  */
 export const SEED_RULES: Record<ClassifiableDocumentType, ValidationRule[]> = {
   invoice: [
@@ -43,7 +42,7 @@ export const SEED_RULES: Record<ClassifiableDocumentType, ValidationRule[]> = {
       min: 0,
     },
     {
-      // ТЗ §13: subtotal + tax_total ≈ grand_total, допуск 0.02, blocking.
+      // Spec §13: subtotal + tax_total ≈ grand_total, tolerance 0.02, blocking.
       id: 'invoice_totals_match',
       type: 'sum',
       severity: 'blocking',

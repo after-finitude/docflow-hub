@@ -9,17 +9,16 @@ export interface RasterPage {
 }
 
 /**
- * Пустая страница: практически нулевой разброс яркости при светлом среднем.
- * Такие страницы не отправляются платному провайдеру (ТЗ 6.2 — удаление
- * пустых страниц), но строка Page для них сохраняется, чтобы не сдвигать
- * нумерацию страниц относительно оригинала.
+ * A blank page has near-zero brightness variance and a light mean. Do not send
+ * it to the paid provider (spec 6.2), but retain its Page row so numbering still
+ * matches the original.
  */
 async function isBlank(png: Buffer): Promise<boolean> {
   const stats = await sharp(png).stats()
   return stats.channels.every((channel) => channel.stdev < 2 && channel.mean > 245)
 }
 
-/** Растеризация всех страниц PDF под OCR. */
+/** Rasterize every PDF page for OCR. */
 export async function rasterizePdf(buffer: Buffer, dpi: number): Promise<RasterPage[]> {
   const mupdf = await import('mupdf')
   const document = mupdf.Document.openDocument(buffer, 'application/pdf')
@@ -47,8 +46,8 @@ export async function rasterizePdf(buffer: Buffer, dpi: number): Promise<RasterP
 }
 
 /**
- * Нормализация изображения перед OCR (ТЗ 6.2): поворот по EXIF и растяжение
- * контраста. Устранение перекоса не выполняется — см. known-limitations.
+ * Normalize images before OCR (spec 6.2): apply EXIF rotation and stretch
+ * contrast. Deskewing is not implemented; see known-limitations.
  */
 export async function normalizeImage(buffer: Buffer): Promise<RasterPage> {
   const png = await sharp(buffer).rotate().normalize().png().toBuffer()

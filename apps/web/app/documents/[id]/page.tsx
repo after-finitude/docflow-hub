@@ -28,9 +28,9 @@ function Unavailable() {
   return (
     <main className="mx-auto max-w-6xl p-8">
       <div className="panel p-12 text-center">
-        <h1 className="text-lg font-semibold">Сервис недоступен</h1>
+        <h1 className="text-lg font-semibold">Service unavailable</h1>
         <p className="mt-2 text-sm text-muted">
-          Не удалось связаться с API. Обновите страницу через несколько секунд.
+          Could not reach the API. Refresh the page in a few seconds.
         </p>
       </div>
     </main>

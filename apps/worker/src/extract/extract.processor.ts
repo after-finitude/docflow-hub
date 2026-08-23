@@ -39,8 +39,8 @@ export interface ExtractJob {
 type LlmField = ExtractionResponse['fields'][number]
 
 /**
- * Извлечение полей по активной схеме типа (ТЗ 6.4) и связывание значений
- * с источниками через evidence → bbox (ТЗ 6.5). Дальше — валидация.
+ * Extract fields using the type's active schema (spec 6.4), then link values
+ * to sources through evidence → bbox (spec 6.5) before validation.
  */
 @Processor(QUEUE.EXTRACT, { ...PIPELINE_WORKER_OPTIONS })
 export class ExtractProcessor extends WorkerHost implements OnModuleInit {
@@ -69,7 +69,7 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
       .where(eq(documents.id, documentId))
       .limit(1)
     if (!document) {
-      this.logger.warn(`Документ ${documentId} не найден, задача пропущена`)
+      this.logger.warn(`Document ${documentId} not found; skipping job`)
       return
     }
 
@@ -78,12 +78,12 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
 
     try {
       if (!document.documentType || document.documentType === 'unknown') {
-        throw new UnrecoverableError('Извлечение без определённого типа невозможно')
+        throw new UnrecoverableError('Cannot extract fields without a known document type')
       }
 
       const schema = await getActiveSchema(this.db, document.documentType)
       if (!schema) {
-        throw new UnrecoverableError(`Нет активной схемы для типа ${document.documentType}`)
+        throw new UnrecoverableError(`No active schema for type ${document.documentType}`)
       }
 
       const pageRows = await this.db
@@ -111,7 +111,7 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
       })
 
       if (this.llm.external) {
-        // ТЗ §11: какие страницы и поля отправлены внешнему провайдеру.
+        // Spec §11: record which pages and fields were sent to an external provider.
         await writeAudit(this.db, {
           correlationId,
           actorType: 'system',
@@ -133,26 +133,25 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
         this.buildFieldRow(documentId, schema.id, spec, byName.get(spec.name), evidencePages),
       )
 
-      // Повторное извлечение заменяет поля целиком.
+      // Re-extraction replaces all fields.
       await this.db.delete(fields).where(eq(fields.documentId, documentId))
       await this.db.insert(fields).values(rows)
 
       await finishRun(this.db, runId)
-      // Документ остаётся в обработке и уходит на валидацию.
+      // Keep the document processing and send it to validation.
       await this.validateQueue.add('validate', { documentId, correlationId })
       await this.publish(documentId, 'processing', 'succeeded')
       const found = rows.filter((row) => row.rawValue !== null).length
-      this.logger.log(`Документ ${documentId}: извлечено ${found}/${schema.fields.length} полей`)
+      this.logger.log(`Document ${documentId}: extracted ${found}/${schema.fields.length} fields`)
     } catch (error) {
       if (error instanceof LlmInvalidResponseError) {
-        // Ручная обработка без потери исходных данных (ТЗ 6.4, §10).
+        // Manual review without losing source data (spec 6.4, §10).
         await failRun(this.db, runId, 'llm_invalid_response', error.message)
         await this.db
           .update(documents)
           .set({
             status: 'needs_review',
-            statusReason:
-              'Автоматическое извлечение не удалось: заполните поля вручную или повторите',
+            statusReason: 'Automatic extraction failed; fill the fields manually or retry',
             processedAt: new Date(),
           })
           .where(eq(documents.id, documentId))
@@ -164,7 +163,7 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
     }
   }
 
-  /** Строка БД из общей функции сборки поля: тот же код измеряет `npm run eval`. */
+  /** DB row from the shared field builder also measured by `npm run eval`. */
   private buildFieldRow(
     documentId: string,
     schemaVersionId: string,
@@ -188,14 +187,12 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
     const unrecoverable = error instanceof UnrecoverableError
     const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
     if (!unrecoverable && attemptsLeft > 0) {
-      this.logger.warn(
-        `Документ ${documentId}: извлечение не удалось, осталось попыток ${attemptsLeft}`,
-      )
+      this.logger.warn(`Document ${documentId}: extraction failed; ${attemptsLeft} attempt(s) left`)
       return
     }
 
-    // Сама задача больше не повторится: она уходит в dead-letter queue,
-    // откуда её повторяет оператор из Execution Log (ТЗ 6.10).
+    // The job will not retry automatically; it moves to the dead-letter queue
+    // for an operator to retry from the Execution Log (spec 6.10).
     await recordDeadLetter(this.db, {
       documentId,
       runId,
@@ -208,13 +205,13 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
       attempts: job.attemptsMade + 1,
     })
 
-    const reason = 'Не удалось извлечь поля. Обработку можно повторить вручную'
+    const reason = 'Field extraction failed. Processing can be retried manually'
     await this.db
       .update(documents)
       .set({ status: 'failed', statusReason: reason })
       .where(eq(documents.id, documentId))
     await this.publish(documentId, 'failed', 'failed')
-    this.logger.error(`Документ ${documentId}: извлечение — ${detail}`)
+    this.logger.error(`Document ${documentId}: extraction — ${detail}`)
   }
 
   private async publish(

@@ -7,6 +7,6 @@
     "theme": "Cobalt",
     "enrichment": "none",
     "design_system": "design.md",
-    "brief": "Docflow Hub — операторская консоль приёма и проверки документов: очередь, рабочее место проверки, журнал выполнения"
+    "brief": "Docflow Hub — operator console for document ingest and review: queue, review workspace, and execution log"
   }
 ]

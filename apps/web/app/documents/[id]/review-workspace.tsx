@@ -39,7 +39,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
   const [rejecting, setRejecting] = useState(false)
 
   const threshold = document.thresholds?.criticalFieldConfidence ?? DEFAULT_THRESHOLD
-  // Документ в обработке или уже выгружен не редактируется.
+  // A document being processed or already exported cannot be edited.
   const readOnly = document.status === 'processing' || document.status === 'exported'
 
   const issuesByField = useMemo(() => {
@@ -53,7 +53,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
 
   const documentIssues = document.issues.filter((issue) => !issue.fieldName && !issue.resolvedAt)
 
-  /** Порядок: blocking → ниже порога → остальные (ТЗ 5.2). */
+  /** Order: blocking → below threshold → everything else (spec 5.2). */
   const orderedFields = useMemo(() => {
     const weight = (field: FieldDto) => {
       if (issuesByField.get(field.name)?.some((issue) => issue.severity === 'blocking')) return 0
@@ -94,15 +94,15 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
       })
       if (!response.ok) {
         const detail = (await response.json().catch(() => null)) as { message?: string } | null
-        setError(detail?.message ?? `Ошибка ${response.status}`)
+        setError(detail?.message ?? `Error ${response.status}`)
         return false
       }
-      // Каждый ответ — актуальный документ с обновлёнными проблемами
-      // и доступностью Approve (ТЗ 5.2).
+      // Every response contains the latest document, updated issues,
+      // and current Approve availability (spec 5.2).
       setDocument((await response.json()) as DocumentDetail)
       return true
     } catch {
-      setError('Сервис недоступен')
+      setError('Service unavailable')
       return false
     } finally {
       setBusy(false)
@@ -131,14 +131,14 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
         body: JSON.stringify({ type }),
       })
     ) {
-      // Извлечение перезапускается в фоне — список полей появится после него.
+      // Extraction restarts in the background; fields appear when it finishes.
       router.refresh()
     }
   }
 
   /**
-   * Ответ на экспорт — сама выгрузка, а не документ, поэтому состояние
-   * перечитывается отдельно: у документа мог смениться статус на exported.
+   * The export response is the export record, not the document, so reload the
+   * document separately: its status may have changed to exported.
    */
   async function runExport(destination: ExportDestination) {
     setBusy(true)
@@ -151,17 +151,17 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
       })
       if (!response.ok) {
         const detail = (await response.json().catch(() => null)) as { message?: string } | null
-        setError(detail?.message ?? `Ошибка ${response.status}`)
+        setError(detail?.message ?? `Error ${response.status}`)
         return
       }
       const result = (await response.json()) as ExportDto
       if (result.status === 'failed') {
-        setError(`Выгрузка не удалась (${result.errorCode}). Повтор доступен`)
+        setError(`Export failed (${result.errorCode}). You can retry it`)
       }
       const refreshed = await fetch(`/api/documents/${document.id}`)
       if (refreshed.ok) setDocument((await refreshed.json()) as DocumentDetail)
     } catch {
-      setError('Сервис недоступен')
+      setError('Service unavailable')
     } finally {
       setBusy(false)
     }
@@ -183,17 +183,17 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
       <header className="mb-4 flex items-center justify-between gap-4 border-b border-rule pb-3">
         <div className="min-w-0">
           <Link href="/inbox" className="link text-xs">
-            ← К очереди
+            ← Back to queue
           </Link>
           <h1 className="mt-1 truncate text-lg">{document.originalFilename}</h1>
           {document.versionNumber > 1 && (
             <p className="mono text-2xs text-muted">
-              версия {document.versionNumber}
+              version {document.versionNumber}
               {document.previousVersionId && (
                 <>
                   {' · '}
                   <Link href={`/documents/${document.previousVersionId}`} className="link">
-                    предыдущая
+                    previous
                   </Link>
                 </>
               )}
@@ -201,17 +201,17 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
           )}
           {!document.isActive && (
             <p className="text-2xs text-warn">
-              Версия неактуальна: заменена новой или удалена в источнике
+              This version is inactive: replaced by a newer version or removed at the source
             </p>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <span className="chip chip--neutral">{DOCUMENT_STATUS_LABELS[document.status]}</span>
           {document.blockingIssues > 0 && (
-            <span className="chip chip--danger">блокирующих: {document.blockingIssues}</span>
+            <span className="chip chip--danger">blocking: {document.blockingIssues}</span>
           )}
           {document.warningIssues > 0 && (
-            <span className="chip chip--warn">предупреждений: {document.warningIssues}</span>
+            <span className="chip chip--warn">warnings: {document.warningIssues}</span>
           )}
         </div>
       </header>
@@ -228,7 +228,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
             />
           ) : (
             <div className="flex flex-1 items-center justify-center rounded-[10px] border border-dashed border-rule-2 text-sm text-muted">
-              Документ ещё не подготовлен
+              Document is not ready yet
             </div>
           )}
         </section>
@@ -236,7 +236,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
         <section className="flex min-w-0 basis-[45%] flex-col overflow-y-auto pr-1">
           <div className="panel mb-3 p-4">
             <label className="block">
-              <span className="label mb-1">Тип документа</span>
+              <span className="label mb-1">Document type</span>
               <select
                 className="field"
                 value={document.documentType ?? 'unknown'}
@@ -256,15 +256,15 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
               </select>
             </label>
             <p className="mt-1 text-2xs text-muted">
-              Смена типа перезапускает извлечение по новой схеме
+              Changing the type restarts extraction with the new schema
             </p>
 
             {document.statusReason && (
               <p className="mt-3 text-xs text-ink-2">{document.statusReason}</p>
             )}
 
-            {/* Проблемы уровня документа: качество распознавания, подозрение
-                на несколько документов в одном файле. Поля тут ни при чём. */}
+            {/* Document-level issues: OCR quality and suspected multiple documents
+                in one file. These issues do not belong to individual fields. */}
             {documentIssues.length > 0 && (
               <ul className="mt-3 space-y-1.5 border-l-2 border-warn pl-3">
                 {documentIssues.map((issue) => (
@@ -286,14 +286,14 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                 type="button"
                 disabled={!document.canApprove || busy}
                 title={
-                  document.blockingIssues > 0 ? 'Есть нерешённые блокирующие ошибки' : undefined
+                  document.blockingIssues > 0 ? 'There are unresolved blocking issues' : undefined
                 }
                 onClick={() =>
                   void call(`/api/documents/${document.id}/approve`, { method: 'POST' })
                 }
                 className="btn btn--primary"
               >
-                Подтвердить
+                Approve
               </button>
               <button
                 type="button"
@@ -301,7 +301,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                 onClick={() => setRejecting(true)}
                 className="btn btn--danger"
               >
-                Отклонить
+                Reject
               </button>
               <button
                 type="button"
@@ -313,10 +313,10 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                 }
                 className="btn btn--ghost"
               >
-                Переобработать
+                Reprocess
               </button>
-              {/* Замена оригинала (ТЗ §10). Для документа из источника файл
-                  меняется в самом источнике, поэтому кнопки здесь нет. */}
+              {/* Original replacement (spec §10). Source documents must be changed
+                  at the source, so they do not have this button. */}
               {document.sourceType === 'upload' && document.isActive && (
                 <ReplaceFileButton
                   disabled={busy || readOnly}
@@ -335,13 +335,13 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                         message?: string
                       } | null
                       if (!response.ok || !detail?.id) {
-                        setError(detail?.message ?? `Ошибка ${response.status}`)
+                        setError(detail?.message ?? `Error ${response.status}`)
                         return
                       }
-                      // Замена создаёт новую версию — это другой документ.
+                      // Replacement creates a new version, which is a different document.
                       router.push(`/documents/${detail.id}`)
                     } catch {
-                      setError('Сервис недоступен')
+                      setError('Service unavailable')
                     } finally {
                       setBusy(false)
                     }
@@ -363,7 +363,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
 
           <div
             role="tablist"
-            aria-label="Фильтр полей"
+            aria-label="Field filter"
             className="mb-3 flex w-fit shrink-0 rounded-[6px] border border-rule p-0.5"
           >
             {FIELD_FILTERS.map((option) => (
@@ -388,8 +388,8 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
             {visibleFields.length === 0 && (
               <p className="rounded-[10px] border border-dashed border-rule-2 p-6 text-center text-sm text-muted">
                 {document.fields.length === 0
-                  ? 'Поля появятся после извлечения'
-                  : 'Под фильтр ничего не подходит'}
+                  ? 'Fields will appear after extraction'
+                  : 'No fields match the filter'}
               </p>
             )}
             {visibleFields.map((field) => (
@@ -431,19 +431,19 @@ function ExportPanel({
 }) {
   return (
     <div className="mt-4 border-t border-rule pt-3">
-      <h3 className="mono text-2xs tracking-[0.06em] text-muted uppercase">Выгрузка</h3>
+      <h3 className="mono text-2xs tracking-[0.06em] text-muted uppercase">Export</h3>
 
       {exports.map((item) => (
         <p key={item.id} className="mt-1.5 text-xs">
           <span className="text-ink-2">{EXPORT_DESTINATION_LABELS[item.destination]}</span>{' '}
           {item.status === 'succeeded' ? (
-            <span className="text-ok">выполнена {formatWhen(item.exportedAt)}</span>
+            <span className="text-ok">completed {formatWhen(item.exportedAt)}</span>
           ) : item.status === 'failed' ? (
             <span className="text-danger">
-              ошибка (<span className="mono">{item.errorCode}</span>), попыток {item.attempts}
+              failed (<span className="mono">{item.errorCode}</span>), attempts {item.attempts}
             </span>
           ) : (
-            <span className="text-muted">ожидает</span>
+            <span className="text-muted">pending</span>
           )}
         </p>
       ))}
@@ -458,10 +458,12 @@ function ExportPanel({
               type="button"
               disabled={busy || done}
               onClick={() => onExport(destination)}
-              title={done ? 'Уже выгружено: повторный запрос не создаёт дубликат' : undefined}
+              title={
+                done ? 'Already exported: another request will not create a duplicate' : undefined
+              }
               className="btn btn--ghost btn--sm"
             >
-              {existing?.status === 'failed' ? 'Повторить: ' : 'Выгрузить в '}
+              {existing?.status === 'failed' ? 'Retry: ' : 'Export to '}
               {EXPORT_DESTINATION_LABELS[destination]}
             </button>
           )
@@ -478,8 +480,8 @@ function formatWhen(iso: string | null): string {
 }
 
 /**
- * Замена оригинала: скрытый input, потому что нативный вид кнопки выбора
- * файла не совпадает с остальными действиями панели.
+ * Original replacement uses a hidden input because the native file picker
+ * button does not match the other panel actions.
  */
 function ReplaceFileButton({
   disabled,
@@ -499,8 +501,7 @@ function ReplaceFileButton({
         className="hidden"
         onChange={(event) => {
           const file = event.target.files?.[0]
-          // Значение сбрасывается, иначе повторный выбор того же файла
-          // не вызовет change.
+          // Clear the value so selecting the same file again triggers change.
           event.target.value = ''
           if (file) void onSelect(file)
         }}
@@ -509,10 +510,10 @@ function ReplaceFileButton({
         type="button"
         disabled={disabled}
         onClick={() => input.current?.click()}
-        title="Загрузить другой файл вместо этого: создаётся новая версия документа"
+        title="Upload a different file: this creates a new document version"
         className="btn btn--ghost"
       >
-        Заменить файл
+        Replace file
       </button>
     </>
   )
@@ -531,7 +532,7 @@ function RejectForm({
   return (
     <div className="mt-3 rounded-[6px] border border-rule bg-paper-2 p-3">
       <label className="block">
-        <span className="label mb-1">Причина отклонения</span>
+        <span className="label mb-1">Rejection reason</span>
         <select
           className="field"
           value={reason}
@@ -547,7 +548,7 @@ function RejectForm({
       <textarea
         className="field mt-2"
         rows={2}
-        placeholder="Комментарий (необязательно)"
+        placeholder="Comment (optional)"
         value={comment}
         onChange={(event) => setComment(event.target.value)}
       />
@@ -557,10 +558,10 @@ function RejectForm({
           onClick={() => void onSubmit(reason, comment)}
           className="btn btn--danger btn--sm"
         >
-          Отклонить документ
+          Reject document
         </button>
         <button type="button" onClick={onCancel} className="btn btn--ghost btn--sm">
-          Отмена
+          Cancel
         </button>
       </div>
     </div>

@@ -5,9 +5,8 @@ import { Queue } from 'bullmq'
 import { SyncService } from './sync.service'
 
 /**
- * Регистрация повторяющихся задач при старте воркера. Расписание живёт
- * в Redis, поэтому оно обновляется, а не добавляется: смена интервала
- * в конфигурации не должна оставлять работать старый.
+ * Register repeatable jobs at worker startup. The schedule lives in Redis, so
+ * update rather than append it; changing the configured interval must remove the old one.
  */
 @Injectable()
 export class MaintenanceScheduler implements OnApplicationBootstrap {
@@ -27,11 +26,10 @@ export class MaintenanceScheduler implements OnApplicationBootstrap {
         { name: MAINTENANCE_JOB.SYNC },
       )
       this.logger.log(
-        `Синхронизация источника ${this.env.SOURCE_PROVIDER} каждые ${this.env.SOURCE_SYNC_INTERVAL_SECONDS} с`,
+        `Syncing source ${this.env.SOURCE_PROVIDER} every ${this.env.SOURCE_SYNC_INTERVAL_SECONDS} s`,
       )
     } else {
-      // Источник отключили — расписание из Redis нужно снять, иначе задача
-      // продолжит просыпаться после смены конфигурации.
+      // Remove the Redis schedule when the source is disabled so the job stops waking up.
       await this.queue.removeJobScheduler(MAINTENANCE_JOB.SYNC)
     }
 
@@ -41,9 +39,8 @@ export class MaintenanceScheduler implements OnApplicationBootstrap {
       { name: MAINTENANCE_JOB.RETENTION },
     )
 
-    // Первый прогон — сразу, не через интервал: воркер, простоявший сутки,
-    // не должен ждать ещё один период, прежде чем заметит файлы источника
-    // и просроченные документы.
+    // Run immediately on startup so a worker that was down does not wait another
+    // interval before finding source files and expired documents.
     if (this.sync.enabled) await this.queue.add(MAINTENANCE_JOB.SYNC, {})
     await this.queue.add(MAINTENANCE_JOB.RETENTION, {})
   }
