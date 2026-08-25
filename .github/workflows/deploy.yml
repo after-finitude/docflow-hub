@@ -1,0 +1,29 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: docflow-hub-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/docflow_deploy
+          chmod 600 ~/.ssh/docflow_deploy
+          printf '%s\n' '82.202.140.221 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGkwqU2EizlbjP6w//SJeK6c7ZqsEtHDqfznbhIc5Uk5' > ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: git archive --format=tar.gz HEAD | ssh -i ~/.ssh/docflow_deploy -o IdentitiesOnly=yes user1@82.202.140.221
