@@ -6,7 +6,7 @@ The interface is an operator workbench used throughout the day: compact, quiet, 
 
 - Application pages use a fixed top bar and full-width work area.
 - The queue and execution log use dense tables; review uses a document/fields split.
-- The login page uses one card in the left third of the viewport.
+- The login page centers one compact form in the viewport.
 - Color communicates state, never decoration, and is always paired with text.
 - Use hairline borders instead of decorative shadows or nested cards.
 - Keep one primary action per context and show errors next to the failed action.
