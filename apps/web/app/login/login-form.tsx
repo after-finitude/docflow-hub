@@ -43,8 +43,8 @@ export function LoginForm() {
   return (
     // Place the form in the left third at 18vh instead of centering it like a poster.
     <main className="min-h-screen px-6 pt-[18vh] pb-16">
-      <div className="mx-auto grid max-w-[1600px] gap-12 md:grid-cols-[minmax(0,22rem)_1fr]">
-        <form onSubmit={handleSubmit}>
+      <div className="mx-auto max-w-[1600px]">
+        <form onSubmit={handleSubmit} className="max-w-[22rem]">
           <h1 className="flex items-baseline gap-2">
             <span className="font-display text-xl font-semibold tracking-tight">Docflow</span>
             <span className="mono text-2xs uppercase tracking-[0.14em] text-muted">hub</span>
@@ -101,21 +101,6 @@ export function LoginForm() {
             {pending ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-
-        <aside className="hidden self-end border-l border-rule pl-12 md:block">
-          <p className="max-w-[38ch] text-sm leading-relaxed text-ink-2">
-            Every extracted value links back to its source area in the original document. The system
-            never shows a result without its source.
-          </p>
-          <dl className="mt-8 grid max-w-md grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-xs">
-            <dt className="text-muted">Document types</dt>
-            <dd className="mono">invoice · statement · letter · contract</dd>
-            <dt className="text-muted">Sources</dt>
-            <dd className="mono">upload · folder · Drive</dd>
-            <dt className="text-muted">Review</dt>
-            <dd className="mono">schema rules + field confidence</dd>
-          </dl>
-        </aside>
       </div>
     </main>
   )
