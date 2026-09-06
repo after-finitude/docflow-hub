@@ -1,5 +1,10 @@
 import {
   DB,
+  DB_POOL,
+  databaseSchema,
+  startRun,
+  finishRun,
+  failRun,
   DocumentEventsService,
   EXPORT_MAPPINGS,
   StorageService,
@@ -16,7 +21,6 @@ import {
 import {
   buildCanonicalDocument,
   type CanonicalInputField,
-  type ExportDestination,
   type ExportDto,
   type ExportRequest,
   type SessionUser,
@@ -29,7 +33,10 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
+import { drizzle } from 'drizzle-orm/node-postgres'
+import { Pool } from 'pg'
+import { randomUUID } from 'node:crypto'
 import type { RequestContext } from '../auth/decorators'
 import { DestinationUnavailableError, type ExportAdapter } from './export-adapter'
 import { EXPORT_ADAPTERS } from './export-adapter'
@@ -44,6 +51,7 @@ export class ExportService {
     private readonly events: DocumentEventsService,
     private readonly storage: StorageService,
     private readonly validation: ValidationRunnerService,
+    @Inject(DB_POOL) private readonly pool: Pool,
   ) {}
 
   async listForDocument(documentId: string, db: Database = this.db): Promise<ExportDto[]> {
@@ -73,163 +81,229 @@ export class ExportService {
     return this.storage.getBuffer(record.payloadRef)
   }
 
-  /**
-   * Export an approved document (spec 6.8), idempotent by export_key. A repeated
-   * request with the same key does not create another record (spec §9).
-   */
+  /** Session lock serializes attempts across the durable prepare/send/finish commits. */
   async export(
     documentId: string,
     request: ExportRequest,
     user: SessionUser,
     origin: RequestContext,
   ): Promise<ExportDto> {
-    const result = await this.db.transaction(async (db) => {
-      // ponytail: the per-document lock spans the destination call; phase 3 can
-      // replace it with a persisted export reservation if call latency matters.
-      const document = await lockDocument(db, documentId)
-      if (!document) throw new NotFoundException('Document not found')
+    const client = await this.pool.connect()
+    client.on('error', () =>
+      this.logger.warn('Export database connection interrupted; retry the saved export'),
+    )
+    try {
+      await client.query('select pg_advisory_lock(hashtextextended($1, 0))', [
+        `docflow-export:${documentId}`,
+      ])
+      const db = drizzle(client, { schema: databaseSchema })
+      return await this.exportLocked(db, documentId, request, user, {
+        ...origin,
+        correlationId: origin.correlationId ?? randomUUID(),
+      })
+    } finally {
+      // Closing this dedicated connection releases its session lock even after
+      // a failed SQL transaction or lost connection, without a lease timeout.
+      client.release(true)
+    }
+  }
 
-      if (document.status !== 'approved' && document.status !== 'exported') {
+  private async exportLocked(
+    db: Database,
+    documentId: string,
+    request: ExportRequest,
+    user: SessionUser,
+    origin: RequestContext,
+  ): Promise<ExportDto> {
+    const destination = request.destination ?? 'file_json'
+    const exportKey = request.exportKey ?? `${documentId}:${destination}`
+    const adapter = this.adapters.find((candidate) => candidate.destination === destination)
+
+    const prepared = await db.transaction(async (tx) => {
+      const document = await lockDocument(tx, documentId)
+      if (!document) throw new NotFoundException('Document not found')
+      // Different documents can race for the same user-supplied key. Check its
+      // binding under one lock instead of surfacing a uniqueness error as 500.
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${`docflow-export-key:${exportKey}`}, 0))`,
+      )
+      let record = await this.findByKey(tx, exportKey)
+      if (record && (record.documentId !== documentId || record.destination !== destination)) {
+        throw new ConflictException(
+          'Export key is already bound to a different document or destination',
+        )
+      }
+      if (record?.status === 'succeeded') return { record, runId: null, status: document.status }
+      if (!['approved', 'exported'].includes(document.status)) {
         throw new BadRequestException(
           `Only an approved document can be exported (current status: ${document.status})`,
         )
       }
       if (!document.documentType || document.documentType === 'unknown') {
-        // Unknown documents are never exported automatically (spec 6.3).
         throw new BadRequestException('A document without a known type cannot be exported')
       }
-      if (document.duplicateOfId) {
-        // Do not export a duplicate again (spec §10).
+      if (document.duplicateOfId)
         throw new BadRequestException('A duplicate of an accepted document cannot be exported')
-      }
-
-      const validation = await this.validation.runInTransaction(db, documentId, {
-        correlationId: origin.correlationId,
-        actorId: user.id,
-        actorType: 'user',
-        route: false,
-      })
-      if (validation.decision.blockingCount > 0) {
-        if (document.status !== 'exported') {
-          await db
-            .update(documents)
-            .set({ status: 'needs_review', statusReason: validation.decision.reasons.join('; ') })
-            .where(eq(documents.id, documentId))
-        }
-        return new ConflictException(
-          `Cannot export: ${validation.decision.blockingCount} unresolved blocking issue(s)`,
+      if (!adapter) throw new BadRequestException(`Destination ${destination} is not configured`)
+      if (record && !record.canonicalPayload && record.attempts > 0) {
+        // Old versions did not save the sent payload or an uncertain Sheets row.
+        // Replaying guessed data could duplicate a write whose response was lost.
+        throw new ConflictException(
+          'Legacy export has no saved payload; reconcile the destination before creating a new export key',
         )
       }
 
-      const destination: ExportDestination = request.destination ?? 'file_json'
-      const exportKey = request.exportKey ?? `${documentId}:${destination}`
-
-      const existing = await this.findByKey(db, exportKey)
-      if (existing?.status === 'succeeded') {
-        // Do not create or send a second object (criterion 10).
-        this.logger.log(`Export ${exportKey} already completed; returning the existing record`)
-        return this.toDto(existing)
+      if (!record?.canonicalPayload) {
+        const validation = await this.validation.runInTransaction(tx, documentId, {
+          correlationId: origin.correlationId,
+          actorId: user.id,
+          actorType: 'user',
+          route: false,
+        })
+        if (validation.decision.blockingCount > 0) {
+          if (document.status !== 'exported') {
+            await tx
+              .update(documents)
+              .set({ status: 'needs_review', statusReason: validation.decision.reasons.join('; ') })
+              .where(eq(documents.id, documentId))
+          }
+          return new ConflictException(
+            `Cannot export: ${validation.decision.blockingCount} unresolved blocking issue(s)`,
+          )
+        }
+        const snapshot = {
+          canonicalPayload: await this.buildCanonical(tx, document),
+          mappingSnapshot: EXPORT_MAPPINGS[document.documentType],
+        }
+        if (record) {
+          ;[record] = await tx
+            .update(documentExports)
+            .set(snapshot)
+            .where(eq(documentExports.id, record.id))
+            .returning()
+        } else {
+          ;[record] = await tx
+            .insert(documentExports)
+            .values({ documentId, destination, exportKey, ...snapshot })
+            .returning()
+        }
       }
+      const runId = await startRun(tx, documentId, 'export', origin.correlationId!, record.id)
+      ;[record] = await tx
+        .update(documentExports)
+        .set({ status: 'pending', errorCode: null, attempts: record.attempts + 1 })
+        .where(eq(documentExports.id, record.id))
+        .returning()
+      await tx
+        .update(documents)
+        .set({ processingStep: 'export', processingRevision: document.processingRevision + 1 })
+        .where(eq(documents.id, documentId))
+      return { record, runId, status: document.status }
+    })
+    if (prepared instanceof ConflictException) throw prepared
+    const { record, runId } = prepared
+    if (runId === null) return this.toDto(record)
 
-      const adapter = this.adapters.find((candidate) => candidate.destination === destination)
-      if (!adapter) {
-        throw new BadRequestException(`Destination ${destination} is not configured`)
-      }
-
-      const canonical = await this.buildCanonical(db, document)
-      const mapping = EXPORT_MAPPINGS[document.documentType]
-
-      const record = existing ?? (await this.createRecord(db, documentId, destination, exportKey))
-      const attempts = record.attempts + 1
-
-      try {
-        const payloadRef = await adapter.send(canonical, mapping, exportKey)
-
-        await db
+    await this.events.publish({
+      type: 'document',
+      documentId,
+      status: prepared.status,
+      step: 'export',
+      state: 'running',
+      at: new Date().toISOString(),
+    })
+    try {
+      // Read-only discovery/allocation may fail. The payload and attempt already
+      // exist, while target reservation commits before the first external write.
+      const target =
+        record.target ??
+        (await db.transaction(async (tx) => {
+          await lockDocument(tx, documentId)
+          const reserved = await adapter!.reserve(tx, record.id)
+          await tx
+            .update(documentExports)
+            .set({ target: reserved })
+            .where(eq(documentExports.id, record.id))
+          return reserved
+        }))
+      const payloadRef = await adapter!.send(
+        record.canonicalPayload!,
+        record.mappingSnapshot!,
+        target,
+      )
+      const completed = await db.transaction(async (tx) => {
+        await lockDocument(tx, documentId)
+        const [saved] = await tx
           .update(documentExports)
-          .set({
-            status: 'succeeded',
-            payloadRef,
-            errorCode: null,
-            attempts,
-            exportedAt: new Date(),
-          })
+          .set({ status: 'succeeded', payloadRef, errorCode: null, exportedAt: new Date() })
           .where(eq(documentExports.id, record.id))
-
-        await db
+          .returning()
+        await tx
           .update(documents)
-          .set({
-            status: 'exported',
-            statusReason: null,
-            processingStep: null,
-            processingRevision: document.processingRevision + 1,
-          })
+          .set({ status: 'exported', statusReason: null, processingStep: null })
           .where(eq(documents.id, documentId))
-
-        await writeAudit(db, {
+        await finishRun(tx, runId)
+        await writeAudit(tx, {
           correlationId: origin.correlationId,
           actorType: 'user',
           actorId: user.id,
           action: 'document.exported',
           objectType: 'document',
           objectId: documentId,
-          after: { destination, exportKey, payloadRef, attempts },
+          after: { destination, exportKey, payloadRef, attempts: record.attempts },
           result: 'success',
           ip: origin.ip,
           userAgent: origin.userAgent,
         })
-
-        await this.events.publish({
-          type: 'document',
-          documentId,
-          status: 'exported',
-          step: 'export',
-          state: 'succeeded',
-          at: new Date().toISOString(),
-        })
-
-        return this.toDto({
-          ...record,
-          status: 'succeeded',
-          payloadRef,
-          attempts,
-          exportedAt: new Date(),
-        })
-      } catch (error) {
-        const code = error instanceof DestinationUnavailableError ? error.code : 'export_failed'
-        const message = error instanceof Error ? error.message : String(error)
-
-        await db
-          .update(documents)
-          .set({ status: document.status, statusReason: document.statusReason })
-          .where(eq(documents.id, documentId))
-
-        // The document remains Approved because a destination failure does not
-        // undo approval; manual retry remains available (spec 6.8, criterion 11).
-        await db
+        return saved
+      })
+      await this.events.publish({
+        type: 'document',
+        documentId,
+        status: 'exported',
+        step: 'export',
+        state: 'succeeded',
+        at: new Date().toISOString(),
+      })
+      return this.toDto(completed)
+    } catch (error) {
+      const code = error instanceof DestinationUnavailableError ? error.code : 'export_failed'
+      const message = error instanceof Error ? error.message : String(error)
+      // If the connection died, this transaction also fails: Pending and its
+      // Running log survive and the next manual request replays the same target.
+      const failed = await db.transaction(async (tx) => {
+        const document = await lockDocument(tx, documentId)
+        const [saved] = await tx
           .update(documentExports)
-          .set({ status: 'failed', errorCode: code, attempts })
+          .set({ status: 'failed', errorCode: code })
           .where(eq(documentExports.id, record.id))
-
-        await writeAudit(db, {
+          .returning()
+        await failRun(tx, runId, code, message)
+        await writeAudit(tx, {
           correlationId: origin.correlationId,
           actorType: 'user',
           actorId: user.id,
           action: 'document.export_failed',
           objectType: 'document',
           objectId: documentId,
-          after: { destination, exportKey, errorCode: code, message, attempts },
+          after: { destination, exportKey, errorCode: code, message, attempts: record.attempts },
           result: 'failure',
           ip: origin.ip,
           userAgent: origin.userAgent,
         })
-
-        this.logger.warn(`Export ${exportKey} failed: ${message}`)
-        return this.toDto({ ...record, status: 'failed', errorCode: code, attempts })
-      }
-    })
-    if (result instanceof ConflictException) throw result
-    return result
+        return { saved, status: document?.status }
+      })
+      await this.events.publish({
+        type: 'document',
+        documentId,
+        status: failed.status,
+        step: 'export',
+        state: 'failed',
+        at: new Date().toISOString(),
+      })
+      this.logger.warn(`Export ${exportKey} failed: ${message}`)
+      return this.toDto(failed.saved)
+    }
   }
 
   private async findByKey(db: Database, exportKey: string) {
@@ -239,19 +313,6 @@ export class ExportService {
       .where(eq(documentExports.exportKey, exportKey))
       .limit(1)
     return row
-  }
-
-  private async createRecord(
-    db: Database,
-    documentId: string,
-    destination: ExportDestination,
-    exportKey: string,
-  ) {
-    const [created] = await db
-      .insert(documentExports)
-      .values({ documentId, destination, exportKey, status: 'pending', attempts: 0 })
-      .returning()
-    return created
   }
 
   private async buildCanonical(db: Database, document: typeof documents.$inferSelect) {
@@ -305,7 +366,7 @@ export class ExportService {
   private toDto(row: typeof documentExports.$inferSelect): ExportDto {
     return {
       id: row.id,
-      destination: row.destination as ExportDestination,
+      destination: row.destination as ExportDto['destination'],
       exportKey: row.exportKey,
       status: row.status,
       payloadRef: row.payloadRef,

@@ -30,3 +30,14 @@ export interface ExportDto {
   attempts: number
   exportedAt: string | null
 }
+
+/** Persisted before a destination write. Retries always use this same address. */
+export type ExportTarget =
+  | { kind: 'file_json'; objectKey: string }
+  | {
+      kind: 'google_sheets'
+      spreadsheetId: string
+      sheetId: number
+      row: number
+      writeHeader: boolean
+    }

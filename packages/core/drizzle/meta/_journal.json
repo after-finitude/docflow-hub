@@ -57,6 +57,13 @@
       "when": 1788674655379,
       "tag": "0007_processing_revision",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788681228044,
+      "tag": "0008_durable_exports",
+      "breakpoints": true
     }
   ]
 }

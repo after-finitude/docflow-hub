@@ -1,5 +1,5 @@
-import { StorageService } from '@docflow/core'
-import type { CanonicalDocument, ExportDestination } from '@docflow/shared'
+import { StorageService, type Database } from '@docflow/core'
+import type { CanonicalDocument, ExportDestination, ExportTarget } from '@docflow/shared'
 import { Injectable } from '@nestjs/common'
 import { DestinationUnavailableError, type ExportAdapter } from './export-adapter'
 
@@ -13,13 +13,21 @@ export class FileJsonAdapter implements ExportAdapter {
 
   constructor(private readonly storage: StorageService) {}
 
-  async send(canonical: CanonicalDocument, _mapping: unknown, exportKey: string): Promise<string> {
-    // Include the idempotency key in the object name so retries overwrite the
-    // same file instead of creating copies.
-    const key = `exports/${sanitize(exportKey)}.json`
+  async reserve(_db: Database, exportId: string): Promise<ExportTarget> {
+    // The immutable database UUID is collision-free even when user keys contain
+    // punctuation or Unicode. Successful legacy files retain their saved paths.
+    return { kind: 'file_json', objectKey: `exports/${exportId}.json` }
+  }
+
+  async send(
+    canonical: CanonicalDocument,
+    _mapping: unknown,
+    target: ExportTarget,
+  ): Promise<string> {
+    if (target.kind !== 'file_json') throw new Error('Invalid JSON export target')
     try {
       await this.storage.put(
-        key,
+        target.objectKey,
         Buffer.from(JSON.stringify(canonical, null, 2)),
         'application/json',
       )
@@ -29,10 +37,6 @@ export class FileJsonAdapter implements ExportAdapter {
         `Storage unavailable: ${error instanceof Error ? error.message : String(error)}`,
       )
     }
-    return key
+    return target.objectKey
   }
-}
-
-function sanitize(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]/g, '_')
 }

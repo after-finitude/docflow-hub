@@ -1,4 +1,10 @@
-import type { CanonicalDocument, ExportDestination, ExportMapping } from '@docflow/shared'
+import type { Database } from '@docflow/core'
+import type {
+  CanonicalDocument,
+  ExportDestination,
+  ExportMapping,
+  ExportTarget,
+} from '@docflow/shared'
 
 /**
  * Destination adapter (spec 6.8). Receives canonical JSON and a mapping without
@@ -6,11 +12,13 @@ import type { CanonicalDocument, ExportDestination, ExportMapping } from '@docfl
  */
 export interface ExportAdapter {
   readonly destination: ExportDestination
+  /** Reserve an address in the caller's transaction before any destination write. */
+  reserve(db: Database, exportId: string): Promise<ExportTarget>
   /**
    * @returns payloadRef referencing the created destination object.
    * @throws DestinationUnavailableError when the destination is unavailable.
    */
-  send(canonical: CanonicalDocument, mapping: ExportMapping, exportKey: string): Promise<string>
+  send(canonical: CanonicalDocument, mapping: ExportMapping, target: ExportTarget): Promise<string>
 }
 
 /**

@@ -25,7 +25,18 @@ Use `docker compose logs -f api worker web` for live logs. Run `npm run verify` 
 - Retry eligible failed stages from Execution Log after correcting the external cause.
 - Reprocess a document to restart its automatic pipeline.
 - Replace a UI-uploaded original to create a new version; source-backed files must be changed at the source.
-- Retry failed exports from the document page. Exports never retry automatically.
+- Retry failed or interrupted Pending exports from their **Retry export** button on the document page. Each button sends that record's original export key. Exports never retry automatically.
+- The first attempt saves the approved canonical JSON and mapping, then commits the destination address before writing. Later attempts reuse that snapshot, including its timestamps and target, even if configuration changes. A failed delivery keeps the document Approved; edits, rejection, type changes, and reprocessing stay disabled until delivery finishes.
+- Execution Log has one export entry per export record, with attempts, the latest correlation ID, completion time, and any failure code. A process interruption can leave it Running and the export Pending; the next manual retry resumes the saved export.
+- JSON exports use the export record UUID for their object key. Successful exports from older releases keep their existing download paths. Historical failed exports without a saved snapshot cannot be retried safely: reconcile the old destination write first, then explicitly use a new export key if another write is needed.
+
+### Google Sheets row ownership
+
+Use a dedicated tab whose data rows are managed by Docflow. Do not manually insert, delete, move, or sort its managed rows, or edit their cells; use a separate tab for reports and sorting. A renamed tab is supported because Docflow persists its numeric sheet ID. Replacing/deleting the tab or copying the database without the corresponding destination invalidates these addresses.
+
+Each new export reserves a unique row in PostgreSQL, accounting for rows already present in the tab and reservations not yet sent. Retries use the saved spreadsheet ID, sheet ID, row, and mapping. Writes use a numeric GridRange through [Sheets batchUpdateByDataFilter](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/batchUpdateByDataFilter), so a lost response overwrites the same row on retry. Changing configuration redirects only newly reserved exports; credentials must still have access to targets awaiting a retry.
+
+The regression suite exercises the real adapter with a mocked Google API, including a lost response after a successful row write. A configured Google Sheets run remains a separate check; mocks were explicitly accepted for this implementation stage.
 
 ## Maintenance
 

@@ -9,6 +9,7 @@ import {
   fields,
   getActiveSchema,
   lockDocument,
+  lockDocumentForEdit,
   pages,
   validationIssues,
   workflowRuns,
@@ -316,7 +317,7 @@ export class DocumentsService {
     origin: RequestContext,
   ): Promise<DocumentDetail> {
     return this.db.transaction(async (db) => {
-      const document = await lockDocument(db, id)
+      const document = await lockDocumentForEdit(db, id)
       if (!document) throw new NotFoundException('Document not found')
       if (!['needs_review', 'approved', 'failed'].includes(document.status)) {
         throw new ConflictException(`A document with status ${document.status} cannot be edited`)
@@ -397,7 +398,7 @@ export class DocumentsService {
   /** Operator approval (spec 5.2). Blocking issues are checked on the server. */
   async approve(id: string, user: SessionUser, origin: RequestContext): Promise<DocumentDetail> {
     const result = await this.db.transaction(async (db) => {
-      const document = await lockDocument(db, id)
+      const document = await lockDocumentForEdit(db, id)
       if (!document) throw new NotFoundException('Document not found')
       if (document.status !== 'needs_review') {
         throw new BadRequestException(
@@ -456,7 +457,7 @@ export class DocumentsService {
     origin: RequestContext,
   ): Promise<DocumentDetail> {
     return this.db.transaction(async (db) => {
-      const document = await lockDocument(db, id)
+      const document = await lockDocumentForEdit(db, id)
       if (!document) throw new NotFoundException('Document not found')
       if (!['needs_review', 'approved', 'failed'].includes(document.status)) {
         throw new ConflictException(`A document with status ${document.status} cannot be rejected`)
@@ -514,7 +515,7 @@ export class DocumentsService {
     origin: RequestContext,
   ): Promise<DocumentDetail> {
     return this.db.transaction(async (db) => {
-      const row = await lockDocument(db, id)
+      const row = await lockDocumentForEdit(db, id)
 
       if (!row) throw new NotFoundException('Document not found')
       if (['received', 'processing', 'exported'].includes(row.status))
@@ -690,7 +691,7 @@ export class DocumentsService {
 
   async reprocess(id: string, user: SessionUser, origin: RequestContext): Promise<DocumentDetail> {
     return this.db.transaction(async (db) => {
-      const row = await lockDocument(db, id)
+      const row = await lockDocumentForEdit(db, id)
 
       if (!row) throw new NotFoundException('Document not found')
       if (['received', 'processing', 'exported'].includes(row.status)) {

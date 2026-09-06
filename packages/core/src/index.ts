@@ -1,6 +1,7 @@
 export * from './config/env'
 export * from './config/config.module'
 export * from './db/schema'
+export * as databaseSchema from './db/schema'
 export * from './db/db.module'
 export * from './db/audit'
 export * from './db/schemas'

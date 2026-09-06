@@ -3,7 +3,7 @@ import {
   DocumentEventsService,
   QUEUE,
   ValidationRunnerService,
-  lockDocument,
+  lockDocumentForEdit,
   deadLetters,
   documents,
   workflowRuns,
@@ -115,7 +115,7 @@ export class RunsService {
   async retry(runId: string, user: SessionUser, origin: RequestContext): Promise<RunListItem> {
     return this.db.transaction(async (db) => {
       const initial = await this.findRun(runId, db)
-      const document = await lockDocument(db, initial.documentId)
+      const document = await lockDocumentForEdit(db, initial.documentId)
       if (!document) throw new NotFoundException('Document not found')
       const run = await this.findRun(runId, db)
       const queueName = QUEUE_BY_STEP[run.step]
@@ -195,7 +195,7 @@ export class RunsService {
   async toManual(runId: string, user: SessionUser, origin: RequestContext): Promise<RunListItem> {
     return this.db.transaction(async (db) => {
       const initial = await this.findRun(runId, db)
-      const document = await lockDocument(db, initial.documentId)
+      const document = await lockDocumentForEdit(db, initial.documentId)
       if (!document) throw new NotFoundException('Document not found')
       const run = await this.findRun(runId, db)
       if (['approved', 'exported', 'rejected'].includes(document.status)) {

@@ -19,8 +19,10 @@ The committed evaluation report uses deterministic mock OCR and LLM providers. I
 
 ## Export and sources
 
-- Google Sheets and Google Drive require service-account credentials and have not been demonstrated by the mock evaluation.
-- Export failures require an operator retry; there are intentionally no automatic export retries.
+- Google Sheets and Google Drive require service-account credentials and have not been demonstrated by the mock evaluation. Sheets allocation/retry behavior is covered against PostgreSQL with a mocked Google API; a real Sheets verification is deferred at the user's request.
+- Export failures require an operator retry; there are intentionally no automatic export retries. The approved payload is frozen until delivery finishes.
+- Sheets row identity assumes managed rows are not inserted, deleted, moved, sorted, or edited manually; see `docs/runbook.md`.
+- Historical failed exports from before durable snapshots were introduced require destination reconciliation before a new export key is used; their unknown original writes cannot be safely guessed.
 - Local-folder synchronization uses full snapshots; Google Drive uses the changes cursor API.
 
 ## Delivery

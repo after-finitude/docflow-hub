@@ -12,6 +12,7 @@ import { Module } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import {
   ENV,
+  EXPORT_MAPPINGS,
   DEFAULT_THRESHOLDS,
   documents,
   documentSchemas,
@@ -25,6 +26,8 @@ import {
 import { DocumentsController } from '../apps/api/dist/documents/documents.controller.js'
 import { DocumentsService } from '../apps/api/dist/documents/documents.service.js'
 import { PageRenderService } from '../apps/api/dist/documents/page-render.service.js'
+import { FileJsonAdapter } from '../apps/api/dist/export/file-json.adapter.js'
+import { GoogleSheetsAdapter } from '../apps/api/dist/export/google-sheets.adapter.js'
 import { ExportService } from '../apps/api/dist/export/export.service.js'
 import { RunsController } from '../apps/api/dist/runs/runs.controller.js'
 import { RunsService } from '../apps/api/dist/runs/runs.service.js'
@@ -94,13 +97,16 @@ test(
       payloads.push(payload)
       return 'exports/test.json'
     }
-    const exports = new ExportService(
-      db,
-      [{ destination: 'file_json', send: (...args) => send(...args) }],
-      events,
-      {},
-      validation,
-    )
+    const adapters = [
+      {
+        destination: 'file_json',
+        async reserve(_db, id) {
+          return { kind: 'file_json', objectKey: `exports/${id}.json` }
+        },
+        send: (...args) => send(...args),
+      },
+    ]
+    const exports = new ExportService(db, adapters, events, {}, validation, pool)
     const service = new DocumentsService(db, {}, events, validation, {}, exports, queue, queue)
     const runs = new RunsService(db, events, queue, queue, queue, queue, queue, validation)
     // eslint-disable-next-line typescript/no-extraneous-class -- Nest module metadata.
@@ -543,5 +549,408 @@ test(
         'original',
       )
     })
+    await t.test(
+      'export keys reject conflicting document/destination reuse, including concurrent requests',
+      async () => {
+        const first = await doc('approved'),
+          second = await doc('approved')
+        const exportKey = randomUUID()
+        const before = payloads.length
+        const results = await Promise.all([
+          request(first, 'export', { exportKey }),
+          request(second, 'export', { exportKey }),
+        ])
+        assert.deepEqual(results.map((r) => r.status).toSorted(), [201, 409])
+        assert.equal(payloads.length, before + 1)
+        const winner = results[0].status === 201 ? first : second
+        assert.equal(
+          (await request(winner, 'export', { destination: 'google_sheets', exportKey })).status,
+          409,
+        )
+        assert.equal(
+          (await request(winner, 'export', { exportKey })).body.id,
+          results.find((r) => r.status === 201).body.id,
+        )
+      },
+    )
+
+    await t.test('JSON object names cannot collide for punctuation or Unicode keys', async () => {
+      const objects = new Map()
+      adapters[0] = new FileJsonAdapter({
+        async put(key, buffer) {
+          objects.set(key, buffer.toString())
+        },
+      })
+      const id = await doc('approved')
+      const keys = ['a:b', 'a/b', 'a_b', 'документ', '文件']
+      const records = []
+      for (const exportKey of keys) {
+        const response = await request(id, 'export', { exportKey })
+        assert.equal(response.status, 201)
+        assert.equal(response.body.status, 'succeeded')
+        records.push(response.body)
+      }
+      assert.equal(objects.size, keys.length)
+      assert.equal(new Set(records.map((r) => r.payloadRef)).size, keys.length)
+      assert.equal(
+        (await db.select().from(workflowRuns).where(eq(workflowRuns.documentId, id))).length,
+        keys.length,
+      )
+    })
+
+    await t.test(
+      'lost JSON response preserves Approved and retries identical saved bytes and mapping',
+      async () => {
+        const objects = new Map(),
+          writes = []
+        let loseResponse = true
+        adapters[0] = new FileJsonAdapter({
+          async put(key, buffer) {
+            const text = buffer.toString()
+            objects.set(key, text)
+            writes.push({ key, text })
+            if (loseResponse) {
+              loseResponse = false
+              throw new Error('response lost after object write')
+            }
+          },
+        })
+        const id = await doc('approved')
+        const response = await request(id, 'export', { exportKey: 'saved-json' })
+        assert.equal(response.body.status, 'failed')
+        assert.equal((await row(id)).status, 'approved')
+        assert.equal((await row(id)).processingStep, 'export')
+        const [saved] = await db
+          .select()
+          .from(documentExports)
+          .where(eq(documentExports.id, response.body.id))
+        assert.ok(saved.canonicalPayload && saved.mappingSnapshot && saved.target)
+        const [failedRun] = await db
+          .select()
+          .from(workflowRuns)
+          .where(eq(workflowRuns.exportId, saved.id))
+        assert.equal(failedRun.state, 'failed')
+        assert.equal(failedRun.attempts, 1)
+        assert.equal(failedRun.errorCode, 'storage_unavailable')
+        for (const [action, body, method] of [
+          ['fields/name', { value: 'Unsafe change' }, 'PATCH'],
+          ['reprocess', undefined, 'POST'],
+          ['reject', { reason: 'other', comment: 'test' }, 'POST'],
+          ['type', { type: 'invoice' }, 'POST'],
+        ])
+          assert.equal((await request(id, action, body, method)).status, 409)
+        const oldMapping = EXPORT_MAPPINGS.contract
+        EXPORT_MAPPINGS.contract = [{ column: 'changed after failure', source: 'field:name' }]
+        try {
+          const retried = await request(id, 'export', { exportKey: 'saved-json' })
+          assert.equal(retried.body.status, 'succeeded')
+          assert.equal(retried.body.attempts, 2)
+          assert.equal(retried.body.id, saved.id)
+          assert.deepEqual(writes[0], writes[1])
+          assert.equal(objects.size, 1)
+          const [after] = await db
+            .select()
+            .from(documentExports)
+            .where(eq(documentExports.id, saved.id))
+          assert.deepEqual(after.mappingSnapshot, saved.mappingSnapshot)
+          assert.deepEqual(after.canonicalPayload, saved.canonicalPayload)
+          const [run] = await db
+            .select()
+            .from(workflowRuns)
+            .where(eq(workflowRuns.exportId, saved.id))
+          assert.equal(run.id, failedRun.id)
+          assert.equal(run.state, 'succeeded')
+          assert.equal(run.attempts, 2)
+          assert.notEqual(run.correlationId, failedRun.correlationId)
+          assert.equal(run.errorCode, null)
+        } finally {
+          EXPORT_MAPPINGS.contract = oldMapping
+        }
+      },
+    )
+
+    await t.test(
+      'a database disconnect after destination write leaves a recoverable Pending export',
+      async () => {
+        const objects = new Map(),
+          writes = []
+        let disconnect = true
+        adapters[0] = new FileJsonAdapter({
+          async put(key, buffer) {
+            objects.set(key, buffer.toString())
+            writes.push(buffer.toString())
+            if (disconnect) {
+              disconnect = false
+              const { rows: holders } = await pool.query(
+                "select distinct l.pid from pg_locks l join pg_stat_activity a on a.pid=l.pid where l.locktype='advisory' and l.granted and a.datname=current_database()",
+              )
+              assert.equal(holders.length, 1)
+              await pool.query('select pg_terminate_backend($1)', [holders[0].pid])
+            }
+          },
+        })
+        const id = await doc('approved')
+        const first = await request(id, 'export', { exportKey: 'interrupted' })
+        assert.equal(first.status, 500)
+        const [pending] = await db
+          .select()
+          .from(documentExports)
+          .where(eq(documentExports.documentId, id))
+        assert.equal(pending.status, 'pending')
+        assert.equal(pending.attempts, 1)
+        assert.ok(pending.target && pending.canonicalPayload)
+        const [run] = await db
+          .select()
+          .from(workflowRuns)
+          .where(eq(workflowRuns.exportId, pending.id))
+        assert.equal(run.state, 'running')
+        assert.equal((await request(id, 'fields/total', { value: '99' }, 'PATCH')).status, 409)
+        const retry = await request(id, 'export', { exportKey: 'interrupted' })
+        assert.equal(retry.body.status, 'succeeded')
+        assert.equal(retry.body.id, pending.id)
+        assert.equal(retry.body.attempts, 2)
+        assert.equal(objects.size, 1)
+        assert.deepEqual(writes[0], writes[1])
+      },
+    )
+
+    await t.test(
+      'Sheets reserves distinct rows across documents and reuses identity after a lost response',
+      async (subtest) => {
+        const model = mockSheets()
+        const options = {
+          keyFile: 'unused',
+          spreadsheetId: 'test-spreadsheet',
+          sheetName: "O'Brien",
+        }
+        const adapter = new GoogleSheetsAdapter(options)
+        subtest.mock.method(adapter, 'client', async () => model.client)
+        adapters[1] = adapter
+        const id = await doc('approved')
+        model.loseResponse = true
+        const failed = await request(id, 'export', {
+          destination: 'google_sheets',
+          exportKey: 'sheet-first',
+        })
+        assert.equal(failed.body.status, 'failed')
+        const [saved] = await db
+          .select()
+          .from(documentExports)
+          .where(eq(documentExports.id, failed.body.id))
+        assert.equal(saved.target.row, 2)
+        assert.equal(saved.target.sheetId, 7)
+        const firstWrite = structuredClone(model.writes[0])
+        // Other documents can reserve while this one awaits an operator retry.
+        const ids = await Promise.all([doc('approved'), doc('approved'), doc('approved')])
+        const results = await Promise.all(
+          ids.map((documentId) => request(documentId, 'export', { destination: 'google_sheets' })),
+        )
+        assert.ok(
+          results.every((r) => r.body.status === 'succeeded'),
+          JSON.stringify(results),
+        )
+        const oldMapping = EXPORT_MAPPINGS.contract
+        EXPORT_MAPPINGS.contract = [{ column: 'new mapping', source: 'field:name' }]
+        options.spreadsheetId = 'changed-config'
+        options.sheetName = 'renamed-config'
+        model.title = 'Renamed tab'
+        try {
+          const retry = await request(id, 'export', {
+            destination: 'google_sheets',
+            exportKey: 'sheet-first',
+          })
+          assert.equal(retry.body.status, 'succeeded')
+          assert.deepEqual(model.writes.at(-1), firstWrite)
+          assert.equal(model.rows.size, 5, 'one header plus exactly four document rows')
+          assert.equal(
+            new Set(
+              model.writes.flatMap((w) =>
+                w.data
+                  .filter((d) => d.dataFilter.gridRange.startRowIndex > 0)
+                  .map((d) => d.dataFilter.gridRange.startRowIndex),
+              ),
+            ).size,
+            4,
+          )
+          assert.equal(model.reserveReads, 4, 'retry must not discover or allocate another row')
+        } finally {
+          EXPORT_MAPPINGS.contract = oldMapping
+        }
+      },
+    )
+
+    await t.test(
+      'Sheets discovery failure is logged and no target write happens before reservation commits',
+      async (subtest) => {
+        const model = mockSheets()
+        const adapter = new GoogleSheetsAdapter({
+          keyFile: 'unused',
+          spreadsheetId: 'test-spreadsheet-2',
+          sheetName: "O'Brien",
+        })
+        model.spreadsheetId = 'test-spreadsheet-2'
+        let unavailable = true
+        subtest.mock.method(adapter, 'client', async () => {
+          if (unavailable) throw Object.assign(new Error('destination unavailable'), { code: 503 })
+          return model.client
+        })
+        adapters[1] = adapter
+        const id = await doc('approved')
+        const first = await request(id, 'export', { destination: 'google_sheets' })
+        assert.equal(first.body.status, 'failed')
+        assert.equal(model.writes.length, 0)
+        const [saved] = await db
+          .select()
+          .from(documentExports)
+          .where(eq(documentExports.id, first.body.id))
+        assert.equal(saved.target, null)
+        assert.ok(saved.canonicalPayload)
+        unavailable = false
+        model.beforeWrite = async () => {
+          const [reserved] = await db
+            .select()
+            .from(documentExports)
+            .where(eq(documentExports.id, saved.id))
+          assert.ok(
+            reserved.target,
+            'another connection sees the committed address before the external write',
+          )
+        }
+        assert.equal(
+          (await request(id, 'export', { destination: 'google_sheets' })).body.status,
+          'succeeded',
+        )
+        assert.equal(model.rows.size, 2)
+      },
+    )
+
+    await t.test(
+      'legacy successful exports remain idempotent; unsafe historical failures are not replayed',
+      async () => {
+        const id = await doc('exported')
+        const [legacy] = await db
+          .insert(documentExports)
+          .values({
+            documentId: id,
+            destination: 'file_json',
+            exportKey: 'legacy-success',
+            status: 'succeeded',
+            payloadRef: 'exports/old_path.json',
+            attempts: 1,
+          })
+          .returning()
+        assert.equal(
+          (await request(id, 'export', { exportKey: legacy.exportKey })).body.payloadRef,
+          legacy.payloadRef,
+        )
+        const [failed] = await db
+          .insert(documentExports)
+          .values({
+            documentId: id,
+            destination: 'google_sheets',
+            exportKey: 'legacy-uncertain',
+            status: 'failed',
+            attempts: 1,
+          })
+          .returning()
+        assert.equal(
+          (
+            await request(id, 'export', {
+              exportKey: failed.exportKey,
+              destination: 'google_sheets',
+            })
+          ).status,
+          409,
+        )
+      },
+    )
   },
 )
+
+// Emulate the Sheets request boundary, including a write that succeeds remotely
+// before the caller loses its response. Real adapter allocation uses PostgreSQL.
+function mockSheets() {
+  const model = {
+    spreadsheetId: 'test-spreadsheet',
+    title: "O'Brien",
+    rows: new Map(),
+    writes: [],
+    reserveReads: 0,
+    loseResponse: false,
+    rowCount: 2,
+    columnCount: 2,
+    beforeWrite: async () => {},
+  }
+  const check = (request, options) => {
+    assert.equal(request.spreadsheetId, model.spreadsheetId)
+    assert.equal(options.retry, false)
+    assert.ok(options.timeout > 0)
+  }
+  model.client = {
+    spreadsheets: {
+      async get(request, options) {
+        check(request, options)
+        return {
+          data: {
+            sheets: [
+              {
+                properties: {
+                  sheetId: 7,
+                  title: model.title,
+                  gridProperties: { rowCount: model.rowCount, columnCount: model.columnCount },
+                },
+              },
+            ],
+          },
+        }
+      },
+      async batchUpdate(request, options) {
+        check(request, options)
+        for (const { appendDimension } of request.requestBody.requests) {
+          assert.equal(appendDimension.sheetId, 7)
+          model[appendDimension.dimension === 'ROWS' ? 'rowCount' : 'columnCount'] +=
+            appendDimension.length
+        }
+        return {}
+      },
+      values: {
+        async get(request, options) {
+          check(request, options)
+          assert.equal(request.range, "'O''Brien'")
+          model.reserveReads++
+          return {
+            data: {
+              values: Array.from(
+                { length: Math.max(-1, ...model.rows.keys()) + 1 },
+                (_, i) => model.rows.get(i) ?? [],
+              ),
+            },
+          }
+        },
+        async append() {
+          throw new Error('append would duplicate the exported row')
+        },
+        async batchUpdateByDataFilter(request, options) {
+          check(request, options)
+          await model.beforeWrite()
+          assert.equal(request.requestBody.valueInputOption, 'RAW')
+          model.writes.push(structuredClone(request.requestBody))
+          for (const entry of request.requestBody.data) {
+            const range = entry.dataFilter.gridRange
+            assert.equal(range.sheetId, 7)
+            assert.equal(range.endRowIndex, range.startRowIndex + 1)
+            assert.ok(range.endRowIndex <= model.rowCount)
+            assert.ok(range.endColumnIndex <= model.columnCount)
+            model.rows.set(range.startRowIndex, structuredClone(entry.values[0]))
+          }
+          if (model.loseResponse) {
+            model.loseResponse = false
+            throw Object.assign(new Error('response lost after row write'), { code: 503 })
+          }
+          return {}
+        },
+      },
+    },
+  }
+  return model
+}

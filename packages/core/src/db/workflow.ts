@@ -1,5 +1,6 @@
 import type { WorkflowStep } from '@docflow/shared'
-import { and, eq } from 'drizzle-orm'
+import { ConflictException } from '@nestjs/common'
+import { and, eq, isNull } from 'drizzle-orm'
 import type { Database } from './db.module'
 import { documents, workflowRuns } from './schema'
 
@@ -17,6 +18,15 @@ export async function lockDocument(db: Database, documentId: string) {
     .from(documents)
     .where(eq(documents.id, documentId))
     .for('update')
+  return document
+}
+
+/** An immutable export is waiting for delivery; finish its retry before editing. */
+export async function lockDocumentForEdit(db: Database, documentId: string) {
+  const document = await lockDocument(db, documentId)
+  if (document?.processingStep === 'export') {
+    throw new ConflictException('Retry the saved export before changing this document')
+  }
   return document
 }
 
@@ -52,11 +62,18 @@ export async function startRun(
   documentId: string,
   step: WorkflowStep,
   correlationId: string,
+  exportId?: string,
 ): Promise<string> {
   const [existing] = await db
     .select({ id: workflowRuns.id, attempts: workflowRuns.attempts })
     .from(workflowRuns)
-    .where(and(eq(workflowRuns.documentId, documentId), eq(workflowRuns.step, step)))
+    .where(
+      and(
+        eq(workflowRuns.documentId, documentId),
+        eq(workflowRuns.step, step),
+        exportId ? eq(workflowRuns.exportId, exportId) : isNull(workflowRuns.exportId),
+      ),
+    )
     .limit(1)
 
   if (existing) {
@@ -81,6 +98,7 @@ export async function startRun(
     .values({
       documentId,
       step,
+      exportId,
       state: 'running',
       attempts: 1,
       correlationId,

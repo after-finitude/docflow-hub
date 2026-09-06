@@ -1,4 +1,11 @@
-import type { BoundingBox, ConfidenceSignals, OcrBlock } from '@docflow/shared'
+import type {
+  BoundingBox,
+  ConfidenceSignals,
+  OcrBlock,
+  CanonicalDocument,
+  ExportMapping,
+  ExportTarget,
+} from '@docflow/shared'
 import {
   ACTOR_TYPES,
   DOCUMENT_STATUSES,
@@ -230,6 +237,9 @@ export const documentExports = pgTable(
     exportKey: text('export_key').notNull(),
     status: exportStatusEnum('status').notNull().default('pending'),
     payloadRef: text('payload_ref'),
+    canonicalPayload: jsonb('canonical_payload').$type<CanonicalDocument>(),
+    mappingSnapshot: jsonb('mapping_snapshot').$type<ExportMapping>(),
+    target: jsonb('target').$type<ExportTarget>(),
     errorCode: text('error_code'),
     attempts: integer('attempts').notNull().default(0),
     exportedAt: timestamp('exported_at', { withTimezone: true }),
@@ -237,6 +247,11 @@ export const documentExports = pgTable(
   (t) => [
     uniqueIndex('exports_export_key_key').on(t.exportKey),
     index('exports_document_idx').on(t.documentId),
+    uniqueIndex('exports_sheet_row_key').on(
+      sql`(${t.target}->>'spreadsheetId')`,
+      sql`(${t.target}->>'sheetId')`,
+      sql`(${t.target}->>'row')`,
+    ),
   ],
 )
 
@@ -248,6 +263,7 @@ export const workflowRuns = pgTable(
       .notNull()
       .references(() => documents.id, { onDelete: 'cascade' }),
     step: workflowStepEnum('step').notNull(),
+    exportId: uuid('export_id').references(() => documentExports.id, { onDelete: 'set null' }),
     state: workflowStateEnum('state').notNull().default('pending'),
     attempts: integer('attempts').notNull().default(0),
     correlationId: uuid('correlation_id').notNull(),
@@ -260,6 +276,7 @@ export const workflowRuns = pgTable(
     index('workflow_runs_document_idx').on(t.documentId),
     index('workflow_runs_correlation_idx').on(t.correlationId),
     index('workflow_runs_state_idx').on(t.state),
+    uniqueIndex('workflow_runs_export_key').on(t.exportId),
   ],
 )
 

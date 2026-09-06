@@ -37,7 +37,11 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
   const [error, setError] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState(false)
 
-  const readOnly = !['needs_review', 'approved', 'failed'].includes(document.status)
+  const exportReserved = document.exports.some(
+    (item) => item.status === 'pending' || item.status === 'failed',
+  )
+  const readOnly =
+    exportReserved || !['needs_review', 'approved', 'failed'].includes(document.status)
 
   const issuesByField = useMemo(() => {
     const map = new Map<string, DocumentDetail['issues']>()
@@ -144,14 +148,14 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
    * The export response is the export record, not the document, so reload the
    * document separately: its status may have changed to exported.
    */
-  async function runExport(destination: ExportDestination) {
+  async function runExport(destination: ExportDestination, exportKey?: string) {
     setBusy(true)
     setError(null)
     try {
       const response = await fetch(`/api/documents/${document.id}/export`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ destination }),
+        body: JSON.stringify({ destination, exportKey }),
       })
       if (!response.ok) {
         const detail = (await response.json().catch(() => null)) as { message?: string } | null
@@ -170,11 +174,14 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
       if (result.status === 'succeeded' && destination === 'file_json') {
         await downloadJson(result.id)
       }
-      const refreshed = await fetch(`/api/documents/${document.id}`)
-      if (refreshed.ok) setDocument((await refreshed.json()) as DocumentDetail)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Service unavailable')
     } finally {
+      // A lost response may still have left a saved Pending export to retry.
+      const refreshed = await fetch(`/api/documents/${document.id}`)
+        .then((response) => (response.ok ? (response.json() as Promise<DocumentDetail>) : null))
+        .catch(() => null)
+      if (refreshed) setDocument(refreshed)
       setBusy(false)
     }
   }
@@ -298,6 +305,12 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
               Changing the type restarts extraction with the new schema
             </p>
 
+            {exportReserved && (
+              <p className="mt-3 text-xs text-ink-2">
+                Export data is saved. Retry the export to finish delivery.
+              </p>
+            )}
+
             {document.statusReason && (
               <p className="mt-3 text-xs text-ink-2">{document.statusReason}</p>
             )}
@@ -344,7 +357,11 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
               </button>
               <button
                 type="button"
-                disabled={busy || ['received', 'processing', 'exported'].includes(document.status)}
+                disabled={
+                  busy ||
+                  exportReserved ||
+                  ['received', 'processing', 'exported'].includes(document.status)
+                }
                 onClick={() =>
                   void call(`/api/documents/${document.id}/reprocess`, { method: 'POST' }).then(
                     () => router.refresh(),
@@ -395,7 +412,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
               <ExportPanel
                 exports={document.exports}
                 busy={busy}
-                onExport={(destination) => void runExport(destination)}
+                onExport={(destination, exportKey) => void runExport(destination, exportKey)}
                 onDownload={(exportId) => void runDownload(exportId)}
               />
             )}
@@ -468,7 +485,7 @@ function ExportPanel({
 }: {
   exports: ExportDto[]
   busy: boolean
-  onExport: (destination: ExportDestination) => void
+  onExport: (destination: ExportDestination, exportKey?: string) => void
   onDownload: (exportId: string) => void
 }) {
   return (
@@ -499,26 +516,31 @@ function ExportPanel({
           ) : (
             <span className="text-muted">pending</span>
           )}
+          {item.status !== 'succeeded' && (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm ml-2"
+              disabled={busy}
+              onClick={() => onExport(item.destination, item.exportKey)}
+            >
+              Retry export
+            </button>
+          )}
         </p>
       ))}
 
       <div className="mt-2 flex flex-wrap gap-2">
         {EXPORT_DESTINATIONS.map((destination) => {
-          const existing = exports.find((item) => item.destination === destination)
-          const done = existing?.status === 'succeeded'
+          if (exports.some((item) => item.destination === destination)) return null
           return (
             <button
               key={destination}
               type="button"
-              disabled={busy || done}
+              disabled={busy}
               onClick={() => onExport(destination)}
-              title={
-                done ? 'Already exported: another request will not create a duplicate' : undefined
-              }
               className="btn btn--ghost btn--sm"
             >
-              {existing?.status === 'failed' ? 'Retry: ' : 'Export to '}
-              {EXPORT_DESTINATION_LABELS[destination]}
+              Export to {EXPORT_DESTINATION_LABELS[destination]}
             </button>
           )
         })}

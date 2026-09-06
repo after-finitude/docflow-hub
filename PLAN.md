@@ -53,14 +53,18 @@ Specification: 5.3, 6.8, 6.10, 9; acceptance criteria 10, 11.
 
 Primary files: `apps/api/src/export/export.service.ts`, `apps/api/src/export/google-sheets.adapter.ts`, `apps/api/src/export/file-json.adapter.ts`, `packages/core/src/db/schema.ts`, `packages/core/src/db/workflow.ts`.
 
-- [ ] Bind each export key to its document and destination; reject conflicting reuse. Prevent two requests from sending the same pending export concurrently.
-- [ ] Persist the canonical payload and destination mapping used for an export so retries reuse the same result.
-- [ ] For Sheets, reserve and persist a unique target row before sending, then update that row on every retry instead of appending. Persist spreadsheet/sheet identity as part of the destination reference. Document the restriction on manually moving or deleting managed rows.
-- [ ] Give JSON exports collision-free object keys: different valid export keys must not collapse to the same sanitized filename.
-- [ ] Preserve Approved on destination failure and keep retries manual. Recover a pending export after process interruption without producing another destination object.
-- [ ] Record export success, failure, attempts, and correlation ID in Execution Log, not only in the export table and audit events.
+- [x] Bind each export key to its document and destination; reject conflicting reuse. Prevent two requests from sending the same pending export concurrently.
+- [x] Persist the canonical payload and destination mapping used for an export so retries reuse the same result.
+- [x] For Sheets, reserve and persist a unique target row before sending, then update that row on every retry instead of appending. Persist spreadsheet/sheet identity as part of the destination reference. Document the restriction on manually moving or deleting managed rows.
+- [x] Give JSON exports collision-free object keys: different valid export keys must not collapse to the same sanitized filename.
+- [x] Preserve Approved on destination failure and keep retries manual. Recover a pending export after process interruption without producing another destination object.
+- [x] Record export success, failure, attempts, and correlation ID in Execution Log, not only in the export table and audit events.
 
 **Done when:** sequential retries, concurrent requests, a lost destination response, and a failure after destination write all produce one JSON object or one Sheets row for a key. Failed exports remain visible and retryable. Integration checks cover these boundaries with a controllable destination; a configured Sheets run confirms the real adapter.
+
+Verification (2026-09-06): 131 checks pass with `TEST_DATABASE_URL=postgres://… npm test`. The PostgreSQL/API suite exercises competing document/destination bindings, punctuation/Unicode JSON keys, identical payload and mapping replay, destination unavailability, lost responses after JSON/Sheets writes, and a terminated PostgreSQL session after the object write. Pending snapshots recover through a manual retry; each export has its own Execution Log entry. Concurrent Sheets reservations use distinct rows, and retries retain spreadsheet/sheet identity after configuration changes or a tab rename. Sheets tests run the real adapter against a controlled Google API mock; using mocks for this stage was explicitly accepted by the user. Browser checks cover custom-key Failed and Pending retries, a simulated HTTP 500, frozen edits, and completion. Type checks, lint, formatting, and the web production build pass. Migration `0008_durable_exports.sql` adds payload/mapping/target snapshots and links execution entries to exports. Operational restrictions and legacy-export reconciliation are documented in `docs/runbook.md`.
+
+- [ ] Deferred verification: repeat the recovery checks against a configured Google Sheets spreadsheet when service-account credentials become available. This is not claimed as verified by the mock run.
 
 ## 4. Schema versions and administrator configuration
 
