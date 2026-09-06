@@ -4,6 +4,7 @@ import {
   ENV,
   PIPELINE_WORKER_OPTIONS,
   QUEUE,
+  ValidationRunnerService,
   documents,
   failRun,
   fields,
@@ -52,6 +53,7 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
     @Inject(LLM_PROVIDER) private readonly llm: LlmProvider,
     private readonly events: DocumentEventsService,
     @InjectQueue(QUEUE.VALIDATE) private readonly validateQueue: Queue,
+    private readonly validation: ValidationRunnerService,
   ) {
     super()
   }
@@ -104,11 +106,39 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
         blocks: row.blocks ?? [],
       }))
 
-      const response = await this.llm.extract({
-        documentType: document.documentType,
-        fields: schema.fields,
-        pagesText,
-      })
+      let response: ExtractionResponse
+      try {
+        response = await this.llm.extract({
+          documentType: document.documentType,
+          fields: schema.fields,
+          pagesText,
+        })
+      } catch (error) {
+        if (!(error instanceof LlmInvalidResponseError)) throw error
+
+        // Supply an editable form on initial failure; never overwrite existing
+        // values, field IDs, or their audit links on a failed re-extraction.
+        const missing = schema.fields.map((spec) =>
+          this.buildFieldRow(documentId, schema.id, spec, undefined, evidencePages),
+        )
+        if (missing.length) {
+          await this.db
+            .insert(fields)
+            .values(missing)
+            .onConflictDoNothing({
+              target: [fields.documentId, fields.name],
+            })
+        }
+        // Persist blocking issues before making the manual form available.
+        await this.validation.run(documentId, { correlationId, autoApprove: false })
+        await failRun(this.db, runId, 'llm_invalid_response', error.message)
+        await this.db
+          .update(documents)
+          .set({ statusReason: 'Automatic extraction failed; fill the fields manually or retry' })
+          .where(eq(documents.id, documentId))
+        await this.publish(documentId, 'needs_review', 'failed')
+        return
+      }
 
       if (this.llm.external) {
         // Spec §11: record which pages and fields were sent to an external provider.
@@ -133,31 +163,18 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
         this.buildFieldRow(documentId, schema.id, spec, byName.get(spec.name), evidencePages),
       )
 
-      // Re-extraction replaces all fields.
-      await this.db.delete(fields).where(eq(fields.documentId, documentId))
-      await this.db.insert(fields).values(rows)
-
-      await finishRun(this.db, runId)
+      // A failed write must leave the previous extraction intact.
+      await this.db.transaction(async (tx) => {
+        await tx.delete(fields).where(eq(fields.documentId, documentId))
+        if (rows.length) await tx.insert(fields).values(rows)
+        await finishRun(tx, runId)
+      })
       // Keep the document processing and send it to validation.
       await this.validateQueue.add('validate', { documentId, correlationId })
       await this.publish(documentId, 'processing', 'succeeded')
       const found = rows.filter((row) => row.rawValue !== null).length
       this.logger.log(`Document ${documentId}: extracted ${found}/${schema.fields.length} fields`)
     } catch (error) {
-      if (error instanceof LlmInvalidResponseError) {
-        // Manual review without losing source data (spec 6.4, §10).
-        await failRun(this.db, runId, 'llm_invalid_response', error.message)
-        await this.db
-          .update(documents)
-          .set({
-            status: 'needs_review',
-            statusReason: 'Automatic extraction failed; fill the fields manually or retry',
-            processedAt: new Date(),
-          })
-          .where(eq(documents.id, documentId))
-        await this.publish(documentId, 'needs_review', 'failed')
-        return
-      }
       await this.handleFailure(job, documentId, runId, error)
       throw error
     }

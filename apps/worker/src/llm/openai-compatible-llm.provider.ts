@@ -1,6 +1,6 @@
 import {
   classificationResponseSchema,
-  extractionResponseSchema,
+  extractionResponseSchemaFor,
   type ClassificationResponse,
   type ExtractionResponse,
 } from '@docflow/shared'
@@ -15,7 +15,7 @@ import {
   type PageText,
 } from './llm-provider'
 
-/** Invalid JSON repair policy: up to two retries (spec 6.4, 6.10). */
+/** Invalid JSON or schema repair policy: up to two retries (spec 6.4, 6.10). */
 const MAX_REPAIRS = 2
 
 export interface OpenAiCompatibleOptions {
@@ -82,6 +82,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
       'Rules:',
       '1. "value" is the VERBATIM string as written in the document. Do not normalize or translate.',
       '2. For array fields (line items) "value" is an array of {"description", "quantity", "unit_price", "amount"}.',
+      'Description is a string; quantity, unit_price, and amount are numbers or null when absent. No nested or extra properties.',
       '3. "evidence" is the verbatim text fragment from the document that contains the value, with its page number.',
       '4. If a field is absent, return value=null and evidence=null. NEVER invent values.',
       '5. Return every requested field exactly once.',
@@ -94,7 +95,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
         { role: 'system', content: system },
         { role: 'user', content: renderPages(input.pagesText) },
       ],
-      extractionResponseSchema,
+      extractionResponseSchemaFor(input.fields),
     )
   }
 
@@ -135,7 +136,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
         },
       )
       this.logger.warn(
-        `LLM response failed schema validation (repair ${attempt + 1}/${MAX_REPAIRS}): ${lastError}`,
+        `LLM response failed schema validation (attempt ${attempt + 1}/${MAX_REPAIRS + 1}): ${lastError}`,
       )
     }
 

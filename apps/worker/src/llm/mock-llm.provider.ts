@@ -1,4 +1,9 @@
-import type { ClassificationResponse, ExtractionResponse } from '@docflow/shared'
+import {
+  extractionResponseSchemaFor,
+  type ClassificationResponse,
+  type ExtractionResponse,
+  type LineItem,
+} from '@docflow/shared'
 import { Injectable } from '@nestjs/common'
 import type { ClassifyInput, ExtractInput, LlmProvider } from './llm-provider'
 
@@ -73,17 +78,29 @@ export class MockLlmProvider implements LlmProvider {
   }
 
   async extract(input: ExtractInput): Promise<ExtractionResponse> {
-    const patterns = PATTERNS_BY_TYPE[input.documentType]
-    if (!patterns) {
-      // Unknown type: return Missing for every field. “Do not invent”
-      // (spec §9) also applies to the mock.
-      return {
-        fields: input.fields.map((field) => ({ name: field.name, value: null, evidence: null })),
-      }
-    }
+    const patterns = PATTERNS_BY_TYPE[input.documentType] ?? {}
 
-    return {
+    return extractionResponseSchemaFor(input.fields).parse({
       fields: input.fields.map((field) => {
+        if (input.documentType === 'invoice' && field.name === 'line_items') {
+          const items: LineItem[] = []
+          let evidence: { text: string; page: number } | null = null
+          for (const page of input.pagesText) {
+            // ponytail: demo rows only; use the real provider for arbitrary tables.
+            for (const match of page.text.matchAll(
+              /^([^\r\n]+?)\s+x(\d+(?:\.\d+)?)\s+(\d+\.\d{2})(?:[ \t]+(\d+\.\d{2}))?[ \t]*$/gm,
+            )) {
+              items.push({
+                description: match[1].trim(),
+                quantity: Number(match[2]),
+                unit_price: Number(match[3]),
+                amount: match[4] === undefined ? null : Number(match[4]),
+              })
+              evidence ??= { text: match[0].trim(), page: page.page }
+            }
+          }
+          return { name: field.name, value: items.length ? items : null, evidence }
+        }
         const pattern = patterns[field.name]
         if (!pattern) return { name: field.name, value: null, evidence: null }
 
@@ -101,7 +118,7 @@ export class MockLlmProvider implements LlmProvider {
         }
         return { name: field.name, value: null, evidence: null }
       }),
-    }
+    })
   }
 }
 

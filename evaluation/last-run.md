@@ -1,6 +1,6 @@
 # Quality Evaluation Report
 
-Run date: 2026-08-23T07:01:51.632Z
+Run date: 2026-09-06T05:13:56.990Z
 Dataset: 43 documents, 15 labeled
 Providers: OCR — `mock`, LLM — `mock`
 Schema version: 1 (seed), rules: 13
