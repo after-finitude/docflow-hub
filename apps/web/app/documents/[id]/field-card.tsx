@@ -98,7 +98,7 @@ export function FieldCard({
 
       {field.isEdited && <p className="mt-1 text-2xs text-muted">Corrected by operator</p>}
 
-      {field.confidenceReason && !field.isEdited && (
+      {field.confidenceReason && (
         <p className="mt-1 text-2xs text-muted">{field.confidenceReason}</p>
       )}
 

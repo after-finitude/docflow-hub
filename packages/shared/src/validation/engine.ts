@@ -1,5 +1,7 @@
 import type { IssueSeverity, ValueType } from '../enums'
 import type { ValidationRule } from './rules'
+import { normalizeDate } from '../normalize/values'
+import { lineItemSchema } from '../contracts/review'
 
 /**
  * Validation engine (spec 6.6). A pure function gives reproducible results
@@ -38,17 +40,26 @@ export function validateDocument(
   const byName = new Map(fields.map((field) => [field.name, field]))
   const issues: ValidationIssueResult[] = []
 
-  // Required flags come from the schema. Missing critical fields block approval;
-  // missing noncritical fields warn.
+  // Required means required for approval, independently of confidence criticality.
   for (const field of fields) {
     if (field.isRequired && isEmpty(field)) {
       issues.push({
         ruleId: `required:${field.name}`,
         fieldName: field.name,
-        severity: field.isCritical ? 'blocking' : 'warning',
+        severity: 'blocking',
         message: `Required field “${field.label}” is empty`,
         expected: 'a value',
         actual: 'empty',
+      })
+    }
+    if (!isEmpty(field) && !hasValidValueType(field)) {
+      issues.push({
+        ruleId: `type:${field.name}`,
+        fieldName: field.name,
+        severity: 'blocking',
+        message: `Field “${field.label}” has an invalid ${field.valueType} value`,
+        expected: field.valueType,
+        actual: 'invalid value',
       })
     }
   }
@@ -249,6 +260,27 @@ function isEmpty(field: ValidationField): boolean {
   }
   if (Array.isArray(field.normalizedValue)) return field.normalizedValue.length === 0
   return String(field.normalizedValue).trim() === ''
+}
+
+function hasValidValueType(field: ValidationField): boolean {
+  const value = field.normalizedValue
+  switch (field.valueType) {
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value)
+    case 'boolean':
+      return typeof value === 'boolean'
+    case 'array':
+      return (
+        Array.isArray(value) &&
+        value.every((item) => lineItemSchema.strict().safeParse(item).success)
+      )
+    case 'date':
+      return typeof value === 'string' && normalizeDate(value) === value
+    case 'currency':
+      return typeof value === 'string' && /^[A-Z]{3}$/.test(value)
+    default:
+      return typeof value === 'string'
+  }
 }
 
 function asString(value: unknown): string | null {

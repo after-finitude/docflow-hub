@@ -1,4 +1,23 @@
 import { NO_SOURCE_CONFIDENCE_CAP } from '../constants'
+import type { SchemaThresholds } from '../contracts/schema'
+
+export function capSourceConfidence(
+  confidence: number | null,
+  sourceFound: boolean,
+): number | null {
+  return confidence === null || sourceFound
+    ? confidence
+    : Math.min(NO_SOURCE_CONFIDENCE_CAP, confidence)
+}
+
+export function fieldConfidenceThreshold(
+  isCritical: boolean,
+  thresholds: SchemaThresholds | null,
+): number {
+  return isCritical
+    ? (thresholds?.criticalFieldConfidence ?? 0.8)
+    : (thresholds?.fieldConfidence ?? 0.6)
+}
 
 /**
  * Final field confidence from extraction, source-area OCR, source presence,

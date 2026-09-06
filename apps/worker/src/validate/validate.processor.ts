@@ -10,7 +10,9 @@ import {
   finishRun,
   queueConcurrency,
   recordDeadLetter,
-  startRun,
+  beginPipelineRun,
+  lockPipelineDocument,
+  type PipelineJob,
   type Database,
   type Env,
 } from '@docflow/core'
@@ -20,10 +22,7 @@ import { Inject, Logger, type OnModuleInit } from '@nestjs/common'
 import { UnrecoverableError, type Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 
-export interface ValidateJob {
-  documentId: string
-  correlationId: string
-}
+export type ValidateJob = PipelineJob
 
 /**
  * Final automatic stage: validation, confidence recalculation, and routing
@@ -50,23 +49,22 @@ export class ValidateProcessor extends WorkerHost implements OnModuleInit {
   async process(job: Job<ValidateJob>): Promise<void> {
     const { documentId, correlationId } = job.data
 
-    const [document] = await this.db
-      .select({ id: documents.id })
-      .from(documents)
-      .where(eq(documents.id, documentId))
-      .limit(1)
-    if (!document) {
-      this.logger.warn(`Document ${documentId} not found; skipping job`)
-      return
-    }
-
-    const runId = await startRun(this.db, documentId, 'validation', correlationId)
+    const started = await beginPipelineRun(this.db, job.data, 'validation')
+    if (!started) return
+    const { runId } = started
     await this.publish(documentId, 'processing', 'running')
 
     try {
-      const outcome = await this.runner.run(documentId, { correlationId, actorType: 'system' })
-      await finishRun(this.db, runId)
-      await this.publish(documentId, outcome.status, 'succeeded')
+      await this.db.transaction(async (db) => {
+        if (!(await lockPipelineDocument(db, job.data, 'validation'))) return
+        const outcome = await this.runner.runInTransaction(db, documentId, {
+          correlationId,
+          actorType: 'system',
+        })
+        await db.update(documents).set({ processingStep: null }).where(eq(documents.id, documentId))
+        await finishRun(db, runId)
+        await this.publish(documentId, outcome.status, 'succeeded')
+      })
     } catch (error) {
       await this.handleFailure(job, documentId, runId, error)
       throw error
@@ -79,37 +77,42 @@ export class ValidateProcessor extends WorkerHost implements OnModuleInit {
     runId: string,
     error: unknown,
   ): Promise<void> {
-    const detail = error instanceof Error ? error.message : String(error)
-    await failRun(this.db, runId, 'validation_failed', detail)
+    await this.db.transaction(async (db) => {
+      if (!(await lockPipelineDocument(db, job.data, 'validation'))) return
+      const detail = error instanceof Error ? error.message : String(error)
+      await failRun(db, runId, 'validation_failed', detail)
 
-    const unrecoverable = error instanceof UnrecoverableError
-    const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
-    if (!unrecoverable && attemptsLeft > 0) {
-      this.logger.warn(`Document ${documentId}: validation failed; ${attemptsLeft} attempt(s) left`)
-      return
-    }
+      const unrecoverable = error instanceof UnrecoverableError
+      const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
+      if (!unrecoverable && attemptsLeft > 0) {
+        this.logger.warn(
+          `Document ${documentId}: validation failed; ${attemptsLeft} attempt(s) left`,
+        )
+        return
+      }
 
-    // The job will not retry automatically; it moves to the dead-letter queue
-    // for an operator to retry from the Execution Log (spec 6.10).
-    await recordDeadLetter(this.db, {
-      documentId,
-      runId,
-      step: 'validation',
-      queue: QUEUE.VALIDATE,
-      jobId: job.id ?? null,
-      payload: job.data,
-      errorCode: 'validation_failed',
-      error,
-      attempts: job.attemptsMade + 1,
+      // The job will not retry automatically; it moves to the dead-letter queue
+      // for an operator to retry from the Execution Log (spec 6.10).
+      await recordDeadLetter(db, {
+        documentId,
+        runId,
+        step: 'validation',
+        queue: QUEUE.VALIDATE,
+        jobId: job.id ?? null,
+        payload: job.data,
+        errorCode: 'validation_failed',
+        error,
+        attempts: job.attemptsMade + 1,
+      })
+
+      const reason = 'Document validation failed. Processing can be retried manually'
+      await db
+        .update(documents)
+        .set({ status: 'failed', statusReason: reason, processingStep: null })
+        .where(eq(documents.id, documentId))
+      await this.publish(documentId, 'failed', 'failed')
+      this.logger.error(`Document ${documentId}: validation — ${detail}`)
     })
-
-    const reason = 'Document validation failed. Processing can be retried manually'
-    await this.db
-      .update(documents)
-      .set({ status: 'failed', statusReason: reason })
-      .where(eq(documents.id, documentId))
-    await this.publish(documentId, 'failed', 'failed')
-    this.logger.error(`Document ${documentId}: validation — ${detail}`)
   }
 
   private async publish(

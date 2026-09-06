@@ -11,7 +11,9 @@ import {
   pages,
   queueConcurrency,
   recordDeadLetter,
-  startRun,
+  beginPipelineRun,
+  lockPipelineDocument,
+  type PipelineJob,
   validationIssues,
   writeAudit,
   type Database,
@@ -29,10 +31,7 @@ import { Queue, UnrecoverableError, type Job } from 'bullmq'
 import { and, eq, isNull } from 'drizzle-orm'
 import { OCR_PROVIDER, type OcrProvider } from './ocr-provider'
 
-export interface OcrJob {
-  documentId: string
-  correlationId: string
-}
+export type OcrJob = PipelineJob
 
 /**
  * Second pipeline stage: OCR and per-page text storage with block coordinates
@@ -60,64 +59,60 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
   async process(job: Job<OcrJob>): Promise<void> {
     const { documentId, correlationId } = job.data
 
-    const [document] = await this.db
-      .select({ id: documents.id, storageKey: documents.storageKey, mimeType: documents.mimeType })
-      .from(documents)
-      .where(eq(documents.id, documentId))
-      .limit(1)
-
-    if (!document) {
-      this.logger.warn(`Document ${documentId} not found; skipping job`)
-      return
-    }
-
-    const runId = await startRun(this.db, documentId, 'ocr', correlationId)
+    const started = await beginPipelineRun(this.db, job.data, 'ocr')
+    if (!started) return
+    const { document, runId } = started
     await this.publish(documentId, 'processing', 'running')
 
     try {
       const buffer = await this.storage.getBuffer(document.storageKey)
       const result = await this.provider.recognize(buffer, document.mimeType)
 
-      // A rerun replaces all pages instead of accumulating rows.
-      await this.db.delete(pages).where(eq(pages.documentId, documentId))
-      if (result.pages.length > 0) {
-        await this.db.insert(pages).values(
-          result.pages.map((page) => ({
-            documentId,
-            pageNumber: page.pageNumber,
-            ocrText: page.text,
-            ocrConfidence: page.confidence,
-            width: Math.round(page.width),
-            height: Math.round(page.height),
-            blocks: page.blocks,
-          })),
-        )
-      }
+      await this.db.transaction(async (db) => {
+        if (!(await lockPipelineDocument(db, job.data, 'ocr'))) return
+        // A rerun replaces all pages instead of accumulating rows.
+        await db.delete(pages).where(eq(pages.documentId, documentId))
+        if (result.pages.length > 0) {
+          await db.insert(pages).values(
+            result.pages.map((page) => ({
+              documentId,
+              pageNumber: page.pageNumber,
+              ocrText: page.text,
+              ocrConfidence: page.confidence,
+              width: Math.round(page.width),
+              height: Math.round(page.height),
+              blocks: page.blocks,
+            })),
+          )
+        }
 
-      // Spec §11: record which pages were sent to an external provider.
-      const sentPages = result.pages.filter((page) => page.sentToProvider).map((p) => p.pageNumber)
-      if (this.provider.external && sentPages.length > 0) {
-        await writeAudit(this.db, {
-          correlationId,
-          actorType: 'system',
-          action: 'document.ocr_external',
-          objectType: 'document',
-          objectId: documentId,
-          after: { provider: this.provider.name, pages: sentPages },
-          result: 'success',
-        })
-      }
+        // Spec §11: record which pages were sent to an external provider.
+        const sentPages = result.pages
+          .filter((page) => page.sentToProvider)
+          .map((p) => p.pageNumber)
+        if (this.provider.external && sentPages.length > 0) {
+          await writeAudit(db, {
+            correlationId,
+            actorType: 'system',
+            action: 'document.ocr_external',
+            objectType: 'document',
+            objectId: documentId,
+            after: { provider: this.provider.name, pages: sentPages },
+            result: 'success',
+          })
+        }
 
-      await this.db
-        .update(documents)
-        .set({ pageCount: result.pages.length })
-        .where(eq(documents.id, documentId))
+        await db
+          .update(documents)
+          .set({ pageCount: result.pages.length, processingStep: 'classification' })
+          .where(eq(documents.id, documentId))
 
-      await this.syncQualityWarning(documentId, result.pages)
+        await this.syncQualityWarning(db, documentId, result.pages)
 
-      await finishRun(this.db, runId)
-      await this.classifyQueue.add('classify', { documentId, correlationId })
-      await this.publish(documentId, 'processing', 'succeeded')
+        await finishRun(db, runId)
+        await this.classifyQueue.add('classify', job.data)
+        await this.publish(documentId, 'processing', 'succeeded')
+      })
       this.logger.log(
         `Document ${documentId}: OCR (${this.provider.name}) completed, ${result.pages.length} page(s)`,
       )
@@ -134,11 +129,12 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
    * from passing automatically.
    */
   private async syncQualityWarning(
+    db: Database,
     documentId: string,
     // Do not call this `pages`; that name is already used by the imported table.
     recognized: { pageNumber: number; text: string; confidence: number | null }[],
   ): Promise<void> {
-    await this.db
+    await db
       .delete(validationIssues)
       .where(
         and(
@@ -157,7 +153,7 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
     )
     if (!issue) return
 
-    await this.db.insert(validationIssues).values({
+    await db.insert(validationIssues).values({
       documentId,
       fieldName: null,
       ruleId: OCR_QUALITY_RULE,
@@ -176,39 +172,42 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
     runId: string,
     error: unknown,
   ): Promise<void> {
-    const detail = error instanceof Error ? error.message : String(error)
-    await failRun(this.db, runId, 'ocr_failed', detail)
+    await this.db.transaction(async (db) => {
+      if (!(await lockPipelineDocument(db, job.data, 'ocr'))) return
+      const detail = error instanceof Error ? error.message : String(error)
+      await failRun(db, runId, 'ocr_failed', detail)
 
-    const unrecoverable = error instanceof UnrecoverableError
-    const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
-    if (!unrecoverable && attemptsLeft > 0) {
-      this.logger.warn(`Document ${documentId}: OCR failed; ${attemptsLeft} attempt(s) left`)
-      return
-    }
+      const unrecoverable = error instanceof UnrecoverableError
+      const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
+      if (!unrecoverable && attemptsLeft > 0) {
+        this.logger.warn(`Document ${documentId}: OCR failed; ${attemptsLeft} attempt(s) left`)
+        return
+      }
 
-    // The job will not retry automatically; it moves to the dead-letter queue
-    // for an operator to retry from the Execution Log (spec 6.10).
-    await recordDeadLetter(this.db, {
-      documentId,
-      runId,
-      step: 'ocr',
-      queue: QUEUE.OCR,
-      jobId: job.id ?? null,
-      payload: job.data,
-      errorCode: 'ocr_failed',
-      error,
-      attempts: job.attemptsMade + 1,
+      // The job will not retry automatically; it moves to the dead-letter queue
+      // for an operator to retry from the Execution Log (spec 6.10).
+      await recordDeadLetter(db, {
+        documentId,
+        runId,
+        step: 'ocr',
+        queue: QUEUE.OCR,
+        jobId: job.id ?? null,
+        payload: job.data,
+        errorCode: 'ocr_failed',
+        error,
+        attempts: job.attemptsMade + 1,
+      })
+
+      const reason = 'Document recognition failed. Processing can be retried manually'
+      await db
+        .update(documents)
+        .set({ status: 'failed', statusReason: reason, processingStep: null })
+        .where(eq(documents.id, documentId))
+      await this.publish(documentId, 'failed', 'failed')
+      this.logger.error(
+        `Document ${documentId}: OCR — ${unrecoverable ? 'unrecoverable error' : 'attempts exhausted'}: ${detail}`,
+      )
     })
-
-    const reason = 'Document recognition failed. Processing can be retried manually'
-    await this.db
-      .update(documents)
-      .set({ status: 'failed', statusReason: reason })
-      .where(eq(documents.id, documentId))
-    await this.publish(documentId, 'failed', 'failed')
-    this.logger.error(
-      `Document ${documentId}: OCR — ${unrecoverable ? 'unrecoverable error' : 'attempts exhausted'}: ${detail}`,
-    )
   }
 
   private async publish(

@@ -5,7 +5,7 @@ import { decideRouting, type RoutingField } from './routing'
 const THRESHOLDS = { autoClassify: 0.7, criticalFieldConfidence: 0.8, fieldConfidence: 0.6 }
 
 function critical(name: string, confidence: number | null): RoutingField {
-  return { name, label: name, isCritical: true, confidence }
+  return { name, label: name, isCritical: true, confidence, sourceFound: true }
 }
 
 describe('decideRouting', () => {
@@ -81,11 +81,33 @@ describe('decideRouting', () => {
     const decision = decideRouting(
       [
         critical('grand_total', 0.9),
-        { name: 'due_date', label: 'due_date', isCritical: false, confidence: 0.1 },
+        {
+          name: 'due_date',
+          label: 'due_date',
+          isCritical: false,
+          confidence: 0.1,
+          sourceFound: false,
+        },
       ],
       [],
       THRESHOLDS,
     )
     assert.equal(decision.auto, true)
   })
+})
+
+it('never auto-approves an unsourced critical field even at zero threshold', () => {
+  for (const criticalFieldConfidence of [0, 0.5]) {
+    assert.equal(
+      decideRouting([{ ...critical('total', 0.6), sourceFound: false }], [], {
+        ...THRESHOLDS,
+        criticalFieldConfidence,
+      }).auto,
+      false,
+    )
+    assert.equal(
+      decideRouting([critical('total', null)], [], { ...THRESHOLDS, criticalFieldConfidence }).auto,
+      false,
+    )
+  }
 })

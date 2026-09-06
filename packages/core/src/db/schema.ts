@@ -90,6 +90,9 @@ export const documents = pgTable(
 
     status: documentStatusEnum('status').notNull().default('received'),
     statusReason: text('status_reason'),
+    // Invalidate queued/in-flight work whenever a new processing request starts.
+    processingRevision: integer('processing_revision').notNull().default(0),
+    processingStep: workflowStepEnum('processing_step').default('preprocess'),
     versionNumber: integer('version_number').notNull().default(1),
     // Previous version. Source paths could derive this for synced files, but UI
     // uploads lack one and operator replacements must stay linked.

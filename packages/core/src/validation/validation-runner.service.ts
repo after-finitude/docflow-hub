@@ -3,6 +3,8 @@ import {
   FORCE_REVIEW_RULE_IDS,
   INVOICE_NUMBER_UNIQUE_RULE,
   decideRouting,
+  buildExtractedField,
+  capSourceConfidence,
   scoreConfidence,
   validateDocument,
   type RoutingDecision,
@@ -19,6 +21,7 @@ import { writeAudit } from '../db/audit'
 import { DB, type Database } from '../db/db.module'
 import { documents, fields, validationIssues } from '../db/schema'
 import { getActiveSchema } from '../db/schemas'
+import { lockDocument } from '../db/workflow'
 
 export interface ValidationRunOptions {
   correlationId?: string
@@ -30,6 +33,8 @@ export interface ValidationRunOptions {
    * operator edit so fixing the last issue does not approve without a click.
    */
   autoApprove?: boolean
+  /** Approval/export check validity without replacing the existing decision. */
+  route?: boolean
 }
 
 export interface ValidationOutcome {
@@ -54,47 +59,76 @@ export class ValidationRunnerService {
   ) {}
 
   async run(documentId: string, options: ValidationRunOptions = {}): Promise<ValidationOutcome> {
-    const [document] = await this.db
-      .select({
-        id: documents.id,
-        documentType: documents.documentType,
-        status: documents.status,
-      })
-      .from(documents)
-      .where(eq(documents.id, documentId))
-      .limit(1)
+    return this.db.transaction((db) => this.runInTransaction(db, documentId, options))
+  }
+
+  async runInTransaction(
+    db: Database,
+    documentId: string,
+    options: ValidationRunOptions = {},
+  ): Promise<ValidationOutcome> {
+    const document = await lockDocument(db, documentId)
 
     if (!document) throw new Error(`Document ${documentId} not found`)
 
     if (!document.documentType || document.documentType === 'unknown') {
-      // No known type means nothing can be validated; require manual selection.
+      const issue: ValidationIssueResult = {
+        ruleId: 'document_type_known',
+        fieldName: null,
+        severity: 'blocking',
+        message: 'Select the document type before approval',
+        expected: 'a known document type',
+        actual: 'unknown',
+      }
+      await this.replaceIssues(db, documentId, [issue])
+      if (options.route !== false && !['exported', 'rejected'].includes(document.status)) {
+        await db
+          .update(documents)
+          .set({ status: 'needs_review', statusReason: issue.message })
+          .where(eq(documents.id, documentId))
+      }
       return {
         status: 'needs_review',
         decision: {
           auto: false,
-          blockingCount: 0,
+          blockingCount: 1,
           warningCount: 0,
           lowConfidenceFields: [],
-          reasons: ['Document type is unknown'],
+          reasons: [issue.message],
         },
-        issues: [],
+        issues: [issue],
       }
     }
 
-    const schema = await getActiveSchema(this.db, document.documentType)
+    const schema = await getActiveSchema(db, document.documentType)
     if (!schema) throw new Error(`No active schema for type ${document.documentType}`)
 
-    const fieldRows = await this.db.select().from(fields).where(eq(fields.documentId, documentId))
-    const specs = new Map(schema.fields.map((spec) => [spec.name, spec]))
-
-    const validationFields: ValidationField[] = fieldRows.map((row) => ({
-      name: row.name,
-      label: specs.get(row.name)?.label ?? row.name,
-      valueType: row.valueType,
-      rawValue: row.rawValue,
-      normalizedValue: row.normalizedValue,
-      isRequired: specs.get(row.name)?.required ?? false,
-      isCritical: row.isCritical,
+    const fieldRows = await db.select().from(fields).where(eq(fields.documentId, documentId))
+    const storedNames = new Set(fieldRows.map((row) => row.name))
+    const missing = schema.fields.filter((spec) => !storedNames.has(spec.name))
+    if (missing.length) {
+      fieldRows.push(
+        ...(await db
+          .insert(fields)
+          .values(
+            missing.map((spec) => ({
+              ...buildExtractedField(spec, undefined, []),
+              documentId,
+              schemaVersionId: schema.id,
+            })),
+          )
+          .returning()),
+      )
+    }
+    const byName = new Map(fieldRows.map((row) => [row.name, row]))
+    const validationFields: ValidationField[] = schema.fields.map((spec) => ({
+      name: spec.name,
+      label: spec.label,
+      valueType: spec.type,
+      rawValue: byName.get(spec.name)?.rawValue ?? null,
+      normalizedValue: byName.get(spec.name)?.normalizedValue ?? null,
+      isRequired: spec.required,
+      isCritical: spec.critical,
     }))
 
     const issues = validateDocument(validationFields, schema.rules, {
@@ -102,17 +136,18 @@ export class ValidationRunnerService {
     })
 
     const uniqueness = await this.checkInvoiceNumberUniqueness(
+      db,
       documentId,
       document.documentType,
       fieldRows,
     )
     if (uniqueness) issues.push(uniqueness)
 
-    await this.replaceIssues(documentId, issues)
-    const confidenceByField = await this.recomputeConfidence(fieldRows, issues)
+    await this.replaceIssues(db, documentId, issues)
+    const confidenceByField = await this.recomputeConfidence(db, fieldRows, issues)
 
     // External issues, such as suspected multiple documents, also affect routing.
-    const externalIssues = await this.db
+    const externalIssues = await db
       .select({ ruleId: validationIssues.ruleId, severity: validationIssues.severity })
       .from(validationIssues)
       .where(
@@ -142,6 +177,7 @@ export class ValidationRunnerService {
         label: field.label,
         isCritical: field.isCritical,
         confidence: confidenceByField.get(field.name) ?? null,
+        sourceFound: byName.get(field.name)?.sourceFound ?? false,
       })),
       routingIssues,
       schema.thresholds,
@@ -153,8 +189,8 @@ export class ValidationRunnerService {
     const status = decision.auto && autoApprove ? 'approved' : 'needs_review'
 
     // Revalidation never moves an exported document backward.
-    if (document.status !== 'exported') {
-      await this.db
+    if (options.route !== false && !['exported', 'rejected'].includes(document.status)) {
+      await db
         .update(documents)
         .set({
           status,
@@ -165,16 +201,16 @@ export class ValidationRunnerService {
     }
 
     // Record the decision with schema and rule versions for reproducibility (spec 6.7).
-    await writeAudit(this.db, {
+    await writeAudit(db, {
       correlationId: options.correlationId,
       actorType: options.actorType ?? 'system',
       actorId: options.actorId,
-      action: 'document.routed',
+      action: options.route === false ? 'document.validated' : 'document.routed',
       objectType: 'document',
       objectId: documentId,
       after: {
-        status,
-        auto: decision.auto && autoApprove,
+        status: options.route === false ? document.status : status,
+        auto: options.route !== false && decision.auto && autoApprove,
         autoApproveAllowed: autoApprove,
         schemaId: schema.id,
         schemaVersion: schema.version,
@@ -198,6 +234,7 @@ export class ValidationRunnerService {
    * (spec §9 exception).
    */
   private async checkInvoiceNumberUniqueness(
+    db: Database,
     documentId: string,
     documentType: string,
     fieldRows: Array<{ name: string; normalizedValue: unknown }>,
@@ -211,7 +248,7 @@ export class ValidationRunnerService {
     const numberField = alias(fields, 'f_number')
     const supplierField = alias(fields, 'f_supplier')
 
-    const [duplicate] = await this.db
+    const [duplicate] = await db
       .select({ id: documents.id, filename: documents.originalFilename })
       .from(documents)
       .innerJoin(
@@ -247,8 +284,12 @@ export class ValidationRunnerService {
   }
 
   /** Replace engine issues completely while preserving external issues. */
-  private async replaceIssues(documentId: string, issues: ValidationIssueResult[]): Promise<void> {
-    await this.db
+  private async replaceIssues(
+    db: Database,
+    documentId: string,
+    issues: ValidationIssueResult[],
+  ): Promise<void> {
+    await db
       .delete(validationIssues)
       .where(
         and(
@@ -258,7 +299,7 @@ export class ValidationRunnerService {
       )
 
     if (issues.length > 0) {
-      await this.db.insert(validationIssues).values(
+      await db.insert(validationIssues).values(
         issues.map((issue) => ({
           documentId,
           fieldName: issue.fieldName,
@@ -277,11 +318,13 @@ export class ValidationRunnerService {
    * so reruns produce the same value.
    */
   private async recomputeConfidence(
+    db: Database,
     fieldRows: Array<{
       id: string
       name: string
       confidence: number | null
       confidenceSignals: unknown
+      sourceFound: boolean
     }>,
     issues: ValidationIssueResult[],
   ): Promise<Map<string, number | null>> {
@@ -294,16 +337,18 @@ export class ValidationRunnerService {
     const result = new Map<string, number | null>()
     for (const row of fieldRows) {
       const signals = row.confidenceSignals as Parameters<typeof scoreConfidence>[0] | null
-      if (!signals) {
-        // Preserve confidence for a field without stored signals, such as one
-        // filled manually before scoring existed.
-        result.set(row.name, row.confidence)
-        continue
-      }
-
-      const score = scoreConfidence({ ...signals, failedValidation: failed.has(row.name) })
+      const score = signals
+        ? scoreConfidence({
+            ...signals,
+            sourceFound: row.sourceFound,
+            failedValidation: failed.has(row.name),
+          })
+        : {
+            confidence: capSourceConfidence(row.confidence, row.sourceFound),
+            reasons: row.sourceFound ? [] : ['Value source not found in the document'],
+          }
       result.set(row.name, score.confidence)
-      await this.db
+      await db
         .update(fields)
         .set({
           confidence: score.confidence,

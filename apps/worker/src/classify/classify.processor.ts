@@ -11,7 +11,9 @@ import {
   pages,
   queueConcurrency,
   recordDeadLetter,
-  startRun,
+  beginPipelineRun,
+  lockPipelineDocument,
+  type PipelineJob,
   validationIssues,
   writeAudit,
   type Database,
@@ -24,10 +26,7 @@ import { Queue, UnrecoverableError, type Job } from 'bullmq'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import { LLM_PROVIDER, LlmInvalidResponseError, type LlmProvider } from '../llm/llm-provider'
 
-export interface ClassifyJob {
-  documentId: string
-  correlationId: string
-}
+export type ClassifyJob = PipelineJob
 
 const MULTI_DOCUMENT_RULE = 'multi_document_suspected'
 
@@ -57,17 +56,9 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
   async process(job: Job<ClassifyJob>): Promise<void> {
     const { documentId, correlationId } = job.data
 
-    const [document] = await this.db
-      .select({ id: documents.id })
-      .from(documents)
-      .where(eq(documents.id, documentId))
-      .limit(1)
-    if (!document) {
-      this.logger.warn(`Document ${documentId} not found; skipping job`)
-      return
-    }
-
-    const runId = await startRun(this.db, documentId, 'classification', correlationId)
+    const started = await beginPipelineRun(this.db, job.data, 'classification')
+    if (!started) return
+    const { runId } = started
     await this.publish(documentId, 'processing', 'running')
 
     try {
@@ -82,92 +73,108 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
       const hasText = pagesText.some((row) => row.text.trim().length > 0)
 
       if (!hasText) {
-        // Without text there is nothing to classify; require manual type selection.
-        await this.db
-          .update(documents)
-          .set({
-            documentType: 'unknown',
-            typeConfidence: 0,
-            status: 'needs_review',
-            statusReason: 'No text was recognized; select the type manually',
-            processedAt: new Date(),
-          })
-          .where(eq(documents.id, documentId))
-        await finishRun(this.db, runId)
-        await this.publish(documentId, 'needs_review', 'succeeded')
+        await this.db.transaction(async (db) => {
+          if (!(await lockPipelineDocument(db, job.data, 'classification'))) return
+          // Without text there is nothing to classify; require manual type selection.
+          await db
+            .update(documents)
+            .set({
+              documentType: 'unknown',
+              typeConfidence: 0,
+              status: 'needs_review',
+              processingStep: null,
+              statusReason: 'No text was recognized; select the type manually',
+              processedAt: new Date(),
+            })
+            .where(eq(documents.id, documentId))
+          await finishRun(db, runId)
+          await this.publish(documentId, 'needs_review', 'succeeded')
+        })
         return
       }
 
       const result = await this.llm.classify({ pagesText })
 
-      if (this.llm.external) {
-        // Spec §11: record which pages were sent to an external provider.
-        await writeAudit(this.db, {
-          correlationId,
-          actorType: 'system',
-          action: 'document.llm_external',
-          objectType: 'document',
-          objectId: documentId,
-          after: {
-            provider: this.llm.name,
-            purpose: 'classification',
-            pages: pagesText.map((p) => p.page),
-          },
-          result: 'success',
-        })
-      }
-
-      // The threshold is configured separately for each type (spec 6.3).
-      let resolvedType: typeof result.document_type | 'unknown' = 'unknown'
-      if (result.document_type) {
-        const schema = await getActiveSchema(this.db, result.document_type)
-        if (schema && result.confidence >= schema.thresholds.autoClassify) {
-          resolvedType = result.document_type
-        }
-      }
-
-      await this.syncMultiDocumentWarning(documentId, result.multi_document_suspected)
-
-      await this.db
-        .update(documents)
-        .set({ documentType: resolvedType, typeConfidence: result.confidence })
-        .where(eq(documents.id, documentId))
-
-      await finishRun(this.db, runId)
-
-      if (resolvedType === 'unknown') {
-        // Unknown documents are not extracted or exported; select the type manually.
-        await this.db
-          .update(documents)
-          .set({
-            status: 'needs_review',
-            statusReason: 'Document type is unknown; select it manually',
-            processedAt: new Date(),
+      await this.db.transaction(async (db) => {
+        if (!(await lockPipelineDocument(db, job.data, 'classification'))) return
+        if (this.llm.external) {
+          // Spec §11: record which pages were sent to an external provider.
+          await writeAudit(db, {
+            correlationId,
+            actorType: 'system',
+            action: 'document.llm_external',
+            objectType: 'document',
+            objectId: documentId,
+            after: {
+              provider: this.llm.name,
+              purpose: 'classification',
+              pages: pagesText.map((p) => p.page),
+            },
+            result: 'success',
           })
-          .where(eq(documents.id, documentId))
-        await this.publish(documentId, 'needs_review', 'succeeded')
-        this.logger.log(`Document ${documentId}: type unknown (confidence ${result.confidence})`)
-        return
-      }
+        }
 
-      await this.extractQueue.add('extract', { documentId, correlationId })
-      await this.publish(documentId, 'processing', 'succeeded')
-      this.logger.log(`Document ${documentId}: type ${resolvedType} (${result.confidence})`)
+        // The threshold is configured separately for each type (spec 6.3).
+        let resolvedType: typeof result.document_type | 'unknown' = 'unknown'
+        if (result.document_type) {
+          const schema = await getActiveSchema(db, result.document_type)
+          if (schema && result.confidence >= schema.thresholds.autoClassify) {
+            resolvedType = result.document_type
+          }
+        }
+
+        await this.syncMultiDocumentWarning(db, documentId, result.multi_document_suspected)
+
+        await db
+          .update(documents)
+          .set({ documentType: resolvedType, typeConfidence: result.confidence })
+          .where(eq(documents.id, documentId))
+
+        await finishRun(db, runId)
+
+        if (resolvedType === 'unknown') {
+          // Unknown documents are not extracted or exported; select the type manually.
+          await db
+            .update(documents)
+            .set({
+              status: 'needs_review',
+              processingStep: null,
+              statusReason: 'Document type is unknown; select it manually',
+              processedAt: new Date(),
+            })
+            .where(eq(documents.id, documentId))
+          await this.publish(documentId, 'needs_review', 'succeeded')
+          this.logger.log(`Document ${documentId}: type unknown (confidence ${result.confidence})`)
+          return
+        }
+
+        await db
+          .update(documents)
+          .set({ processingStep: 'extraction' })
+          .where(eq(documents.id, documentId))
+        await this.extractQueue.add('extract', job.data)
+        await this.publish(documentId, 'processing', 'succeeded')
+        this.logger.log(`Document ${documentId}: type ${resolvedType} (${result.confidence})`)
+      })
     } catch (error) {
       if (error instanceof LlmInvalidResponseError) {
-        // Manual review without data loss (spec 6.4): OCR pages remain available
-        // so an operator can select a type and restart processing.
-        await failRun(this.db, runId, 'llm_invalid_response', error.message)
-        await this.db
-          .update(documents)
-          .set({
-            documentType: 'unknown',
-            status: 'needs_review',
-            statusReason: 'Automatic classification failed; select the type manually',
-            processedAt: new Date(),
-          })
-          .where(eq(documents.id, documentId))
-        await this.publish(documentId, 'needs_review', 'failed')
+        await this.db.transaction(async (db) => {
+          if (!(await lockPipelineDocument(db, job.data, 'classification'))) return
+          // Manual review without data loss (spec 6.4): OCR pages remain available
+          // so an operator can select a type and restart processing.
+          await failRun(db, runId, 'llm_invalid_response', error.message)
+          await db
+            .update(documents)
+            .set({
+              documentType: 'unknown',
+              status: 'needs_review',
+              processingStep: null,
+              statusReason: 'Automatic classification failed; select the type manually',
+              processedAt: new Date(),
+            })
+            .where(eq(documents.id, documentId))
+          await this.publish(documentId, 'needs_review', 'failed')
+        })
         return
       }
       await this.handleFailure(job, documentId, runId, error)
@@ -176,8 +183,12 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
   }
 
   /** Warn about multiple documents in one file (spec 6.3), without duplicate issues on reruns. */
-  private async syncMultiDocumentWarning(documentId: string, suspected: boolean): Promise<void> {
-    await this.db
+  private async syncMultiDocumentWarning(
+    db: Database,
+    documentId: string,
+    suspected: boolean,
+  ): Promise<void> {
+    await db
       .delete(validationIssues)
       .where(
         and(
@@ -187,7 +198,7 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
         ),
       )
     if (suspected) {
-      await this.db.insert(validationIssues).values({
+      await db.insert(validationIssues).values({
         documentId,
         fieldName: null,
         ruleId: MULTI_DOCUMENT_RULE,
@@ -205,39 +216,42 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
     runId: string,
     error: unknown,
   ): Promise<void> {
-    const detail = error instanceof Error ? error.message : String(error)
-    await failRun(this.db, runId, 'classification_failed', detail)
+    await this.db.transaction(async (db) => {
+      if (!(await lockPipelineDocument(db, job.data, 'classification'))) return
+      const detail = error instanceof Error ? error.message : String(error)
+      await failRun(db, runId, 'classification_failed', detail)
 
-    const unrecoverable = error instanceof UnrecoverableError
-    const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
-    if (!unrecoverable && attemptsLeft > 0) {
-      this.logger.warn(
-        `Document ${documentId}: classification failed; ${attemptsLeft} attempt(s) left`,
-      )
-      return
-    }
+      const unrecoverable = error instanceof UnrecoverableError
+      const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
+      if (!unrecoverable && attemptsLeft > 0) {
+        this.logger.warn(
+          `Document ${documentId}: classification failed; ${attemptsLeft} attempt(s) left`,
+        )
+        return
+      }
 
-    // The job will not retry automatically; it moves to the dead-letter queue
-    // for an operator to retry from the Execution Log (spec 6.10).
-    await recordDeadLetter(this.db, {
-      documentId,
-      runId,
-      step: 'classification',
-      queue: QUEUE.CLASSIFY,
-      jobId: job.id ?? null,
-      payload: job.data,
-      errorCode: 'classification_failed',
-      error,
-      attempts: job.attemptsMade + 1,
+      // The job will not retry automatically; it moves to the dead-letter queue
+      // for an operator to retry from the Execution Log (spec 6.10).
+      await recordDeadLetter(db, {
+        documentId,
+        runId,
+        step: 'classification',
+        queue: QUEUE.CLASSIFY,
+        jobId: job.id ?? null,
+        payload: job.data,
+        errorCode: 'classification_failed',
+        error,
+        attempts: job.attemptsMade + 1,
+      })
+
+      const reason = 'Document classification failed. Processing can be retried manually'
+      await db
+        .update(documents)
+        .set({ status: 'failed', statusReason: reason, processingStep: null })
+        .where(eq(documents.id, documentId))
+      await this.publish(documentId, 'failed', 'failed')
+      this.logger.error(`Document ${documentId}: classification — ${detail}`)
     })
-
-    const reason = 'Document classification failed. Processing can be retried manually'
-    await this.db
-      .update(documents)
-      .set({ status: 'failed', statusReason: reason })
-      .where(eq(documents.id, documentId))
-    await this.publish(documentId, 'failed', 'failed')
-    this.logger.error(`Document ${documentId}: classification — ${detail}`)
   }
 
   private async publish(

@@ -133,6 +133,7 @@ async function processDocument(providers, file, mimeType) {
       label: field.label,
       isCritical: field.isCritical,
       confidence: fields[index].confidence,
+      sourceFound: fields[index].sourceFound,
     })),
     routingIssues,
     thresholds,

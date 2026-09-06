@@ -23,7 +23,7 @@ function money(name: string, value: number | null): ValidationField {
     label: name,
     valueType: 'number',
     normalizedValue: value,
-    rawValue: String(value),
+    rawValue: value === null ? null : String(value),
   })
 }
 
@@ -38,9 +38,9 @@ describe('required fields', () => {
     assert.equal(issues[0]!.severity, 'blocking')
   })
 
-  it('warns for a missing noncritical required field', () => {
+  it('blocks a missing noncritical required field', () => {
     const issues = validateDocument([field({ name: 'subject', isRequired: true })], [], CONTEXT)
-    assert.equal(issues[0]!.severity, 'warning')
+    assert.equal(issues[0]!.severity, 'blocking')
   })
 
   it('does not flag a populated field', () => {
@@ -239,8 +239,19 @@ describe('other rules', () => {
       field: 'line_items',
     }
     assert.equal(
-      validateDocument([field({ name: 'line_items', normalizedValue: [{}] })], [rule], CONTEXT)
-        .length,
+      validateDocument(
+        [
+          field({
+            name: 'line_items',
+            valueType: 'array',
+            normalizedValue: [
+              { description: 'Item', quantity: null, unit_price: null, amount: null },
+            ],
+          }),
+        ],
+        [rule],
+        CONTEXT,
+      ).length,
       0,
     )
     assert.equal(

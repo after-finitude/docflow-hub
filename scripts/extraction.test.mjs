@@ -152,7 +152,16 @@ function database(previous = []) {
   let tables = new Map([
     [
       documents,
-      [{ id: 'doc', documentType: 'invoice', status: 'processing', storageKey: 'original' }],
+      [
+        {
+          id: 'doc',
+          documentType: 'invoice',
+          status: 'processing',
+          processingRevision: 0,
+          processingStep: 'extraction',
+          storageKey: 'original',
+        },
+      ],
     ],
     [
       documentSchemas,
@@ -186,7 +195,7 @@ function database(previous = []) {
             if (table === validationIssues && selection) return []
             return rows(table)
           })
-          query.where = query.limit = query.orderBy = () => query
+          query.for = query.where = query.limit = query.orderBy = () => query
           return query
         },
       }
@@ -327,7 +336,7 @@ test('replacement insert failure rolls back previous fields and leaves audit his
   const audit = structuredClone(db.rows(auditEvents))
   const { processor, jobs } = worker(db, new MockLlmProvider())
   await assert.rejects(processor.process(job), /injected insert failure/)
-  assert.equal(db.transactions, 1)
+  assert.ok(db.transactions >= 2)
   assert.deepEqual(db.rows(fields), previous)
   assert.deepEqual(db.rows(auditEvents), audit)
   assert.equal(jobs.length, 0)
@@ -337,7 +346,7 @@ test('successful extraction commits a complete field set and queues validation',
   const db = database(previous)
   const { processor, jobs } = worker(db, new MockLlmProvider())
   await processor.process(job)
-  assert.equal(db.transactions, 1)
+  assert.ok(db.transactions >= 2)
   assert.equal(db.rows(fields).length, input.fields.length)
   assert.equal(
     db.rows(fields).some((f) => f.id === 'previous-field'),

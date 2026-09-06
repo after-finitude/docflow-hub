@@ -36,14 +36,16 @@ Specification: 5.2, 6.5–6.7, 9; acceptance criteria 5–8.
 
 Primary files: `packages/shared/src/validation/routing.ts`, `packages/shared/src/confidence/score.ts`, `packages/core/src/validation/validation-runner.service.ts`, `apps/api/src/documents/documents.service.ts`, `apps/api/src/export/export.service.ts`, `apps/api/src/runs/runs.service.ts`.
 
-- [ ] Block automatic approval whenever a critical field has no source, regardless of the configured threshold.
-- [ ] Preserve the source-free confidence cap after edits. Use the existing operator-edit marker separately from extraction confidence; an operator correction must not claim unsupported source evidence.
-- [ ] Validate the complete expected field set, including fields missing from storage, rather than only the rows that exist.
-- [ ] Check current document validity before Approve and Export using shared validation logic. Keep manual confirmation possible for low-confidence values after required and blocking checks pass.
-- [ ] Protect edit, approval, rejection, reprocess, type change, manual handling, and export transitions against conflicting requests and stale worker results. Use database transactions and conditional updates where sufficient.
-- [ ] Use the appropriate critical/noncritical thresholds consistently for review sorting, filtering, and indicators.
+- [x] Block automatic approval whenever a critical field has no source, regardless of the configured threshold.
+- [x] Preserve the source-free confidence cap after edits. Use the existing operator-edit marker separately from extraction confidence; an operator correction must not claim unsupported source evidence.
+- [x] Validate the complete expected field set, including fields missing from storage, rather than only the rows that exist.
+- [x] Check current document validity before Approve and Export using shared validation logic. Keep manual confirmation possible for low-confidence values after required and blocking checks pass.
+- [x] Protect edit, approval, rejection, reprocess, type change, manual handling, and export transitions against conflicting requests and stale worker results. Use database transactions and conditional updates where sufficient.
+- [x] Use the appropriate critical/noncritical thresholds consistently for review sorting, filtering, and indicators.
 
 **Done when:** a source-free critical value never auto-approves even with a threshold below 0.6; an empty extraction cannot be approved; an edit returns current issues synchronously; concurrent actions cannot export an invalid or partially updated document. Regression checks exercise the API boundary as well as pure routing.
+
+Verification (2026-09-06): 124 checks pass with `TEST_DATABASE_URL=postgres://… npm test`, including `scripts/validation-api.test.mjs` against PostgreSQL 18. The HTTP tests cover empty extraction, required noncritical fields, synchronous edit validation and source-confidence caps, fresh approval/export checks, concurrent export/edit/reject/reprocess/type/manual/retry requests, queue failure rollback, stale queued and in-flight worker results, and all five processors completing a pipeline. The suite creates, migrates, and drops its own randomly named database; `TEST_DATABASE_URL` must allow database creation. Run only these checks with `TEST_DATABASE_URL=postgres://… npm run test:integration`; without the variable, ordinary `npm test` explicitly skips the database suite. Migration `0007_processing_revision.sql` adds the revision and expected stage used to discard obsolete jobs. Type checking, lint, formatting, web production build, and mock evaluation pass. Queue, storage, and provider boundaries in these tests are controlled doubles; live BullMQ, real-provider and browser acceptance remain in phase 8. Export holds a document row lock during the destination call; interrupted external-write recovery and cross-document export-key binding remain in phase 3.
 
 ## 3. Export idempotency and execution history
 

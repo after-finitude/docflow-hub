@@ -12,6 +12,7 @@ export interface RoutingField {
   label: string
   isCritical: boolean
   confidence: number | null
+  sourceFound: boolean
 }
 
 export interface RoutingIssue {
@@ -47,10 +48,13 @@ export function decideRouting(
   // A critical field without a value fails the threshold; absence cannot justify approval.
   const lowConfidenceFields = fields
     .filter((field) => field.isCritical)
-    .filter((field) => (field.confidence ?? 0) < thresholds.criticalFieldConfidence)
+    .filter(
+      (field) => field.confidence === null || field.confidence < thresholds.criticalFieldConfidence,
+    )
     .map((field) => ({ name: field.name, confidence: field.confidence }))
 
   const forcedReview = unresolved.some((issue) => issue.forcesReview === true)
+  const unsourced = fields.filter((field) => field.isCritical && !field.sourceFound)
 
   const reasons: string[] = []
   if (blockingCount > 0) {
@@ -58,6 +62,11 @@ export function decideRouting(
   }
   if (forcedReview) {
     reasons.push('Document requires manual review')
+  }
+  if (unsourced.length > 0) {
+    reasons.push(
+      `Critical fields without a source: ${unsourced.map((field) => field.label).join(', ')}`,
+    )
   }
   if (lowConfidenceFields.length > 0) {
     const names = fields
@@ -68,7 +77,11 @@ export function decideRouting(
   }
 
   return {
-    auto: blockingCount === 0 && lowConfidenceFields.length === 0 && !forcedReview,
+    auto:
+      blockingCount === 0 &&
+      lowConfidenceFields.length === 0 &&
+      unsourced.length === 0 &&
+      !forcedReview,
     blockingCount,
     warningCount,
     lowConfidenceFields,

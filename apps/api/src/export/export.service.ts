@@ -3,6 +3,8 @@ import {
   DocumentEventsService,
   EXPORT_MAPPINGS,
   StorageService,
+  ValidationRunnerService,
+  lockDocument,
   documentExports,
   documents,
   fields,
@@ -19,7 +21,14 @@ import {
   type ExportRequest,
   type SessionUser,
 } from '@docflow/shared'
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common'
 import { and, eq, isNull } from 'drizzle-orm'
 import type { RequestContext } from '../auth/decorators'
 import { DestinationUnavailableError, type ExportAdapter } from './export-adapter'
@@ -34,10 +43,11 @@ export class ExportService {
     @Inject(EXPORT_ADAPTERS) private readonly adapters: ExportAdapter[],
     private readonly events: DocumentEventsService,
     private readonly storage: StorageService,
+    private readonly validation: ValidationRunnerService,
   ) {}
 
-  async listForDocument(documentId: string): Promise<ExportDto[]> {
-    const rows = await this.db
+  async listForDocument(documentId: string, db: Database = this.db): Promise<ExportDto[]> {
+    const rows = await db
       .select()
       .from(documentExports)
       .where(eq(documentExports.documentId, documentId))
@@ -73,121 +83,157 @@ export class ExportService {
     user: SessionUser,
     origin: RequestContext,
   ): Promise<ExportDto> {
-    const [document] = await this.db
-      .select()
-      .from(documents)
-      .where(eq(documents.id, documentId))
-      .limit(1)
-    if (!document) throw new NotFoundException('Document not found')
+    const result = await this.db.transaction(async (db) => {
+      // ponytail: the per-document lock spans the destination call; phase 3 can
+      // replace it with a persisted export reservation if call latency matters.
+      const document = await lockDocument(db, documentId)
+      if (!document) throw new NotFoundException('Document not found')
 
-    if (document.status !== 'approved' && document.status !== 'exported') {
-      throw new BadRequestException(
-        `Only an approved document can be exported (current status: ${document.status})`,
-      )
-    }
-    if (!document.documentType || document.documentType === 'unknown') {
-      // Unknown documents are never exported automatically (spec 6.3).
-      throw new BadRequestException('A document without a known type cannot be exported')
-    }
-    if (document.duplicateOfId) {
-      // Do not export a duplicate again (spec §10).
-      throw new BadRequestException('A duplicate of an accepted document cannot be exported')
-    }
+      if (document.status !== 'approved' && document.status !== 'exported') {
+        throw new BadRequestException(
+          `Only an approved document can be exported (current status: ${document.status})`,
+        )
+      }
+      if (!document.documentType || document.documentType === 'unknown') {
+        // Unknown documents are never exported automatically (spec 6.3).
+        throw new BadRequestException('A document without a known type cannot be exported')
+      }
+      if (document.duplicateOfId) {
+        // Do not export a duplicate again (spec §10).
+        throw new BadRequestException('A duplicate of an accepted document cannot be exported')
+      }
 
-    const destination: ExportDestination = request.destination ?? 'file_json'
-    const exportKey = request.exportKey ?? `${documentId}:${destination}`
-
-    const existing = await this.findByKey(exportKey)
-    if (existing?.status === 'succeeded') {
-      // Do not create or send a second object (criterion 10).
-      this.logger.log(`Export ${exportKey} already completed; returning the existing record`)
-      return this.toDto(existing)
-    }
-
-    const adapter = this.adapters.find((candidate) => candidate.destination === destination)
-    if (!adapter) {
-      throw new BadRequestException(`Destination ${destination} is not configured`)
-    }
-
-    const canonical = await this.buildCanonical(document)
-    const mapping = EXPORT_MAPPINGS[document.documentType]
-
-    const record = existing ?? (await this.createRecord(documentId, destination, exportKey))
-    const attempts = record.attempts + 1
-
-    try {
-      const payloadRef = await adapter.send(canonical, mapping, exportKey)
-
-      await this.db
-        .update(documentExports)
-        .set({ status: 'succeeded', payloadRef, errorCode: null, attempts, exportedAt: new Date() })
-        .where(eq(documentExports.id, record.id))
-
-      await this.db
-        .update(documents)
-        .set({ status: 'exported', statusReason: null })
-        .where(eq(documents.id, documentId))
-
-      await writeAudit(this.db, {
+      const validation = await this.validation.runInTransaction(db, documentId, {
         correlationId: origin.correlationId,
-        actorType: 'user',
         actorId: user.id,
-        action: 'document.exported',
-        objectType: 'document',
-        objectId: documentId,
-        after: { destination, exportKey, payloadRef, attempts },
-        result: 'success',
-        ip: origin.ip,
-        userAgent: origin.userAgent,
-      })
-
-      await this.events.publish({
-        type: 'document',
-        documentId,
-        status: 'exported',
-        step: 'export',
-        state: 'succeeded',
-        at: new Date().toISOString(),
-      })
-
-      return this.toDto({
-        ...record,
-        status: 'succeeded',
-        payloadRef,
-        attempts,
-        exportedAt: new Date(),
-      })
-    } catch (error) {
-      const code = error instanceof DestinationUnavailableError ? error.code : 'export_failed'
-      const message = error instanceof Error ? error.message : String(error)
-
-      // The document remains Approved because a destination failure does not
-      // undo approval; manual retry remains available (spec 6.8, criterion 11).
-      await this.db
-        .update(documentExports)
-        .set({ status: 'failed', errorCode: code, attempts })
-        .where(eq(documentExports.id, record.id))
-
-      await writeAudit(this.db, {
-        correlationId: origin.correlationId,
         actorType: 'user',
-        actorId: user.id,
-        action: 'document.export_failed',
-        objectType: 'document',
-        objectId: documentId,
-        after: { destination, exportKey, errorCode: code, message, attempts },
-        result: 'failure',
-        ip: origin.ip,
-        userAgent: origin.userAgent,
+        route: false,
       })
+      if (validation.decision.blockingCount > 0) {
+        if (document.status !== 'exported') {
+          await db
+            .update(documents)
+            .set({ status: 'needs_review', statusReason: validation.decision.reasons.join('; ') })
+            .where(eq(documents.id, documentId))
+        }
+        return new ConflictException(
+          `Cannot export: ${validation.decision.blockingCount} unresolved blocking issue(s)`,
+        )
+      }
 
-      this.logger.warn(`Export ${exportKey} failed: ${message}`)
-      return this.toDto({ ...record, status: 'failed', errorCode: code, attempts })
-    }
+      const destination: ExportDestination = request.destination ?? 'file_json'
+      const exportKey = request.exportKey ?? `${documentId}:${destination}`
+
+      const existing = await this.findByKey(db, exportKey)
+      if (existing?.status === 'succeeded') {
+        // Do not create or send a second object (criterion 10).
+        this.logger.log(`Export ${exportKey} already completed; returning the existing record`)
+        return this.toDto(existing)
+      }
+
+      const adapter = this.adapters.find((candidate) => candidate.destination === destination)
+      if (!adapter) {
+        throw new BadRequestException(`Destination ${destination} is not configured`)
+      }
+
+      const canonical = await this.buildCanonical(db, document)
+      const mapping = EXPORT_MAPPINGS[document.documentType]
+
+      const record = existing ?? (await this.createRecord(db, documentId, destination, exportKey))
+      const attempts = record.attempts + 1
+
+      try {
+        const payloadRef = await adapter.send(canonical, mapping, exportKey)
+
+        await db
+          .update(documentExports)
+          .set({
+            status: 'succeeded',
+            payloadRef,
+            errorCode: null,
+            attempts,
+            exportedAt: new Date(),
+          })
+          .where(eq(documentExports.id, record.id))
+
+        await db
+          .update(documents)
+          .set({
+            status: 'exported',
+            statusReason: null,
+            processingStep: null,
+            processingRevision: document.processingRevision + 1,
+          })
+          .where(eq(documents.id, documentId))
+
+        await writeAudit(db, {
+          correlationId: origin.correlationId,
+          actorType: 'user',
+          actorId: user.id,
+          action: 'document.exported',
+          objectType: 'document',
+          objectId: documentId,
+          after: { destination, exportKey, payloadRef, attempts },
+          result: 'success',
+          ip: origin.ip,
+          userAgent: origin.userAgent,
+        })
+
+        await this.events.publish({
+          type: 'document',
+          documentId,
+          status: 'exported',
+          step: 'export',
+          state: 'succeeded',
+          at: new Date().toISOString(),
+        })
+
+        return this.toDto({
+          ...record,
+          status: 'succeeded',
+          payloadRef,
+          attempts,
+          exportedAt: new Date(),
+        })
+      } catch (error) {
+        const code = error instanceof DestinationUnavailableError ? error.code : 'export_failed'
+        const message = error instanceof Error ? error.message : String(error)
+
+        await db
+          .update(documents)
+          .set({ status: document.status, statusReason: document.statusReason })
+          .where(eq(documents.id, documentId))
+
+        // The document remains Approved because a destination failure does not
+        // undo approval; manual retry remains available (spec 6.8, criterion 11).
+        await db
+          .update(documentExports)
+          .set({ status: 'failed', errorCode: code, attempts })
+          .where(eq(documentExports.id, record.id))
+
+        await writeAudit(db, {
+          correlationId: origin.correlationId,
+          actorType: 'user',
+          actorId: user.id,
+          action: 'document.export_failed',
+          objectType: 'document',
+          objectId: documentId,
+          after: { destination, exportKey, errorCode: code, message, attempts },
+          result: 'failure',
+          ip: origin.ip,
+          userAgent: origin.userAgent,
+        })
+
+        this.logger.warn(`Export ${exportKey} failed: ${message}`)
+        return this.toDto({ ...record, status: 'failed', errorCode: code, attempts })
+      }
+    })
+    if (result instanceof ConflictException) throw result
+    return result
   }
 
-  private async findByKey(exportKey: string) {
-    const [row] = await this.db
+  private async findByKey(db: Database, exportKey: string) {
+    const [row] = await db
       .select()
       .from(documentExports)
       .where(eq(documentExports.exportKey, exportKey))
@@ -196,30 +242,31 @@ export class ExportService {
   }
 
   private async createRecord(
+    db: Database,
     documentId: string,
     destination: ExportDestination,
     exportKey: string,
   ) {
-    const [created] = await this.db
+    const [created] = await db
       .insert(documentExports)
       .values({ documentId, destination, exportKey, status: 'pending', attempts: 0 })
       .returning()
     return created
   }
 
-  private async buildCanonical(document: typeof documents.$inferSelect) {
+  private async buildCanonical(db: Database, document: typeof documents.$inferSelect) {
     const schema =
       document.documentType && document.documentType !== 'unknown'
-        ? await getActiveSchema(this.db, document.documentType)
+        ? await getActiveSchema(db, document.documentType)
         : null
 
-    const fieldRows = await this.db
+    const fieldRows = await db
       .select()
       .from(fields)
       .where(eq(fields.documentId, document.id))
       .orderBy(fields.name)
 
-    const warnings = await this.db
+    const warnings = await db
       .select({
         ruleId: validationIssues.ruleId,
         fieldName: validationIssues.fieldName,

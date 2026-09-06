@@ -1,7 +1,47 @@
 import type { WorkflowStep } from '@docflow/shared'
 import { and, eq } from 'drizzle-orm'
 import type { Database } from './db.module'
-import { workflowRuns } from './schema'
+import { documents, workflowRuns } from './schema'
+
+export interface PipelineJob {
+  documentId: string
+  correlationId: string
+  /** Jobs queued before this column existed belong to revision zero. */
+  revision?: number
+}
+
+/** Call inside a transaction; every document mutation takes this same row lock. */
+export async function lockDocument(db: Database, documentId: string) {
+  const [document] = await db
+    .select()
+    .from(documents)
+    .where(eq(documents.id, documentId))
+    .for('update')
+  return document
+}
+
+/** Both successful writes and failure handlers must discard obsolete worker results. */
+export async function lockPipelineDocument(db: Database, job: PipelineJob, step: WorkflowStep) {
+  const document = await lockDocument(db, job.documentId)
+  if (
+    !document ||
+    document.processingRevision !== (job.revision ?? 0) ||
+    document.processingStep !== step ||
+    !['received', 'processing'].includes(document.status)
+  )
+    return null
+  return document
+}
+
+export async function beginPipelineRun(db: Database, job: PipelineJob, step: WorkflowStep) {
+  return db.transaction(async (tx) => {
+    const document = await lockPipelineDocument(tx, job, step)
+    if (!document) return null
+    const runId = await startRun(tx, job.documentId, step, job.correlationId)
+    await tx.update(documents).set({ status: 'processing' }).where(eq(documents.id, job.documentId))
+    return { document, runId }
+  })
+}
 
 /**
  * Stage execution log (spec 5.3), recorded from stage 2 onward.

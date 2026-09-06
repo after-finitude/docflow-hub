@@ -10,7 +10,9 @@ import {
   finishRun,
   queueConcurrency,
   recordDeadLetter,
-  startRun,
+  beginPipelineRun,
+  lockPipelineDocument,
+  type PipelineJob,
   thumbnailKeyFor,
   writeAudit,
   type Database,
@@ -23,10 +25,7 @@ import { Queue, type Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 import { inspect } from './document-inspector'
 
-export interface PreprocessJob {
-  documentId: string
-  correlationId: string
-}
+export type PreprocessJob = PipelineJob
 
 /**
  * First pipeline stage: inspect the file, create a thumbnail, and count pages.
@@ -55,25 +54,10 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
   async process(job: Job<PreprocessJob>): Promise<void> {
     const { documentId, correlationId } = job.data
 
-    const [document] = await this.db
-      .select({
-        id: documents.id,
-        storageKey: documents.storageKey,
-        mimeType: documents.mimeType,
-        originalFilename: documents.originalFilename,
-      })
-      .from(documents)
-      .where(eq(documents.id, documentId))
-      .limit(1)
-
-    if (!document) {
-      // Deletion while a job waited in the queue is not a processing error.
-      this.logger.warn(`Document ${documentId} not found; skipping job`)
-      return
-    }
-
-    const runId = await startRun(this.db, documentId, 'preprocess', correlationId)
-    await this.updateStatus(documentId, 'processing', null, 'running')
+    const started = await beginPipelineRun(this.db, job.data, 'preprocess')
+    if (!started) return
+    const { document, runId } = started
+    await this.publish(documentId, 'processing', 'running')
 
     let buffer: Buffer
     try {
@@ -87,26 +71,34 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
     const result = await inspect(buffer, document.mimeType)
 
     if (!result.ok) {
-      // A permanent file defect cannot be fixed by retrying. Do not throw, or
-      // BullMQ would reread a known-bad file three times.
-      await failRun(this.db, runId, result.code, result.reason)
-      await this.db
-        .update(documents)
-        .set({ status: 'rejected', statusReason: result.reason, processedAt: new Date() })
-        .where(eq(documents.id, documentId))
+      await this.db.transaction(async (db) => {
+        if (!(await lockPipelineDocument(db, job.data, 'preprocess'))) return
+        // A permanent file defect cannot be fixed by retrying. Do not throw, or
+        // BullMQ would reread a known-bad file three times.
+        await failRun(db, runId, result.code, result.reason)
+        await db
+          .update(documents)
+          .set({
+            status: 'rejected',
+            processingStep: null,
+            statusReason: result.reason,
+            processedAt: new Date(),
+          })
+          .where(eq(documents.id, documentId))
 
-      await writeAudit(this.db, {
-        correlationId,
-        actorType: 'system',
-        action: 'document.rejected',
-        objectType: 'document',
-        objectId: documentId,
-        after: { code: result.code, reason: result.reason },
-        result: 'success',
+        await writeAudit(db, {
+          correlationId,
+          actorType: 'system',
+          action: 'document.rejected',
+          objectType: 'document',
+          objectId: documentId,
+          after: { code: result.code, reason: result.reason },
+          result: 'success',
+        })
+
+        await this.publish(documentId, 'rejected', 'failed')
+        this.logger.log(`Document ${documentId} rejected: ${result.code}`)
       })
-
-      await this.updateStatus(documentId, 'rejected', result.reason, 'failed')
-      this.logger.log(`Document ${documentId} rejected: ${result.code}`)
       return
     }
 
@@ -114,15 +106,23 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
       const key = thumbnailKeyFor(document.storageKey)
       await this.storage.put(key, result.thumbnail, 'image/png')
 
-      await this.db
-        .update(documents)
-        .set({ thumbnailKey: key, pageCount: result.pageCount, statusReason: null })
-        .where(eq(documents.id, documentId))
+      await this.db.transaction(async (db) => {
+        if (!(await lockPipelineDocument(db, job.data, 'preprocess'))) return
+        await db
+          .update(documents)
+          .set({
+            thumbnailKey: key,
+            pageCount: result.pageCount,
+            processingStep: 'ocr',
+            statusReason: null,
+          })
+          .where(eq(documents.id, documentId))
 
-      await finishRun(this.db, runId)
-      // Keep the document processing and pass it to the next stage.
-      await this.ocrQueue.add('ocr', { documentId, correlationId })
-      await this.updateStatus(documentId, 'processing', null, 'succeeded')
+        await finishRun(db, runId)
+        // Keep the document processing and pass it to the next stage.
+        await this.ocrQueue.add('ocr', job.data)
+        await this.publish(documentId, 'processing', 'succeeded')
+      })
       this.logger.log(`Document ${documentId} prepared, pages: ${result.pageCount}`)
     } catch (error) {
       await this.handleTransientFailure(job, documentId, runId, 'thumbnail_failed', error)
@@ -141,50 +141,46 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
     code: string,
     error: unknown,
   ): Promise<void> {
-    const detail = error instanceof Error ? error.message : String(error)
-    await failRun(this.db, runId, code, detail)
+    await this.db.transaction(async (db) => {
+      if (!(await lockPipelineDocument(db, job.data, 'preprocess'))) return
+      const detail = error instanceof Error ? error.message : String(error)
+      await failRun(db, runId, code, detail)
 
-    const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
-    if (attemptsLeft > 0) {
-      this.logger.warn(`Document ${documentId}: ${code}, ${attemptsLeft} attempt(s) left`)
-      return
-    }
+      const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
+      if (attemptsLeft > 0) {
+        this.logger.warn(`Document ${documentId}: ${code}, ${attemptsLeft} attempt(s) left`)
+        return
+      }
 
-    // The job will not retry automatically; it moves to the dead-letter queue
-    // for an operator to retry from the Execution Log (spec 6.10).
-    await recordDeadLetter(this.db, {
-      documentId,
-      runId,
-      step: 'preprocess',
-      queue: QUEUE.PREPROCESS,
-      jobId: job.id ?? null,
-      payload: job.data,
-      errorCode: code,
-      error,
-      attempts: job.attemptsMade + 1,
+      // The job will not retry automatically; it moves to the dead-letter queue
+      // for an operator to retry from the Execution Log (spec 6.10).
+      await recordDeadLetter(db, {
+        documentId,
+        runId,
+        step: 'preprocess',
+        queue: QUEUE.PREPROCESS,
+        jobId: job.id ?? null,
+        payload: job.data,
+        errorCode: code,
+        error,
+        attempts: job.attemptsMade + 1,
+      })
+
+      const reason = 'Document preparation failed. Processing can be retried manually'
+      await db
+        .update(documents)
+        .set({ status: 'failed', statusReason: reason, processingStep: null })
+        .where(eq(documents.id, documentId))
+      await this.publish(documentId, 'failed', 'failed')
+      this.logger.error(`Document ${documentId}: ${code} — attempts exhausted`)
     })
-
-    const reason = 'Document preparation failed. Processing can be retried manually'
-    await this.db
-      .update(documents)
-      .set({ status: 'failed', statusReason: reason })
-      .where(eq(documents.id, documentId))
-    await this.updateStatus(documentId, 'failed', reason, 'failed')
-    this.logger.error(`Document ${documentId}: ${code} — attempts exhausted`)
   }
 
-  private async updateStatus(
+  private async publish(
     documentId: string,
     status: DocumentStatus,
-    statusReason: string | null,
     state: WorkflowState,
   ): Promise<void> {
-    if (status === 'processing') {
-      await this.db
-        .update(documents)
-        .set({ status, statusReason })
-        .where(eq(documents.id, documentId))
-    }
     await this.events.publish({
       type: 'document',
       documentId,

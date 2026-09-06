@@ -2,6 +2,8 @@ import {
   DB,
   DocumentEventsService,
   QUEUE,
+  ValidationRunnerService,
+  lockDocument,
   deadLetters,
   documents,
   workflowRuns,
@@ -47,6 +49,7 @@ export class RunsService {
     @InjectQueue(QUEUE.CLASSIFY) private readonly classifyQueue: Queue,
     @InjectQueue(QUEUE.EXTRACT) private readonly extractQueue: Queue,
     @InjectQueue(QUEUE.VALIDATE) private readonly validateQueue: Queue,
+    private readonly validation: ValidationRunnerService,
   ) {}
 
   async list(query: RunListQuery): Promise<RunListPage> {
@@ -110,62 +113,78 @@ export class RunsService {
    * independently.
    */
   async retry(runId: string, user: SessionUser, origin: RequestContext): Promise<RunListItem> {
-    const run = await this.findRun(runId)
-    const queueName = QUEUE_BY_STEP[run.step]
-    if (!queueName) {
-      throw new BadRequestException(
-        run.step === 'export'
-          ? 'Export is retried from the document page'
-          : `Stage ${run.step} cannot be retried`,
-      )
-    }
-    if (run.documentStatus === 'processing') {
-      throw new BadRequestException('Document is already processing')
-    }
+    return this.db.transaction(async (db) => {
+      const initial = await this.findRun(runId, db)
+      const document = await lockDocument(db, initial.documentId)
+      if (!document) throw new NotFoundException('Document not found')
+      const run = await this.findRun(runId, db)
+      const queueName = QUEUE_BY_STEP[run.step]
+      if (!queueName) {
+        throw new BadRequestException(
+          run.step === 'export'
+            ? 'Export is retried from the document page'
+            : `Stage ${run.step} cannot be retried`,
+        )
+      }
+      if (
+        run.state !== 'failed' ||
+        ['received', 'processing', 'exported'].includes(document.status)
+      ) {
+        throw new BadRequestException(
+          'Only a failed stage of an idle, unexported document can be retried',
+        )
+      }
 
-    const correlationId = origin.correlationId ?? randomUUID()
+      const correlationId = origin.correlationId ?? randomUUID()
 
-    await this.db
-      .update(documents)
-      .set({ status: 'processing', statusReason: null })
-      .where(eq(documents.id, run.documentId))
+      await db
+        .update(documents)
+        .set({
+          status: 'processing',
+          statusReason: null,
+          processingStep: run.step,
+          processingRevision: document.processingRevision + 1,
+        })
+        .where(eq(documents.id, run.documentId))
 
-    // Resolve DLQ entries because the job is active again; expanded log rows
-    // should show that a retry has already been requested.
-    await this.db
-      .update(deadLetters)
-      .set({ retriedAt: new Date(), retriedBy: user.id })
-      .where(and(eq(deadLetters.runId, runId), sql`${deadLetters.retriedAt} is null`))
+      // Resolve DLQ entries because the job is active again; expanded log rows
+      // should show that a retry has already been requested.
+      await db
+        .update(deadLetters)
+        .set({ retriedAt: new Date(), retriedBy: user.id })
+        .where(and(eq(deadLetters.runId, runId), sql`${deadLetters.retriedAt} is null`))
 
-    await writeAudit(this.db, {
-      correlationId,
-      actorType: 'user',
-      actorId: user.id,
-      action: 'run.retried',
-      objectType: 'workflow_run',
-      objectId: runId,
-      before: { step: run.step, state: run.state, errorCode: run.errorCode },
-      after: { documentId: run.documentId, queue: queueName },
-      result: 'success',
-      ip: origin.ip,
-      userAgent: origin.userAgent,
+      await writeAudit(db, {
+        correlationId,
+        actorType: 'user',
+        actorId: user.id,
+        action: 'run.retried',
+        objectType: 'workflow_run',
+        objectId: runId,
+        before: { step: run.step, state: run.state, errorCode: run.errorCode },
+        after: { documentId: run.documentId, queue: queueName },
+        result: 'success',
+        ip: origin.ip,
+        userAgent: origin.userAgent,
+      })
+
+      await this.queueFor(queueName).add(queueName, {
+        documentId: run.documentId,
+        correlationId,
+        revision: document.processingRevision + 1,
+      })
+
+      await this.events.publish({
+        type: 'document',
+        documentId: run.documentId,
+        status: 'processing',
+        step: run.step,
+        state: 'pending',
+        at: new Date().toISOString(),
+      })
+
+      return this.findOne(runId, db)
     })
-
-    await this.queueFor(queueName).add(queueName, {
-      documentId: run.documentId,
-      correlationId,
-    })
-
-    await this.events.publish({
-      type: 'document',
-      documentId: run.documentId,
-      status: 'processing',
-      step: run.step,
-      state: 'pending',
-      at: new Date().toISOString(),
-    })
-
-    return this.findOne(runId)
   }
 
   /**
@@ -174,40 +193,61 @@ export class RunsService {
    * incomplete extraction is better than losing it.
    */
   async toManual(runId: string, user: SessionUser, origin: RequestContext): Promise<RunListItem> {
-    const run = await this.findRun(runId)
-    if (run.documentStatus === 'exported') {
-      throw new BadRequestException('An exported document cannot be sent to manual review')
-    }
+    return this.db.transaction(async (db) => {
+      const initial = await this.findRun(runId, db)
+      const document = await lockDocument(db, initial.documentId)
+      if (!document) throw new NotFoundException('Document not found')
+      const run = await this.findRun(runId, db)
+      if (['approved', 'exported', 'rejected'].includes(document.status)) {
+        throw new BadRequestException('A decided document cannot be sent to manual review')
+      }
 
-    const reason = 'Sent to manual review by operator'
-    await this.db
-      .update(documents)
-      .set({ status: 'needs_review', statusReason: reason, processedAt: new Date() })
-      .where(eq(documents.id, run.documentId))
+      await this.validation.runInTransaction(db, run.documentId, {
+        autoApprove: false,
+        actorType: 'user',
+        actorId: user.id,
+        correlationId: origin.correlationId,
+      })
+      await db
+        .update(workflowRuns)
+        .set({ state: 'failed', finishedAt: new Date(), errorCode: 'manual_handling' })
+        .where(and(eq(workflowRuns.documentId, run.documentId), eq(workflowRuns.state, 'running')))
+      const reason = 'Sent to manual review by operator'
+      await db
+        .update(documents)
+        .set({
+          status: 'needs_review',
+          statusReason: reason,
+          processedAt: new Date(),
+          processingStep: null,
+          processingRevision: document.processingRevision + 1,
+        })
+        .where(eq(documents.id, run.documentId))
 
-    await writeAudit(this.db, {
-      correlationId: origin.correlationId,
-      actorType: 'user',
-      actorId: user.id,
-      action: 'document.manual_handling',
-      objectType: 'document',
-      objectId: run.documentId,
-      before: { status: run.documentStatus, step: run.step },
-      result: 'success',
-      ip: origin.ip,
-      userAgent: origin.userAgent,
+      await writeAudit(db, {
+        correlationId: origin.correlationId,
+        actorType: 'user',
+        actorId: user.id,
+        action: 'document.manual_handling',
+        objectType: 'document',
+        objectId: run.documentId,
+        before: { status: run.documentStatus, step: run.step },
+        result: 'success',
+        ip: origin.ip,
+        userAgent: origin.userAgent,
+      })
+
+      await this.events.publish({
+        type: 'document',
+        documentId: run.documentId,
+        status: 'needs_review',
+        step: run.step,
+        state: 'failed',
+        at: new Date().toISOString(),
+      })
+
+      return this.findOne(runId, db)
     })
-
-    await this.events.publish({
-      type: 'document',
-      documentId: run.documentId,
-      status: 'needs_review',
-      step: run.step,
-      state: 'failed',
-      at: new Date().toISOString(),
-    })
-
-    return this.findOne(runId)
   }
 
   private queueFor(name: string): Queue {
@@ -225,8 +265,8 @@ export class RunsService {
     }
   }
 
-  private async findRun(runId: string) {
-    const [row] = await this.db
+  private async findRun(runId: string, db: Database = this.db) {
+    const [row] = await db
       .select({
         id: workflowRuns.id,
         documentId: workflowRuns.documentId,
@@ -244,8 +284,8 @@ export class RunsService {
     return row
   }
 
-  private async findOne(runId: string): Promise<RunListItem> {
-    const [row] = await this.db
+  private async findOne(runId: string, db: Database = this.db): Promise<RunListItem> {
+    const [row] = await db
       .select({
         id: workflowRuns.id,
         documentId: workflowRuns.documentId,
@@ -266,7 +306,7 @@ export class RunsService {
       .limit(1)
     if (!row) throw new NotFoundException('Execution log entry not found')
 
-    const letters = await this.deadLettersFor([runId])
+    const letters = await this.deadLettersFor([runId], db)
     return {
       ...row,
       durationMs:
@@ -278,11 +318,14 @@ export class RunsService {
   }
 
   /** Latest DLQ entry per stage; older entries remain as retry history. */
-  private async deadLettersFor(runIds: string[]): Promise<Map<string, DeadLetterDto>> {
+  private async deadLettersFor(
+    runIds: string[],
+    db: Database = this.db,
+  ): Promise<Map<string, DeadLetterDto>> {
     const result = new Map<string, DeadLetterDto>()
     if (runIds.length === 0) return result
 
-    const rows = await this.db
+    const rows = await db
       .select()
       .from(deadLetters)
       .where(inArray(deadLetters.runId, runIds))

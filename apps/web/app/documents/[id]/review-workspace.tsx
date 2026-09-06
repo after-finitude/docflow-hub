@@ -8,6 +8,7 @@ import {
   EXPORT_DESTINATIONS,
   EXPORT_DESTINATION_LABELS,
   FIELD_FILTERS,
+  fieldConfidenceThreshold,
   FIELD_FILTER_LABELS,
   REJECT_REASONS,
   REJECT_REASON_LABELS,
@@ -27,8 +28,6 @@ import { DocumentViewer, type SourceHighlight } from './document-viewer'
 import { FieldCard } from './field-card'
 import { LineItemsEditor } from './line-items-editor'
 
-const DEFAULT_THRESHOLD = 0.8
-
 export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
   const router = useRouter()
   const [document, setDocument] = useState(initial)
@@ -38,9 +37,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
   const [error, setError] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState(false)
 
-  const threshold = document.thresholds?.criticalFieldConfidence ?? DEFAULT_THRESHOLD
-  // A document being processed or already exported cannot be edited.
-  const readOnly = document.status === 'processing' || document.status === 'exported'
+  const readOnly = !['needs_review', 'approved', 'failed'].includes(document.status)
 
   const issuesByField = useMemo(() => {
     const map = new Map<string, DocumentDetail['issues']>()
@@ -57,20 +54,27 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
   const orderedFields = useMemo(() => {
     const weight = (field: FieldDto) => {
       if (issuesByField.get(field.name)?.some((issue) => issue.severity === 'blocking')) return 0
-      if ((field.confidence ?? 0) < threshold) return 1
+      if (
+        field.confidence === null ||
+        field.confidence < fieldConfidenceThreshold(field.isCritical, document.thresholds)
+      )
+        return 1
       return 2
     }
     return document.fields
       .filter((field) => field.valueType !== 'array')
       .toSorted((a, b) => weight(a) - weight(b))
-  }, [document.fields, issuesByField, threshold])
+  }, [document.fields, issuesByField, document.thresholds])
 
   const visibleFields = orderedFields.filter((field) => {
     switch (filter) {
       case 'missing':
         return field.rawValue === null
       case 'low_confidence':
-        return (field.confidence ?? 0) < threshold
+        return (
+          field.confidence === null ||
+          field.confidence < fieldConfidenceThreshold(field.isCritical, document.thresholds)
+        )
       case 'invalid':
         return (issuesByField.get(field.name)?.length ?? 0) > 0
       default:
@@ -340,7 +344,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
               </button>
               <button
                 type="button"
-                disabled={busy || document.status === 'processing'}
+                disabled={busy || ['received', 'processing', 'exported'].includes(document.status)}
                 onClick={() =>
                   void call(`/api/documents/${document.id}/reprocess`, { method: 'POST' }).then(
                     () => router.refresh(),
@@ -433,7 +437,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                 key={field.name}
                 field={field}
                 issues={issuesByField.get(field.name) ?? []}
-                threshold={threshold}
+                threshold={fieldConfidenceThreshold(field.isCritical, document.thresholds)}
                 disabled={busy || readOnly}
                 isActive={activeField === field.name}
                 onFocusSource={() => setActiveField(field.name)}
