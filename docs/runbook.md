@@ -43,3 +43,21 @@ The regression suite exercises the real adapter with a mocked Google API, includ
 Source synchronization and retention are serialized maintenance jobs stored in Redis. Restarting workers updates schedules and triggers an immediate pass. Retention permanently deletes inactive documents after `RETENTION_DAYS`; audit events remain immutable.
 
 Before destructive database or volume operations, take a backup and confirm the exact target. Do not remove persistent volumes merely to restart services.
+
+## OCR and file refusal
+
+Google Vision receives an EXIF-oriented copy of each nonblank image/PDF page. Low-contrast pages are normalized. At least three confident words with a consistent reading direction can trigger one rotation/deskew correction and one additional OCR request; each page therefore makes at most two provider calls per attempt. The original file stays unchanged. Returned polygons are mapped back to its displayed coordinates before evidence matching. `document.ocr_external` records successful pages, correction angles and call counts. Ambiguous directions are left unchanged; inspect the original when the text remains difficult to read.
+
+PDF pages are rasterized one at a time, with a 25-megapixel raster budget per page. Blank pages retain their original numbers and are not sent to Vision. A confirmed blank page does not create a low-OCR-quality warning; an unrecognized nonblank page still does. The viewer applies EXIF orientation consistently for JPEG and PNG, and rotates the image and its source overlays together.
+
+Inspection opens and renders every PDF page before OCR, including pages after the first. Password protection, unreadable data, repaired PDF structure and page-render errors reject the document before external OCR/LLM calls. Upload an unprotected, valid replacement; retrying the same damaged file cannot repair it.
+
+Files larger than 25 MiB create a **Rejected** queue entry and a failed **Ingest** entry with `file_too_large`. Browser uploads send only metadata to `POST /api/documents/oversized`; the reported size is identified as client metadata in the audit. Direct multipart uploads still receive HTTP 413, now with `documentId`; their exact size remains unknown because only the limit was observed. No original, checksum, thumbnail or processing job is created. Reprocess and original download are unavailable for these records. A refused replacement does not supersede the existing document. Return to the queue and upload a smaller file. Files exactly at the limit are accepted for inspection.
+
+### Multiple documents in one file
+
+1. Open every page and identify which pages belong to each document. A `multi_document_suspected` warning always routes to **Needs review**, even when extracted fields are otherwise valid and confident.
+2. Use the original upload, or download it through the short-lived link returned by `GET /api/documents/:id/file`. In your existing PDF editor or system print dialog, save each document's page range as a separate PDF. Check that all required pages and their order are preserved.
+3. Reject the combined upload with a note that it was split, then upload the separate files from the queue. Review their classification, values and source highlights independently. Docflow does not split files automatically.
+
+`npm test` includes controlled Google Vision responses over real raster operations, rotated/skewed image and scanned-PDF fixtures, all eight JPEG/PNG EXIF orientations, blank pages, malformed later PDF pages, protected files and upload refusal. These checks validate processing and coordinate behavior; they do not establish Google Vision recognition accuracy on real Russian/English scans. That check requires configured Vision credentials and belongs with the real-provider evaluation.

@@ -1,0 +1,4 @@
+ALTER TABLE "documents" ALTER COLUMN "size_bytes" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "documents" ALTER COLUMN "checksum" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "documents" ALTER COLUMN "storage_key" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "documents" ADD CONSTRAINT "documents_original_or_rejection" CHECK (("documents"."storage_key" IS NOT NULL AND "documents"."checksum" IS NOT NULL AND "documents"."size_bytes" IS NOT NULL) OR ("documents"."status" = 'rejected' AND "documents"."storage_key" IS NULL AND "documents"."checksum" IS NULL AND "documents"."processing_step" IS NULL));

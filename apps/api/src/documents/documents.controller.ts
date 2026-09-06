@@ -1,5 +1,7 @@
 import {
   ACCEPTED_MIME_TYPES,
+  oversizedUploadRequestSchema,
+  type OversizedUploadRequest,
   UPLOAD_MAX_BYTES,
   changeTypeRequestSchema,
   documentListQuerySchema,
@@ -35,6 +37,7 @@ import {
   StreamableFile,
   UploadedFile,
   UseInterceptors,
+  UseFilters,
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import type { Response } from 'express'
@@ -45,7 +48,8 @@ import { CurrentUser, Origin, type RequestContext } from '../auth/decorators'
 import { DocumentsService } from './documents.service'
 import { ExportService } from '../export/export.service'
 import { PageRenderService } from './page-render.service'
-import type { MulterFileFilter, UploadedDocument } from './uploaded-document'
+import { OversizedUploadFilter } from './oversized-upload.filter'
+import type { MulterFileFilter, UploadedDocument, UploadRequest } from './uploaded-document'
 
 /**
  * File ingest limits (spec 6.1), shared by upload and original replacement.
@@ -53,8 +57,13 @@ import type { MulterFileFilter, UploadedDocument } from './uploaded-document'
  * storage writes or LLM calls.
  */
 const UPLOAD_INTERCEPTOR_OPTIONS = {
-  limits: { fileSize: UPLOAD_MAX_BYTES },
-  fileFilter: ((_request, file, callback) => {
+  // Busboy fires the limit at equality; allow the inclusive 25 MB boundary.
+  limits: { fileSize: UPLOAD_MAX_BYTES + 1 },
+  fileFilter: ((request, file, callback) => {
+    ;(request as UploadRequest).uploadMetadata = {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+    }
     if ((ACCEPTED_MIME_TYPES as readonly string[]).includes(file.mimetype)) {
       callback(null, true)
       return
@@ -67,6 +76,7 @@ const UPLOAD_INTERCEPTOR_OPTIONS = {
 }
 
 @Controller('documents')
+@UseFilters(OversizedUploadFilter)
 export class DocumentsController {
   constructor(
     private readonly documents: DocumentsService,
@@ -74,6 +84,15 @@ export class DocumentsController {
     private readonly exports: ExportService,
     @Inject(ENV) private readonly env: Env,
   ) {}
+
+  @Post('oversized')
+  rejectOversized(
+    @Body(new ZodValidationPipe(oversizedUploadRequestSchema)) body: OversizedUploadRequest,
+    @CurrentUser() user: SessionUser,
+    @Origin() origin: RequestContext,
+  ): Promise<DocumentListItem> {
+    return this.documents.rejectOversized(body, user, origin)
+  }
 
   @Post()
   @UseInterceptors(FileInterceptor('file', UPLOAD_INTERCEPTOR_OPTIONS))

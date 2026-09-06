@@ -1,7 +1,7 @@
 'use client'
 
 import type { BoundingBox } from '@docflow/shared'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export interface SourceHighlight {
   fieldName: string
@@ -31,7 +31,18 @@ export function DocumentViewer({
   const [page, setPage] = useState(1)
   const [zoomIndex, setZoomIndex] = useState(1)
   const [rotation, setRotation] = useState(0)
+  const [loaded, setLoaded] = useState({ page: 0, ratio: 1 })
   const stageRef = useRef<HTMLDivElement>(null)
+  const measureImage = useCallback(
+    (image: HTMLImageElement | null) => {
+      if (!image?.complete || !image.naturalWidth) return
+      const ratio = image.naturalWidth / image.naturalHeight
+      setLoaded((current) =>
+        current.page === page && current.ratio === ratio ? current : { page, ratio },
+      )
+    },
+    [page],
+  )
 
   const active = highlights.find((highlight) => highlight.fieldName === activeField)
 
@@ -40,13 +51,25 @@ export function DocumentViewer({
   useEffect(() => {
     if (!active) return
     setPage(active.page)
-    const timer = setTimeout(() => {
-      stageRef.current
-        ?.querySelector('[data-active="true"]')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }, 50)
-    return () => clearTimeout(timer)
   }, [active])
+
+  useEffect(() => {
+    if (!active || loaded.page !== page) return
+    const stage = stageRef.current
+    const box = stage?.querySelector('[data-active="true"]')?.getBoundingClientRect()
+    if (!stage || !box) return
+    const viewport = stage.getBoundingClientRect()
+    stage.scrollTo({
+      left: stage.scrollLeft + box.x + box.width / 2 - viewport.x - viewport.width / 2,
+      top: stage.scrollTop + box.y + box.height / 2 - viewport.y - viewport.height / 2,
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'instant'
+        : 'smooth',
+    })
+  }, [active, page, loaded, rotation, zoomIndex])
+
+  const sideways = rotation % 180 !== 0
+  const ratio = loaded.ratio
 
   const zoom = ZOOM_STEPS[zoomIndex] ?? 1
   const onPage = highlights.filter((highlight) => highlight.page === page)
@@ -59,7 +82,10 @@ export function DocumentViewer({
             <button
               key={number}
               type="button"
-              onClick={() => setPage(number)}
+              onClick={() => {
+                setPage(number)
+                onSelectField(null)
+              }}
               aria-current={number === page ? 'true' : undefined}
               className={`rounded-[6px] border p-1 transition-colors duration-[120ms] ${
                 number === page ? 'border-accent' : 'border-rule hover:border-rule-2'
@@ -82,6 +108,7 @@ export function DocumentViewer({
           <button
             type="button"
             onClick={() => setZoomIndex((index) => Math.max(0, index - 1))}
+            aria-label="Zoom out"
             disabled={zoomIndex === 0}
             className="btn btn--ghost btn--sm"
           >
@@ -91,6 +118,7 @@ export function DocumentViewer({
           <button
             type="button"
             onClick={() => setZoomIndex((index) => Math.min(ZOOM_STEPS.length - 1, index + 1))}
+            aria-label="Zoom in"
             disabled={zoomIndex === ZOOM_STEPS.length - 1}
             className="btn btn--ghost btn--sm"
           >
@@ -113,37 +141,51 @@ export function DocumentViewer({
           className="flex-1 overflow-auto rounded-[10px] border border-rule bg-paper-3 p-4"
         >
           <div
-            className="relative mx-auto origin-top"
-            style={{ width: `${zoom * 100}%`, transform: `rotate(${rotation}deg)` }}
+            className="relative mx-auto"
+            style={{
+              width: `${(zoom * 100) / (sideways ? ratio : 1)}%`,
+              aspectRatio: sideways ? 1 / ratio : ratio,
+            }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`/api/documents/${documentId}/pages/${page}/image?width=${RENDER_WIDTH}`}
-              alt={`Page ${page}`}
-              className="block w-full shadow-sm"
-            />
+            <div
+              className="absolute left-1/2 top-1/2"
+              style={{
+                width: `${sideways ? ratio * 100 : 100}%`,
+                transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/documents/${documentId}/pages/${page}/image?width=${RENDER_WIDTH}`}
+                alt={`Page ${page}`}
+                ref={measureImage}
+                onLoad={(event) => measureImage(event.currentTarget)}
+                className="block w-full shadow-sm"
+              />
 
-            {/* Coordinates are normalized to 0..1, so overlays use percentages
+              {/* Coordinates are normalized to 0..1, so overlays use percentages
                 and do not depend on zoom or render resolution. */}
-            {onPage.map((highlight) => {
-              const isActive = highlight.fieldName === activeField
-              return (
-                <button
-                  key={highlight.fieldName}
-                  type="button"
-                  data-active={isActive}
-                  onClick={() => onSelectField(isActive ? null : highlight.fieldName)}
-                  title={highlight.fieldName}
-                  className={`bbox ${isActive ? 'bbox--active' : ''}`}
-                  style={{
-                    left: `${highlight.bbox.x * 100}%`,
-                    top: `${highlight.bbox.y * 100}%`,
-                    width: `${highlight.bbox.width * 100}%`,
-                    height: `${highlight.bbox.height * 100}%`,
-                  }}
-                />
-              )
-            })}
+              {onPage.map((highlight) => {
+                const isActive = highlight.fieldName === activeField
+                return (
+                  <button
+                    key={highlight.fieldName}
+                    type="button"
+                    data-active={isActive}
+                    onClick={() => onSelectField(isActive ? null : highlight.fieldName)}
+                    title={highlight.fieldName}
+                    aria-label={`Source: ${highlight.fieldName}`}
+                    className={`bbox ${isActive ? 'bbox--active' : ''}`}
+                    style={{
+                      left: `${highlight.bbox.x * 100}%`,
+                      top: `${highlight.bbox.y * 100}%`,
+                      width: `${highlight.bbox.width * 100}%`,
+                      height: `${highlight.bbox.height * 100}%`,
+                    }}
+                  />
+                )
+              })}
+            </div>
           </div>
         </div>
       </div>

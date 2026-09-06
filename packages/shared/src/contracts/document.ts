@@ -21,6 +21,15 @@ export const UPLOAD_MAX_BYTES = 25 * 1024 * 1024
 export const ACCEPTED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const
 export type AcceptedMimeType = (typeof ACCEPTED_MIME_TYPES)[number]
 
+export const oversizedUploadRequestSchema = z
+  .object({
+    filename: z.string().trim().min(1).max(1024),
+    mimeType: z.enum(ACCEPTED_MIME_TYPES),
+    sizeBytes: z.number().int().safe().gt(UPLOAD_MAX_BYTES),
+  })
+  .strict()
+export type OversizedUploadRequest = z.infer<typeof oversizedUploadRequestSchema>
+
 /** Stages shown in processing progress (spec 5.1). */
 export const PIPELINE_UI_STEPS: WorkflowStep[] = [
   'preprocess',
@@ -34,7 +43,8 @@ export interface DocumentListItem {
   id: string
   originalFilename: string
   mimeType: string
-  sizeBytes: number
+  sizeBytes: number | null
+  hasOriginal: boolean
   sourceType: SourceType
   documentType: DocumentType | null
   typeConfidence: number | null
@@ -95,7 +105,7 @@ export type DocumentListQuery = z.infer<typeof documentListQuerySchema>
 export interface DocumentDetail extends DocumentListItem {
   schemaVersionId: string | null
   schemaVersion: number | null
-  checksum: string
+  checksum: string | null
   sourcePath: string | null
   processedAt: string | null
   pageCount: number | null

@@ -117,6 +117,8 @@ export class RunsService {
       const initial = await this.findRun(runId, db)
       const document = await lockDocumentForEdit(db, initial.documentId)
       if (!document) throw new NotFoundException('Document not found')
+      if (!document.storageKey)
+        throw new BadRequestException('The original was not stored. Upload a smaller file')
       const run = await this.findRun(runId, db)
       const queueName = QUEUE_BY_STEP[run.step]
       if (!queueName) {
@@ -197,6 +199,8 @@ export class RunsService {
       const initial = await this.findRun(runId, db)
       const document = await lockDocumentForEdit(db, initial.documentId)
       if (!document) throw new NotFoundException('Document not found')
+      if (!document.storageKey)
+        throw new BadRequestException('The original was not stored. Upload a smaller file')
       const run = await this.findRun(runId, db)
       if (['approved', 'exported', 'rejected'].includes(document.status)) {
         throw new BadRequestException('A decided document cannot be sent to manual review')

@@ -35,12 +35,13 @@ export async function lockPipelineDocument(db: Database, job: PipelineJob, step:
   const document = await lockDocument(db, job.documentId)
   if (
     !document ||
+    !document.storageKey ||
     document.processingRevision !== (job.revision ?? 0) ||
     document.processingStep !== step ||
     !['received', 'processing'].includes(document.status)
   )
     return null
-  return document
+  return { ...document, storageKey: document.storageKey }
 }
 
 export async function beginPipelineRun(db: Database, job: PipelineJob, step: WorkflowStep) {

@@ -8,7 +8,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { writeAudit } from '../db/audit'
 import { DB, type Database } from '../db/db.module'
 import { documents } from '../db/schema'
-import { finishRun, startRun } from '../db/workflow'
+import { failRun, finishRun, startRun } from '../db/workflow'
 import { DocumentEventsService } from '../events/document-events.service'
 import { QUEUE } from '../queue/queues'
 import { originalKey } from '../storage/keys'
@@ -58,6 +58,63 @@ export class IngestService {
     private readonly events: DocumentEventsService,
     @InjectQueue(QUEUE.PREPROCESS) private readonly preprocessQueue: Queue,
   ) {}
+
+  /** Keep the refusal visible without storing a truncated file or queueing work. */
+  async rejectOversized(
+    input: Pick<
+      IngestInput,
+      'filename' | 'mimeType' | 'actorType' | 'actorId' | 'correlationId' | 'ip' | 'userAgent'
+    > & { sizeBytes: number | null },
+  ): Promise<string> {
+    const reason =
+      'File exceeds the 25 MB limit. Upload a smaller file; the original was not stored'
+    const documentId = await this.db.transaction(async (db) => {
+      const [created] = await db
+        .insert(documents)
+        .values({
+          tenantId: DEFAULT_TENANT_ID,
+          sourceType: 'upload',
+          originalFilename: input.filename,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes,
+          status: 'rejected',
+          statusReason: reason,
+          processingStep: null,
+          processedAt: new Date(),
+        })
+        .returning({ id: documents.id })
+      const runId = await startRun(db, created.id, 'ingestion', input.correlationId)
+      await failRun(db, runId, 'file_too_large', reason)
+      await writeAudit(db, {
+        correlationId: input.correlationId,
+        actorType: input.actorType,
+        actorId: input.actorId ?? undefined,
+        action: 'document.upload_rejected',
+        objectType: 'document',
+        objectId: created.id,
+        after: {
+          code: 'file_too_large',
+          filename: input.filename,
+          sizeBytes: input.sizeBytes,
+          sizeSource: input.sizeBytes === null ? 'server_limit' : 'client_metadata',
+          originalStored: false,
+        },
+        result: 'success',
+        ip: input.ip ?? undefined,
+        userAgent: input.userAgent ?? undefined,
+      })
+      return created.id
+    })
+    await this.events.publish({
+      type: 'document',
+      documentId,
+      status: 'rejected',
+      step: 'ingestion',
+      state: 'failed',
+      at: new Date().toISOString(),
+    })
+    return documentId
+  }
 
   async ingest(input: IngestInput): Promise<IngestResult> {
     const checksum = createHash('sha256').update(input.buffer).digest('hex')
@@ -193,6 +250,6 @@ export class IngestService {
       )
       .orderBy(desc(documents.versionNumber))
       .limit(1)
-    return row ?? null
+    return row?.checksum ? { ...row, checksum: row.checksum } : null
   }
 }

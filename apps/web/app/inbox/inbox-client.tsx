@@ -449,7 +449,8 @@ function Pagination({ data, onPage }: { data: DocumentListPage; onPage: (page: n
   )
 }
 
-function formatSize(bytes: number): string {
+function formatSize(bytes: number | null): string {
+  if (bytes === null) return 'Unknown size'
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`

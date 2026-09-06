@@ -66,7 +66,7 @@ export class RetentionService {
       )
 
     for (const document of expired) {
-      await this.storage.removePrefix(documentPrefix(document.storageKey))
+      if (document.storageKey) await this.storage.removePrefix(documentPrefix(document.storageKey))
 
       // Clear duplicate links to the original being deleted; the duplicate
       // remains as a regular document.
@@ -108,8 +108,8 @@ export class RetentionService {
 
     const prefixes = [...new Set(objects.map((object) => documentPrefix(object.key)))]
     const referenced = new Set(
-      (await this.db.select({ storageKey: documents.storageKey }).from(documents)).map((row) =>
-        documentPrefix(row.storageKey),
+      (await this.db.select({ storageKey: documents.storageKey }).from(documents)).flatMap((row) =>
+        row.storageKey ? [documentPrefix(row.storageKey)] : [],
       ),
     )
 

@@ -25,6 +25,7 @@ import {
   NO_SOURCE_CONFIDENCE_CAP,
   type ClassifiableDocumentType,
   type DocumentDetail,
+  type OversizedUploadRequest,
   type DocumentStatus,
   type RejectRequest,
   type UpdateFieldRequest,
@@ -68,6 +69,7 @@ const listColumns = {
   originalFilename: documents.originalFilename,
   mimeType: documents.mimeType,
   sizeBytes: documents.sizeBytes,
+  hasOriginal: sql<boolean>`${documents.storageKey} is not null`.as('has_original'),
   sourceType: documents.sourceType,
   documentType: documents.documentType,
   typeConfidence: documents.typeConfidence,
@@ -121,6 +123,22 @@ export class DocumentsService {
     @InjectQueue(QUEUE.PREPROCESS) private readonly preprocessQueue: Queue,
     @InjectQueue(QUEUE.EXTRACT) private readonly extractQueue: Queue,
   ) {}
+
+  async rejectOversized(
+    body: Omit<OversizedUploadRequest, 'sizeBytes'> & { sizeBytes: number | null },
+    user: SessionUser,
+    origin: RequestContext,
+  ): Promise<DocumentListItem> {
+    const id = await this.ingest.rejectOversized({
+      ...body,
+      actorType: 'user',
+      actorId: user.id,
+      correlationId: origin.correlationId ?? randomUUID(),
+      ip: origin.ip,
+      userAgent: origin.userAgent,
+    })
+    return this.findOne(id)
+  }
 
   async upload(
     file: UploadedDocument,
@@ -670,7 +688,8 @@ export class DocumentsService {
       .where(eq(documents.id, id))
       .limit(1)
     if (!row) throw new NotFoundException('Document not found')
-    return row
+    if (!row.storageKey) throw new NotFoundException('The original was not stored')
+    return { ...row, storageKey: row.storageKey }
   }
 
   /** Serve thumbnails through the guarded API rather than a signed URL. */
@@ -694,6 +713,7 @@ export class DocumentsService {
       .limit(1)
 
     if (!row) throw new NotFoundException('Document not found')
+    if (!row.key) throw new NotFoundException('The original was not stored')
     return this.storage.signedUrl(row.key)
   }
 
@@ -702,6 +722,8 @@ export class DocumentsService {
       const row = await lockDocumentForEdit(db, id)
 
       if (!row) throw new NotFoundException('Document not found')
+      if (!row.storageKey)
+        throw new BadRequestException('The original was not stored. Upload a smaller file')
       if (['received', 'processing', 'exported'].includes(row.status)) {
         throw new BadRequestException(`A document with status ${row.status} cannot be reprocessed`)
       }
@@ -763,7 +785,8 @@ export class DocumentsService {
       id: string
       originalFilename: string
       mimeType: string
-      sizeBytes: number
+      sizeBytes: number | null
+      hasOriginal: boolean
       sourceType: DocumentListItem['sourceType']
       documentType: DocumentListItem['documentType']
       typeConfidence: number | null
@@ -786,7 +809,8 @@ export class DocumentsService {
       id: value.id,
       originalFilename: value.originalFilename,
       mimeType: value.mimeType,
-      sizeBytes: Number(value.sizeBytes),
+      sizeBytes: value.sizeBytes === null ? null : Number(value.sizeBytes),
+      hasOriginal: value.hasOriginal,
       sourceType: value.sourceType,
       documentType: value.documentType,
       typeConfidence: value.typeConfidence,

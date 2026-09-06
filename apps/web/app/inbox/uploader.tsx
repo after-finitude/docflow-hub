@@ -1,6 +1,7 @@
 'use client'
 
-import { ACCEPTED_MIME_TYPES, UPLOAD_MAX_BYTES } from '@docflow/shared'
+import { ACCEPTED_MIME_TYPES } from '@docflow/shared'
+import { uploadFile } from '../../lib/upload-file'
 import { useRef, useState, type DragEvent } from 'react'
 
 interface UploaderProps {
@@ -19,6 +20,7 @@ export function Uploader({ onUploaded }: UploaderProps) {
   const [rejected, setRejected] = useState<Rejected[]>([])
 
   async function send(files: File[]) {
+    if (busy) return
     if (files.length === 0) return
     setBusy(true)
     setRejected([])
@@ -27,22 +29,23 @@ export function Uploader({ onUploaded }: UploaderProps) {
     for (const file of files) {
       // Size and type are also checked by the server. Checking here avoids
       // uploading an invalid file and gives an immediate reason.
-      if (file.size > UPLOAD_MAX_BYTES) {
-        failures.push({ name: file.name, reason: 'larger than 25 MB' })
-        continue
-      }
       if (!(ACCEPTED_MIME_TYPES as readonly string[]).includes(file.type)) {
         failures.push({ name: file.name, reason: 'only PDF, JPEG, and PNG are allowed' })
         continue
       }
 
-      const body = new FormData()
-      body.append('file', file)
       try {
-        const response = await fetch('/api/documents', { method: 'POST', body })
-        if (!response.ok) {
-          const detail = (await response.json().catch(() => null)) as { message?: string } | null
-          failures.push({ name: file.name, reason: detail?.message ?? `error ${response.status}` })
+        const response = await uploadFile(file)
+        const detail = (await response.json().catch(() => null)) as {
+          message?: string
+          status?: string
+          statusReason?: string
+        } | null
+        if (!response.ok || detail?.status === 'rejected') {
+          failures.push({
+            name: file.name,
+            reason: detail?.statusReason ?? detail?.message ?? `error ${response.status}`,
+          })
         }
       } catch {
         failures.push({ name: file.name, reason: 'service unavailable' })

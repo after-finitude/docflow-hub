@@ -97,7 +97,17 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
             action: 'document.ocr_external',
             objectType: 'document',
             objectId: documentId,
-            after: { provider: this.provider.name, pages: sentPages },
+            after: {
+              provider: this.provider.name,
+              pages: sentPages,
+              corrections: result.pages
+                .filter((page) => page.sentToProvider)
+                .map((page) => ({
+                  pageNumber: page.pageNumber,
+                  rotationDegrees: page.rotationDegrees ?? 0,
+                  providerCalls: page.providerCalls ?? 1,
+                })),
+            },
             result: 'success',
           })
         }
@@ -132,7 +142,7 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
     db: Database,
     documentId: string,
     // Do not call this `pages`; that name is already used by the imported table.
-    recognized: { pageNumber: number; text: string; confidence: number | null }[],
+    recognized: { pageNumber: number; text: string; confidence: number | null; blank?: boolean }[],
   ): Promise<void> {
     await db
       .delete(validationIssues)
@@ -145,11 +155,13 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
       )
 
     const issue = assessOcrQuality(
-      recognized.map((page) => ({
-        pageNumber: page.pageNumber,
-        confidence: page.confidence,
-        textLength: page.text.trim().length,
-      })),
+      recognized
+        .filter((page) => !page.blank)
+        .map((page) => ({
+          pageNumber: page.pageNumber,
+          confidence: page.confidence,
+          textLength: page.text.trim().length,
+        })),
     )
     if (!issue) return
 

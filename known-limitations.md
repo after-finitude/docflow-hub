@@ -6,10 +6,10 @@ The committed evaluation report uses deterministic mock OCR and LLM providers. I
 
 ## OCR and documents
 
-- Image deskewing is not implemented; preprocessing applies EXIF rotation and contrast normalization only.
+- Orientation and deskew use one dominant reading direction from at least three confident Vision words, with at most one correction pass. Mixed orientations, too little recognized text and nonlinear page distortion may still require manual handling. Coordinate behavior is tested with controlled Vision responses; real Russian/English scan quality remains unverified.
 - The mock OCR reads PDF text layers and returns empty text for images.
-- Suspected multiple documents create a warning and require review, but manual PDF page-range splitting is not implemented.
-- Password-protected, corrupted, empty, unsupported, and oversized files are rejected before external provider calls.
+- Suspected multiple documents require review. Split and reupload them with an existing PDF editor; the procedure is in `docs/runbook.md`. There is no built-in splitting tool.
+- Password-protected, corrupted, empty, unsupported, and oversized files are rejected before external provider calls. Oversized uploads retain a Rejected metadata record without an original; direct multipart refusals have an unknown exact size.
 
 ## Configuration
 

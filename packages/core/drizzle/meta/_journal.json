@@ -71,6 +71,13 @@
       "when": 1788683027160,
       "tag": "0009_versioned_configuration",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788686317511,
+      "tag": "0010_rejected_upload_metadata",
+      "breakpoints": true
     }
   ]
 }

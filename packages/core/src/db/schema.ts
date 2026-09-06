@@ -21,6 +21,7 @@ import {
 import { sql } from 'drizzle-orm'
 import {
   bigint,
+  check,
   boolean,
   index,
   integer,
@@ -81,11 +82,11 @@ export const documents = pgTable(
 
     originalFilename: text('original_filename').notNull(),
     mimeType: text('mime_type').notNull(),
-    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
-    checksum: text('checksum').notNull(),
+    sizeBytes: bigint('size_bytes', { mode: 'number' }),
+    checksum: text('checksum'),
 
     // Object-storage references; the database does not contain file data (spec 6.1).
-    storageKey: text('storage_key').notNull(),
+    storageKey: text('storage_key'),
     thumbnailKey: text('thumbnail_key'),
 
     documentType: documentTypeEnum('document_type'),
@@ -121,6 +122,10 @@ export const documents = pgTable(
     processedAt: timestamp('processed_at', { withTimezone: true }),
   },
   (t) => [
+    check(
+      'documents_original_or_rejection',
+      sql`(${t.storageKey} IS NOT NULL AND ${t.checksum} IS NOT NULL AND ${t.sizeBytes} IS NOT NULL) OR (${t.status} = 'rejected' AND ${t.storageKey} IS NULL AND ${t.checksum} IS NULL AND ${t.processingStep} IS NULL)`,
+    ),
     index('documents_status_idx').on(t.status),
     index('documents_checksum_idx').on(t.checksum),
     index('documents_received_at_idx').on(t.receivedAt),

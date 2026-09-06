@@ -366,6 +366,8 @@ export class ExportService {
   }
 
   private async buildCanonical(db: Database, document: typeof documents.$inferSelect) {
+    if (!document.checksum || !document.storageKey)
+      throw new BadRequestException('The original was not stored')
     const schema = await getDocumentSchema(db, document)
 
     const fieldRows = await db

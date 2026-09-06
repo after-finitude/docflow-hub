@@ -46,53 +46,68 @@ async function inspectPdf(buffer: Buffer): Promise<InspectionResult> {
   // ERR_REQUIRE_ASYNC_MODULE; use a dynamic import.
   const mupdf = await import('mupdf')
 
-  let document: ReturnType<typeof mupdf.Document.openDocument>
+  let document: ReturnType<typeof mupdf.Document.openDocument> | undefined
+  let renderError: string | undefined
+  // MuPDF can recover from broken streams without throwing. Inspection is synchronous
+  // while this callback is installed, so other jobs cannot interleave with it.
+  mupdf.setLog({
+    error: (message) => {
+      renderError ??= message
+    },
+    warning: (message) => console.warn(message),
+  })
   try {
     document = mupdf.Document.openDocument(buffer, 'application/pdf')
+    if (document.needsPassword())
+      return {
+        ok: false,
+        code: 'password_protected',
+        reason: 'PDF is password-protected. Upload an unprotected file',
+      }
+    const pageCount = document.countPages()
+    if (pageCount < 1) return { ok: false, code: 'no_pages', reason: 'Document has no pages' }
+    let thumbnail: Buffer | undefined
+    for (let index = 0; index < pageCount; index++) {
+      const page = document.loadPage(index)
+      try {
+        const [x0, y0, x1, y1] = page.getBounds()
+        const width = x1 - x0,
+          height = y1 - y0
+        if (!(width > 0 && height > 0 && Number.isFinite(width * height)))
+          return {
+            ok: false,
+            code: 'empty_page',
+            reason: `Page ${index + 1} has invalid dimensions`,
+          }
+        const scale = THUMBNAIL_WIDTH / Math.max(width, height)
+        const pixmap = page.toPixmap(
+          mupdf.Matrix.scale(scale, scale),
+          mupdf.ColorSpace.DeviceRGB,
+          false,
+          true,
+        )
+        try {
+          if (index === 0) thumbnail = Buffer.from(pixmap.asPNG())
+        } finally {
+          pixmap.destroy()
+        }
+      } finally {
+        page.destroy()
+      }
+      if (renderError) throw new Error(`Page ${index + 1}: ${renderError}`)
+    }
+    if (document instanceof mupdf.PDFDocument && document.wasRepaired())
+      throw new Error('PDF structure requires repair')
+    return { ok: true, pageCount, thumbnail: thumbnail! }
   } catch (error) {
     return {
       ok: false,
       code: 'corrupted_pdf',
       reason: `PDF is corrupted and cannot be read: ${describe(error)}`,
     }
-  }
-
-  if (document.needsPassword()) {
-    return {
-      ok: false,
-      code: 'password_protected',
-      reason: 'PDF is password-protected. Upload an unprotected file',
-    }
-  }
-
-  const pageCount = document.countPages()
-  if (pageCount < 1) {
-    return { ok: false, code: 'no_pages', reason: 'Document has no pages' }
-  }
-
-  try {
-    const page = document.loadPage(0)
-    const [x0, y0, x1, y1] = page.getBounds()
-    const width = x1 - x0
-    const height = y1 - y0
-    if (width <= 0 || height <= 0) {
-      return { ok: false, code: 'empty_page', reason: 'The first page is empty' }
-    }
-
-    const scale = THUMBNAIL_WIDTH / width
-    const pixmap = page.toPixmap(
-      mupdf.Matrix.scale(scale, scale),
-      mupdf.ColorSpace.DeviceRGB,
-      false,
-      true,
-    )
-    return { ok: true, pageCount, thumbnail: Buffer.from(pixmap.asPNG()) }
-  } catch (error) {
-    return {
-      ok: false,
-      code: 'render_failed',
-      reason: `Could not render the first page: ${describe(error)}`,
-    }
+  } finally {
+    document?.destroy()
+    mupdf.setLog(null)
   }
 }
 

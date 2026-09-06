@@ -21,6 +21,7 @@ import {
   type LineItem,
   type RejectReason,
 } from '@docflow/shared'
+import { uploadFile } from '../../../lib/upload-file'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useMemo, useRef, useState } from 'react'
@@ -274,7 +275,11 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
             />
           ) : (
             <div className="flex flex-1 items-center justify-center rounded-[10px] border border-dashed border-rule-2 text-sm text-muted">
-              Document is not ready yet
+              {!document.hasOriginal
+                ? 'The original was not stored. Upload a file up to 25 MB.'
+                : document.status === 'rejected'
+                  ? 'The document was rejected before preview generation.'
+                  : 'Document is not ready yet'}
             </div>
           )}
         </section>
@@ -360,6 +365,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                 disabled={
                   busy ||
                   exportReserved ||
+                  !document.hasOriginal ||
                   ['received', 'processing', 'exported'].includes(document.status)
                 }
                 onClick={() =>
@@ -377,15 +383,10 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                 <ReplaceFileButton
                   disabled={busy || readOnly}
                   onSelect={async (file) => {
-                    const body = new FormData()
-                    body.append('file', file)
                     setBusy(true)
                     setError(null)
                     try {
-                      const response = await fetch(`/api/documents/${document.id}/file`, {
-                        method: 'POST',
-                        body,
-                      })
+                      const response = await uploadFile(file, document.id)
                       const detail = (await response.json().catch(() => null)) as {
                         id?: string
                         message?: string
@@ -445,7 +446,9 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
             {visibleFields.length === 0 && (
               <p className="rounded-[10px] border border-dashed border-rule-2 p-6 text-center text-sm text-muted">
                 {document.fields.length === 0
-                  ? 'Fields will appear after extraction'
+                  ? document.status === 'rejected'
+                    ? 'No extracted fields: the document was rejected.'
+                    : 'Fields will appear after extraction'
                   : 'No fields match the filter'}
               </p>
             )}

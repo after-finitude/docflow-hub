@@ -119,7 +119,9 @@ export class SyncService {
       .where(and(eq(documents.sourceType, provider.sourceType), eq(documents.isActive, true)))
 
     return rows.flatMap((row) =>
-      row.sourcePath ? [{ sourcePath: row.sourcePath, checksum: row.checksum }] : [],
+      row.sourcePath && row.checksum
+        ? [{ sourcePath: row.sourcePath, checksum: row.checksum }]
+        : [],
     )
   }
 

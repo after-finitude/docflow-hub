@@ -88,14 +88,18 @@ Specification: 5.1, 6.1–6.3, 10; acceptance criteria 1, 2, 5, 9.
 
 Primary files: `apps/worker/src/ocr/page-raster.ts`, `apps/worker/src/ocr/google-vision-ocr.provider.ts`, `apps/worker/src/preprocess/document-inspector.ts`, `apps/api/src/documents/documents.controller.ts`, `apps/api/src/documents/page-render.service.ts`.
 
-- [ ] Implement orientation/deskew correction for image and scanned-PDF input; apply contrast correction where needed. First check whether existing dependencies suffice.
-- [ ] Preserve the coordinate transformation back to the original so corrected OCR still highlights the correct source region.
-- [ ] Verify blank-page exclusion without breaking original page numbering or evidence navigation.
-- [ ] Cover corrupt and protected PDFs, including defects after page one, before any LLM call.
-- [ ] Reconcile oversized-upload behavior with the specification: retain the resource limit while recording a rejected document and readable reason instead of only returning HTTP 413.
-- [ ] Verify multi-document warnings force review and provide a documented manual split/reupload procedure; do not build automatic splitting.
+- [x] Implement orientation/deskew correction for image and scanned-PDF input; apply contrast correction where needed. First check whether existing dependencies suffice.
+- [x] Preserve the coordinate transformation back to the original so corrected OCR still highlights the correct source region.
+- [x] Verify blank-page exclusion without breaking original page numbering or evidence navigation.
+- [x] Cover corrupt and protected PDFs, including defects after page one, before any LLM call.
+- [x] Reconcile oversized-upload behavior with the specification: retain the resource limit while recording a rejected document and readable reason instead of only returning HTTP 413.
+- [x] Verify multi-document warnings force review and provide a documented manual split/reupload procedure; do not build automatic splitting.
 
 **Done when:** Russian/English scans, rotated and skewed pages, blank pages, multi-document files, and invalid files have the specified outcomes. Source overlays align after preprocessing, zoom, rotation, and page navigation. Invalid files never invoke the LLM.
+
+Verification (2026-09-06): 160 checks pass with the isolated PostgreSQL database and `npm test`, including real Nest HTTP upload limits, metadata-only rejections, safe retention, corrupt later pages and protected PDFs never reaching providers, and multi-document routing. Controlled Vision responses exercise real Sharp/MuPDF raster operations for Russian/English fixtures, quarter-turns, skewed images and scanned PDFs, all eight JPEG/PNG EXIF orientations, sparse/faint text, blank middle pages and CropBox/page rotation. Browser verification covers source navigation through a blank page, portrait/landscape images, rotations and zoom through 300%, including images loaded before hydration; the image and scroll frame agree within 0.01 CSS pixels in the checked 270°/300% case. Refusal pages show the absent original and disable reprocessing. No new image library was added; the API declares the already-installed Sharp dependency. Migration `0010_rejected_upload_metadata.sql` permits missing file metadata only for rejected, idle records. The split/reupload and refusal procedures are documented in `docs/runbook.md`.
+
+- [ ] Run configured Google Vision against real Russian/English rotated and skewed scans. Controlled responses prove transformation and routing behavior, not live recognition quality; carry this check into stage 6 provider evaluation.
 
 ## 6. Evaluation and performance evidence
 

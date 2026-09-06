@@ -16,6 +16,11 @@ export interface OcrPageResult {
   blocks: OcrBlock[]
   /** Whether the page was sent to an external provider, for the transfer log (spec §11). */
   sentToProvider: boolean
+  /** A visually blank raster is distinct from an OCR failure to find text. */
+  blank?: boolean
+  /** Correction applied to the OCR copy only; persisted boxes use original coordinates. */
+  rotationDegrees?: number
+  providerCalls?: number
 }
 
 export interface OcrResult {

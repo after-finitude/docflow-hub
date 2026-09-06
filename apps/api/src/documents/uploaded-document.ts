@@ -1,3 +1,9 @@
+import type { AuthenticatedRequest } from '../auth/decorators'
+
+export interface UploadRequest extends AuthenticatedRequest {
+  uploadMetadata?: { originalname: string; mimetype: string }
+}
+
 /**
  * Uploaded file in the shape provided by multer.
  *

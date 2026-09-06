@@ -8,55 +8,55 @@ export interface RasterPage {
   blank: boolean
 }
 
-/**
- * A blank page has near-zero brightness variance and a light mean. Do not send
- * it to the paid provider (spec 6.2), but retain its Page row so numbering still
- * matches the original.
- */
-async function isBlank(png: Buffer): Promise<boolean> {
+async function prepare(png: Buffer, pageNumber: number): Promise<RasterPage> {
   const stats = await sharp(png).stats()
-  return stats.channels.every((channel) => channel.stdev < 2 && channel.mean > 245)
+  // Do not discard sparse or faint text merely because its average variance is low.
+  const blank = stats.channels.every(
+    (channel) => channel.min > 180 && channel.max - channel.min < 3,
+  )
+  const lowContrast = stats.channels.every((channel) => channel.max - channel.min < 100)
+  const pipeline = sharp(png)
+  if (!blank && lowContrast) pipeline.normalise({ lower: 0, upper: 100 })
+  const { data, info } = await pipeline.png().toBuffer({ resolveWithObject: true })
+  return { pageNumber, png: data, width: info.width, height: info.height, blank }
 }
 
-/** Rasterize every PDF page for OCR. */
-export async function rasterizePdf(buffer: Buffer, dpi: number): Promise<RasterPage[]> {
+/** Rasterize one PDF page at a time; release native pixmaps before provider waits. */
+export async function* rasterizePdf(buffer: Buffer, dpi: number): AsyncGenerator<RasterPage> {
   const mupdf = await import('mupdf')
   const document = mupdf.Document.openDocument(buffer, 'application/pdf')
-  const scale = dpi / 72
-
-  const pages: RasterPage[] = []
-  for (let index = 0; index < document.countPages(); index++) {
-    const page = document.loadPage(index)
-    const pixmap = page.toPixmap(
-      mupdf.Matrix.scale(scale, scale),
-      mupdf.ColorSpace.DeviceRGB,
-      false,
-      true,
-    )
-    const png = Buffer.from(pixmap.asPNG())
-    pages.push({
-      pageNumber: index + 1,
-      png,
-      width: pixmap.getWidth(),
-      height: pixmap.getHeight(),
-      blank: await isBlank(png),
-    })
+  try {
+    for (let index = 0; index < document.countPages(); index++) {
+      const page = document.loadPage(index)
+      let raster: RasterPage
+      try {
+        const [x0, y0, x1, y1] = page.getBounds()
+        const scale = Math.min(dpi / 72, Math.sqrt(25_000_000 / ((x1 - x0) * (y1 - y0))))
+        const pixmap = page.toPixmap(
+          mupdf.Matrix.scale(scale, scale),
+          mupdf.ColorSpace.DeviceRGB,
+          false,
+          true,
+        )
+        let png: Buffer
+        try {
+          png = Buffer.from(pixmap.asPNG())
+        } finally {
+          pixmap.destroy()
+        }
+        raster = await prepare(png, index + 1)
+      } finally {
+        page.destroy()
+      }
+      yield raster
+    }
+  } finally {
+    document.destroy()
   }
-  return pages
 }
 
-/**
- * Normalize images before OCR (spec 6.2): apply EXIF rotation and stretch
- * contrast. Deskewing is not implemented; see known-limitations.
- */
+/** EXIF orientation is part of the original's displayed coordinate system. */
 export async function normalizeImage(buffer: Buffer): Promise<RasterPage> {
-  const png = await sharp(buffer).rotate().normalize().png().toBuffer()
-  const meta = await sharp(png).metadata()
-  return {
-    pageNumber: 1,
-    png,
-    width: meta.width ?? 0,
-    height: meta.height ?? 0,
-    blank: await isBlank(png),
-  }
+  const png = await sharp(buffer).autoOrient().flatten({ background: '#fff' }).png().toBuffer()
+  return prepare(png, 1)
 }

@@ -1,4 +1,8 @@
 import 'reflect-metadata'
+import { PDFDocument, PDFName } from 'pdf-lib'
+import { UPLOAD_MAX_BYTES } from '@docflow/shared'
+import { OversizedUploadFilter } from '../apps/api/dist/documents/oversized-upload.filter.js'
+import { RetentionService } from '../apps/worker/dist/sync/retention.service.js'
 import assert from 'node:assert/strict'
 import { readFile, mkdtemp, cp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -17,6 +21,7 @@ import { SchemasController } from '../apps/api/dist/schemas/schemas.controller.j
 import { ExportSettingsController } from '../apps/api/dist/export/export-settings.controller.js'
 import {
   ENV,
+  IngestService,
   DB,
   auditEvents,
   getActiveSchema,
@@ -127,7 +132,18 @@ test(
     const exports = new ExportService(db, adapters, events, {}, validation, pool, {
       EXPORT_DEFAULT_DESTINATION: 'file_json',
     })
-    const service = new DocumentsService(db, {}, events, validation, {}, exports, queue, queue)
+    const storedUploads = []
+    const ingest = new IngestService(
+      db,
+      {
+        async put(key, buffer) {
+          storedUploads.push({ key, bytes: buffer.length })
+        },
+      },
+      events,
+      queue,
+    )
+    const service = new DocumentsService(db, {}, events, validation, ingest, exports, queue, queue)
     const runs = new RunsService(db, events, queue, queue, queue, queue, queue, validation)
     // eslint-disable-next-line typescript/no-extraneous-class -- Nest module metadata.
     class TestModule {}
@@ -139,6 +155,7 @@ test(
         ExportSettingsController,
       ],
       providers: [
+        OversizedUploadFilter,
         { provide: DB, useValue: db },
         { provide: DocumentsService, useValue: service },
         { provide: RunsService, useValue: runs },
@@ -209,6 +226,315 @@ test(
     }
     const read = async (id) => (await request(id, '', undefined, 'GET')).body
     const row = async (id) => (await db.select().from(documents).where(eq(documents.id, id)))[0]
+
+    await t.test(
+      'oversized metadata creates a rejected document, failed ingest and audit without storage or jobs',
+      async () => {
+        const beforeJobs = jobs.length,
+          beforeStorage = storedUploads.length
+        const reply = await request('oversized', '', {
+          filename: 'large.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: UPLOAD_MAX_BYTES + 100,
+        })
+        assert.equal(reply.status, 201)
+        const id = reply.body.id,
+          detail = await read(id)
+        assert.equal(detail.status, 'rejected')
+        assert.equal(detail.hasOriginal, false)
+        assert.equal(detail.sizeBytes, UPLOAD_MAX_BYTES + 100)
+        assert.equal(detail.checksum, null)
+        assert.equal((await row(id)).storageKey, null)
+        assert.equal(detail.canApprove, false)
+        assert.equal(jobs.length, beforeJobs)
+        assert.equal(storedUploads.length, beforeStorage)
+        const [run] = await db.select().from(workflowRuns).where(eq(workflowRuns.documentId, id))
+        assert.equal(run.state, 'failed')
+        assert.equal(run.errorCode, 'file_too_large')
+        const [audit] = await db.select().from(auditEvents).where(eq(auditEvents.objectId, id))
+        assert.equal(audit.actorId, user.id)
+        assert.equal(audit.after.originalStored, false)
+        assert.equal(audit.after.sizeSource, 'client_metadata')
+        assert.equal((await request(id, 'reprocess')).status, 400)
+        assert.equal((await request(id, 'file', undefined, 'GET')).status, 404)
+        assert.equal((await request(id, 'pages/1/image', undefined, 'GET')).status, 404)
+        assert.equal((await runRequest(run.id, 'retry')).status, 400)
+        assert.equal((await runRequest(run.id, 'manual')).status, 400)
+        assert.equal((await request(id, 'approve')).status, 400)
+        assert.equal((await request(id, 'export', {})).status, 400)
+        await assert.rejects(
+          db.update(documents).set({ status: 'approved' }).where(eq(documents.id, id)),
+        )
+        for (const body of [
+          { filename: 'x.pdf', mimeType: 'application/pdf', sizeBytes: UPLOAD_MAX_BYTES },
+          { filename: '', mimeType: 'application/pdf', sizeBytes: UPLOAD_MAX_BYTES + 1 },
+          {
+            filename: 'x.exe',
+            mimeType: 'application/octet-stream',
+            sizeBytes: UPLOAD_MAX_BYTES + 1,
+          },
+        ])
+          assert.equal((await request('oversized', '', body)).status, 400)
+        const listing = await fetch(`${base}/documents?status=rejected`).then((r) => r.json())
+        assert.ok(listing.items.some((item) => item.id === id && !item.hasOriginal))
+      },
+    )
+    await t.test(
+      'raw multipart limit records the refusal and accepts the inclusive 25 MB boundary',
+      async () => {
+        const beforeJobs = jobs.length,
+          beforeStorage = storedUploads.length
+        const prior = await doc('needs_review')
+        for (const path of ['/documents', `/documents/${prior}/file`]) {
+          const body = new FormData()
+          body.append(
+            'file',
+            new Blob([Buffer.alloc(UPLOAD_MAX_BYTES + 1)], { type: 'application/pdf' }),
+            'oversized.pdf',
+          )
+          const response = await fetch(`${base}${path}`, { method: 'POST', body })
+          assert.equal(response.status, 413)
+          const reply = await response.json(),
+            detail = await read(reply.documentId)
+          assert.equal(detail.status, 'rejected')
+          assert.equal(detail.sizeBytes, null)
+          assert.equal(detail.hasOriginal, false)
+        }
+        assert.equal((await row(prior)).isActive, true)
+        assert.equal(jobs.length, beforeJobs)
+        assert.equal(storedUploads.length, beforeStorage)
+        const body = new FormData()
+        body.append(
+          'file',
+          new Blob([Buffer.alloc(UPLOAD_MAX_BYTES)], { type: 'application/pdf' }),
+          'boundary.pdf',
+        )
+        const response = await fetch(`${base}/documents`, { method: 'POST', body })
+        assert.equal(response.status, 201)
+        const detail = await response.json()
+        assert.equal(detail.hasOriginal, true)
+        assert.equal(detail.sizeBytes, UPLOAD_MAX_BYTES)
+        assert.equal(storedUploads.length, beforeStorage + 1)
+        assert.equal(jobs.length, beforeJobs + 1)
+      },
+    )
+    await t.test('retention of metadata-only refusals never removes a storage prefix', async () => {
+      const reply = await request('oversized', '', {
+        filename: 'expired.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: UPLOAD_MAX_BYTES + 1,
+      })
+      const id = reply.body.id
+      await db
+        .update(documents)
+        .set({ isActive: false, deactivatedAt: new Date('2020-01-01') })
+        .where(eq(documents.id, id))
+      const removed = []
+      const retention = new RetentionService(
+        db,
+        { RETENTION_DAYS: 30, ORPHAN_TTL_HOURS: 24 },
+        {
+          async removePrefix(prefix) {
+            removed.push(prefix)
+            return 1
+          },
+          async list() {
+            return [{ key: 'documents/orphan/original.pdf', lastModified: new Date('2020-01-01') }]
+          },
+        },
+      )
+      const summary = await retention.run(randomUUID())
+      assert.equal(summary.purgedDocuments, 1)
+      assert.equal(summary.removedObjects, 1)
+      assert.deepEqual(removed, ['documents/orphan/'])
+      assert.equal(await row(id), undefined)
+    })
+    await t.test(
+      'corrupt later pages and encrypted PDFs are rejected before any OCR or LLM call',
+      async () => {
+        const pdf = await PDFDocument.create()
+        pdf.addPage([300, 400]).drawText('Valid first page')
+        const second = pdf.addPage([300, 400])
+        second.node.set(
+          PDFName.of('Contents'),
+          pdf.context.register(
+            pdf.context.stream(Buffer.from('broken zlib'), { Filter: 'FlateDecode' }),
+          ),
+        )
+        const broken = Buffer.from(await pdf.save({ useObjectStreams: false }))
+        const mupdf = await import('mupdf')
+        const valid = await PDFDocument.create()
+        valid.addPage([300, 400])
+        const encryptedDoc = mupdf.Document.openDocument(await valid.save(), 'application/pdf')
+        let encrypted
+        try {
+          const saved = encryptedDoc.saveToBuffer('encrypt=aes-256,user-password=secret')
+          try {
+            encrypted = Buffer.from(saved.asUint8Array())
+          } finally {
+            saved.destroy()
+          }
+        } finally {
+          encryptedDoc.destroy()
+        }
+        for (const buffer of [broken, encrypted, Buffer.alloc(0), Buffer.from('not PDF')]) {
+          const id = await doc('received', {}, 'preprocess'),
+            before = jobs.length
+          const storage = {
+            async getBuffer() {
+              return buffer
+            },
+            async put() {
+              throw new Error('invalid file wrote a thumbnail')
+            },
+          }
+          await new PreprocessProcessor(db, {}, storage, events, queue).process({
+            data: { documentId: id, correlationId: randomUUID() },
+          })
+          assert.equal((await row(id)).status, 'rejected')
+          assert.equal(jobs.length, before)
+          const never = new Proxy(
+            {},
+            {
+              get() {
+                throw new Error('invalid file reached a provider')
+              },
+            },
+          )
+          for (const processor of [
+            new OcrProcessor(db, {}, never, never, events, queue),
+            new ClassifyProcessor(db, {}, never, events, queue),
+            new ExtractProcessor(db, {}, never, events, queue, validation),
+          ])
+            await processor.process({ data: { documentId: id, correlationId: randomUUID() } })
+          const [run] = await db.select().from(workflowRuns).where(eq(workflowRuns.documentId, id))
+          assert.equal(run.state, 'failed')
+          assert.equal(jobs.length, before)
+        }
+      },
+    )
+    await t.test(
+      'blank pages preserve positions and correction audit; multi-document suspicion forces manual review',
+      async () => {
+        for (const suspected of [false, true]) {
+          const id = await doc('processing', {}, 'ocr')
+          const block = {
+            text: 'Original 10',
+            confidence: 1,
+            bbox: { x: 0.1, y: 0.1, width: 0.4, height: 0.2 },
+          }
+          const provider = {
+            external: true,
+            name: 'controlled-ocr',
+            async recognize() {
+              return {
+                pages: [
+                  {
+                    pageNumber: 1,
+                    width: 300,
+                    height: 400,
+                    text: block.text,
+                    confidence: 1,
+                    blocks: [block],
+                    sentToProvider: true,
+                    rotationDegrees: -7,
+                    providerCalls: 2,
+                  },
+                  {
+                    pageNumber: 2,
+                    width: 300,
+                    height: 400,
+                    text: '',
+                    confidence: null,
+                    blocks: [],
+                    sentToProvider: false,
+                    blank: true,
+                  },
+                  {
+                    pageNumber: 3,
+                    width: 300,
+                    height: 400,
+                    text: block.text,
+                    confidence: 1,
+                    blocks: [block],
+                    sentToProvider: true,
+                    providerCalls: 1,
+                  },
+                ],
+              }
+            },
+          }
+          const llm = {
+            external: false,
+            async classify() {
+              return {
+                document_type: 'contract',
+                confidence: 1,
+                multi_document_suspected: suspected,
+              }
+            },
+            async extract() {
+              return {
+                fields: [
+                  { name: 'name', value: 'Original', evidence: { page: 1, text: 'Original' } },
+                  { name: 'total', value: '10', evidence: { page: 1, text: '10' } },
+                ],
+              }
+            },
+          }
+          const processors = [
+            new OcrProcessor(
+              db,
+              {},
+              provider,
+              {
+                async getBuffer() {
+                  return Buffer.from('controlled')
+                },
+              },
+              events,
+              queue,
+            ),
+            new ClassifyProcessor(db, {}, llm, events, queue),
+            new ExtractProcessor(db, {}, llm, events, queue, validation),
+            new ValidateProcessor(db, {}, validation, events),
+          ]
+          let data = { documentId: id, correlationId: randomUUID() }
+          for (const [index, processor] of processors.entries()) {
+            await processor.process({ data, opts: { attempts: 1 }, attemptsMade: 0 })
+            if (index < 3) data = jobs.at(-1).data
+          }
+          const detail = await read(id)
+          assert.equal(detail.status, suspected ? 'needs_review' : 'approved')
+          assert.equal(
+            detail.issues.some((issue) => issue.ruleId === 'multi_document_suspected'),
+            suspected,
+          )
+          assert.equal(
+            detail.issues.some((issue) => issue.ruleId === 'ocr_quality'),
+            false,
+          )
+          const storedPages = await service.pages(id)
+          assert.deepEqual(
+            storedPages.map((page) => page.pageNumber),
+            [1, 2, 3],
+          )
+          const audit = (
+            await db.select().from(auditEvents).where(eq(auditEvents.objectId, id))
+          ).find((entry) => entry.action === 'document.ocr_external')
+          assert.deepEqual(audit.after.pages, [1, 3])
+          assert.equal(audit.after.corrections[0].providerCalls, 2)
+          if (suspected) {
+            await request(id, 'fields/total', { value: '10' }, 'PATCH')
+            assert.equal((await read(id)).status, 'needs_review')
+            assert.equal(
+              (await read(id)).issues.some((issue) => issue.ruleId === 'multi_document_suspected'),
+              true,
+            )
+          }
+        }
+      },
+    )
 
     await t.test(
       'empty extraction cannot approve; Missing fields and blocking issues persist',
