@@ -18,7 +18,7 @@
     "dataset": "node scripts/generate-dataset.mjs",
     "eval": "tsc -b && node scripts/eval.mjs",
     "screenshots": "node scripts/screenshots.mjs",
-    "test": "tsc -b && node --test 'packages/shared/dist/**/*.test.js' scripts/extraction.test.mjs",
+    "test": "tsc -b && node --test 'packages/shared/dist/**/*.test.js' scripts/extraction.test.mjs scripts/export-download.test.mjs",
     "verify": "bash scripts/verify.sh",
     "format": "prettier --write .",
     "db:generate": "npm run db:generate -w @docflow/core",

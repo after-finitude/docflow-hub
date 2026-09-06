@@ -158,10 +158,45 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
       if (result.status === 'failed') {
         setError(`Export failed (${result.errorCode}). You can retry it`)
       }
+      setDocument((current) => ({
+        ...current,
+        status: result.status === 'succeeded' ? 'exported' : current.status,
+        exports: [...current.exports.filter((item) => item.id !== result.id), result],
+      }))
+      if (result.status === 'succeeded' && destination === 'file_json') {
+        await downloadJson(result.id)
+      }
       const refreshed = await fetch(`/api/documents/${document.id}`)
       if (refreshed.ok) setDocument((await refreshed.json()) as DocumentDetail)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Service unavailable')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function downloadJson(exportId: string) {
+    const response = await fetch(`/api/documents/${document.id}/exports/${exportId}/file`)
+    if (!response.ok) {
+      throw new Error('JSON could not be downloaded. Use Download JSON to retry')
+    }
+    const url = URL.createObjectURL(await response.blob())
+    const link = window.document.createElement('a')
+    link.href = url
+    link.download = `docflow-${document.id}.json`
+    window.document.body.append(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  async function runDownload(exportId: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      await downloadJson(exportId)
     } catch {
-      setError('Service unavailable')
+      setError('JSON could not be downloaded. Use Download JSON to retry')
     } finally {
       setBusy(false)
     }
@@ -357,6 +392,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                 exports={document.exports}
                 busy={busy}
                 onExport={(destination) => void runExport(destination)}
+                onDownload={(exportId) => void runDownload(exportId)}
               />
             )}
           </div>
@@ -424,10 +460,12 @@ function ExportPanel({
   exports,
   busy,
   onExport,
+  onDownload,
 }: {
   exports: ExportDto[]
   busy: boolean
   onExport: (destination: ExportDestination) => void
+  onDownload: (exportId: string) => void
 }) {
   return (
     <div className="mt-4 border-t border-rule pt-3">
@@ -437,7 +475,19 @@ function ExportPanel({
         <p key={item.id} className="mt-1.5 text-xs">
           <span className="text-ink-2">{EXPORT_DESTINATION_LABELS[item.destination]}</span>{' '}
           {item.status === 'succeeded' ? (
-            <span className="text-ok">completed {formatWhen(item.exportedAt)}</span>
+            <>
+              <span className="text-ok">completed {formatWhen(item.exportedAt)}</span>
+              {item.destination === 'file_json' && (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm ml-2"
+                  disabled={busy}
+                  onClick={() => onDownload(item.id)}
+                >
+                  Download JSON
+                </button>
+              )}
+            </>
           ) : item.status === 'failed' ? (
             <span className="text-danger">
               failed (<span className="mono">{item.errorCode}</span>), attempts {item.attempts}

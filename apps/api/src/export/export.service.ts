@@ -2,6 +2,7 @@ import {
   DB,
   DocumentEventsService,
   EXPORT_MAPPINGS,
+  StorageService,
   documentExports,
   documents,
   fields,
@@ -32,6 +33,7 @@ export class ExportService {
     @Inject(DB) private readonly db: Database,
     @Inject(EXPORT_ADAPTERS) private readonly adapters: ExportAdapter[],
     private readonly events: DocumentEventsService,
+    private readonly storage: StorageService,
   ) {}
 
   async listForDocument(documentId: string): Promise<ExportDto[]> {
@@ -41,6 +43,24 @@ export class ExportService {
       .where(eq(documentExports.documentId, documentId))
       .orderBy(documentExports.exportKey)
     return rows.map((row) => this.toDto(row))
+  }
+
+  /** Download the saved export, including after later document changes. */
+  async downloadJson(documentId: string, exportId: string): Promise<Buffer> {
+    const [record] = await this.db
+      .select({ payloadRef: documentExports.payloadRef })
+      .from(documentExports)
+      .where(
+        and(
+          eq(documentExports.id, exportId),
+          eq(documentExports.documentId, documentId),
+          eq(documentExports.destination, 'file_json'),
+          eq(documentExports.status, 'succeeded'),
+        ),
+      )
+      .limit(1)
+    if (!record?.payloadRef) throw new NotFoundException('Completed JSON export not found')
+    return this.storage.getBuffer(record.payloadRef)
   }
 
   /**

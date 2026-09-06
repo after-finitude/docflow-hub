@@ -24,6 +24,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   ParseIntPipe,
   ParseUUIDPipe,
@@ -31,6 +32,7 @@ import {
   Post,
   Query,
   Res,
+  StreamableFile,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common'
@@ -215,6 +217,18 @@ export class DocumentsController {
     @Origin() origin: RequestContext,
   ): Promise<ExportDto> {
     return this.exports.export(id, body, user, origin)
+  }
+
+  @Get(':id/exports/:exportId/file')
+  @Header('Cache-Control', 'private, no-store')
+  async downloadExport(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('exportId', ParseUUIDPipe) exportId: string,
+  ): Promise<StreamableFile> {
+    return new StreamableFile(await this.exports.downloadJson(id, exportId), {
+      type: 'application/json',
+      disposition: `attachment; filename="docflow-${id}.json"`,
+    })
   }
 
   @Post(':id/reprocess')
