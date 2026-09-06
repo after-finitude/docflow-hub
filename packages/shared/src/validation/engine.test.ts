@@ -277,3 +277,18 @@ describe('other rules', () => {
     assert.equal(validateDocument([], [rule], CONTEXT).length, 0)
   })
 })
+
+it('enum fields enforce the values of their schema version', () => {
+  const value = field({
+    name: 'state',
+    valueType: 'enum',
+    normalizedValue: 'sent',
+    rawValue: 'sent',
+    enumValues: ['draft', 'approved'],
+  })
+  assert.equal(validateDocument([value], [], { today: '2026-09-06' })[0]?.ruleId, 'type:state')
+  assert.equal(
+    validateDocument([{ ...value, enumValues: ['sent'] }], [], { today: '2026-09-06' }).length,
+    0,
+  )
+})

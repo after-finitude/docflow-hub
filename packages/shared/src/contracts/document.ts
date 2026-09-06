@@ -93,6 +93,8 @@ export const documentListQuerySchema = z.object({
 export type DocumentListQuery = z.infer<typeof documentListQuerySchema>
 
 export interface DocumentDetail extends DocumentListItem {
+  schemaVersionId: string | null
+  schemaVersion: number | null
   checksum: string
   sourcePath: string | null
   processedAt: string | null

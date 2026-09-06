@@ -2,10 +2,12 @@ import { ENV, StorageService, type Env } from '@docflow/core'
 import { Module } from '@nestjs/common'
 import { EXPORT_ADAPTERS, type ExportAdapter } from './export-adapter'
 import { ExportService } from './export.service'
+import { ExportSettingsController } from './export-settings.controller'
 import { FileJsonAdapter } from './file-json.adapter'
 import { GoogleSheetsAdapter } from './google-sheets.adapter'
 
 @Module({
+  controllers: [ExportSettingsController],
   providers: [
     FileJsonAdapter,
     {

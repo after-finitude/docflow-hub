@@ -41,3 +41,10 @@ export type ExportTarget =
       row: number
       writeHeader: boolean
     }
+
+export const exportSettingsSchema = z
+  .object({
+    defaultDestination: z.enum(EXPORT_DESTINATIONS),
+  })
+  .strict()
+export type ExportSettings = z.infer<typeof exportSettingsSchema>

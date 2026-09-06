@@ -16,6 +16,7 @@ export interface ValidationField {
   normalizedValue: unknown
   isRequired: boolean
   isCritical: boolean
+  enumValues?: string[]
 }
 
 export interface ValidationContext {
@@ -276,6 +277,8 @@ function hasValidValueType(field: ValidationField): boolean {
       )
     case 'date':
       return typeof value === 'string' && normalizeDate(value) === value
+    case 'enum':
+      return typeof value === 'string' && (!field.enumValues || field.enumValues.includes(value))
     case 'currency':
       return typeof value === 'string' && /^[A-Z]{3}$/.test(value)
     default:

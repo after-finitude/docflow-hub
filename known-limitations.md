@@ -13,7 +13,7 @@ The committed evaluation report uses deterministic mock OCR and LLM providers. I
 
 ## Configuration
 
-- Export mappings are static code in `packages/core/src/export/mappings.ts`; the administrator API currently manages thresholds only.
+- Schema fields, rules, thresholds, mappings and the default export destination are managed through the administrator API; there is no settings screen. Credentials and destination addresses stay in environment configuration. Historical definitions overwritten by releases before immutable versioning cannot be reconstructed.
 - The required scope uses one fixed tenant ID and does not implement tenant isolation.
 - Login throttling is keyed by username because same-origin Next.js rewrites do not provide a trustworthy client IP.
 
@@ -21,6 +21,7 @@ The committed evaluation report uses deterministic mock OCR and LLM providers. I
 
 - Google Sheets and Google Drive require service-account credentials and have not been demonstrated by the mock evaluation. Sheets allocation/retry behavior is covered against PostgreSQL with a mocked Google API; a real Sheets verification is deferred at the user's request.
 - Export failures require an operator retry; there are intentionally no automatic export retries. The approved payload is frozen until delivery finishes.
+- A Sheets tab requires a consistent column layout across document types and schema versions. Changing the layout requires another tab; mismatches fail before writing.
 - Sheets row identity assumes managed rows are not inserted, deleted, moved, sorted, or edited manually; see `docs/runbook.md`.
 - Historical failed exports from before durable snapshots were introduced require destination reconciliation before a new export key is used; their unknown original writes cannot be safely guessed.
 - Local-folder synchronization uses full snapshots; Google Drive uses the changes cursor API.

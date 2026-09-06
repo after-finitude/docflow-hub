@@ -7,7 +7,9 @@ import {
   ValidationRunnerService,
   documents,
   fields,
-  getActiveSchema,
+  getDocumentSchema,
+  selectExtractionSchema,
+  type ActiveSchema,
   lockDocument,
   lockDocumentForEdit,
   pages,
@@ -257,7 +259,7 @@ export class DocumentsService {
 
   async findOne(id: string, db?: Database): Promise<DocumentDetail> {
     if (!db) return this.db.transaction((tx) => this.findOne(id, tx))
-    await lockDocument(db, id)
+    const document = await lockDocument(db, id)
     const [row] = await db
       .select({
         ...listColumns,
@@ -273,12 +275,9 @@ export class DocumentsService {
     if (!row) throw new NotFoundException('Document not found')
 
     const base = this.toListItem(row)
-    const schema =
-      base.documentType && base.documentType !== 'unknown'
-        ? await getActiveSchema(db, base.documentType)
-        : null
+    const schema = await getDocumentSchema(db, document)
 
-    const loadedFields = await this.loadFields(id, base.documentType, db)
+    const loadedFields = await this.loadFields(id, schema, db)
     return {
       ...base,
       checksum: row.checksum,
@@ -286,6 +285,8 @@ export class DocumentsService {
       processedAt: row.processedAt ? row.processedAt.toISOString() : null,
       pageCount: row.pageCount,
       fields: loadedFields,
+      schemaVersionId: schema?.id ?? null,
+      schemaVersion: schema?.version ?? null,
       issues: await this.loadIssues(id, db),
       thresholds: schema?.thresholds ?? null,
       exports: await this.exports.listForDocument(id, db),
@@ -293,6 +294,7 @@ export class DocumentsService {
       canApprove:
         base.status === 'needs_review' &&
         schema !== null &&
+        base.documentType === schema.documentType &&
         base.blockingIssues === 0 &&
         schema.fields
           .filter((spec) => spec.required)
@@ -529,6 +531,16 @@ export class DocumentsService {
         throw new BadRequestException('Document has not been recognized; type cannot be changed')
       }
 
+      await selectExtractionSchema(
+        db,
+        {
+          ...row,
+          documentType: type,
+          extractionSchemaVersionId: null,
+          processingRevision: row.processingRevision + 1,
+        },
+        origin.correlationId,
+      )
       await db
         .update(documents)
         // A manual selection has maximum confidence (spec 6.3).
@@ -577,7 +589,7 @@ export class DocumentsService {
 
   private async loadFields(
     documentId: string,
-    documentType: DocumentListItem['documentType'],
+    schema: ActiveSchema | null,
     db: Database,
   ): Promise<FieldDto[]> {
     const rows = await db
@@ -587,10 +599,6 @@ export class DocumentsService {
       .orderBy(fields.name)
     if (rows.length === 0) return []
 
-    // Labels and required flags come from the active schema for display, while
-    // document fields remain tied to the schema version used for extraction.
-    const schema =
-      documentType && documentType !== 'unknown' ? await getActiveSchema(db, documentType) : null
     const specs = new Map((schema?.fields ?? []).map((spec) => [spec.name, spec]))
 
     return rows.map((row) => ({
@@ -705,7 +713,8 @@ export class DocumentsService {
         action: 'document.reprocess',
         objectType: 'document',
         objectId: id,
-        before: { status: row.status },
+        before: { status: row.status, schemaVersionId: row.schemaVersionId },
+        after: { schemaSelection: 'active_in_new_run' },
         result: 'success',
         ip: origin.ip,
         userAgent: origin.userAgent,
@@ -734,6 +743,7 @@ export class DocumentsService {
         statusReason: null,
         processingRevision: revision,
         processingStep: 'preprocess',
+        extractionSchemaVersionId: null,
       })
       .where(eq(documents.id, documentId))
 

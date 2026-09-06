@@ -1,8 +1,8 @@
 import type { ClassifiableDocumentType, ExportMapping } from '@docflow/shared'
 
 /**
- * Map internal fields to destination columns (spec 6.8). Configuration defines
- * it, and column order matters for tabular adapters.
+ * Seed defaults for versioned export mappings (spec 6.8). Runtime exports use
+ * the mapping on the document result schema; column order matters for Sheets.
  *
  * The file adapter does not use a mapping; it exports canonical JSON unchanged.
  */

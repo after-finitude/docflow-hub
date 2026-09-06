@@ -156,6 +156,8 @@ function database(previous = []) {
         {
           id: 'doc',
           documentType: 'invoice',
+          schemaVersionId: 'schema',
+          extractionSchemaVersionId: 'schema',
           status: 'processing',
           processingRevision: 0,
           processingStep: 'extraction',
@@ -172,6 +174,8 @@ function database(previous = []) {
           version: 1,
           jsonSchema: { fields: input.fields, rules: SEED_RULES.invoice },
           thresholds: DEFAULT_THRESHOLDS,
+          exportMapping: [],
+          isActive: true,
         },
       ],
     ],
@@ -187,6 +191,18 @@ function database(previous = []) {
     failValidation: false,
     transactions: 0,
     rows,
+    selectDistinct() {
+      return {
+        from: () => ({
+          where: () =>
+            Promise.resolve(
+              rows(fields).some((f) => f.schemaVersionId)
+                ? [{ id: rows(fields).find((f) => f.schemaVersionId).schemaVersionId }]
+                : [],
+            ),
+        }),
+      }
+    },
     select(selection) {
       return {
         from(table) {

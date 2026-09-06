@@ -9,7 +9,7 @@ import {
   failRun,
   fields,
   finishRun,
-  getActiveSchema,
+  selectExtractionSchema,
   pages,
   queueConcurrency,
   recordDeadLetter,
@@ -74,10 +74,11 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
         throw new UnrecoverableError('Cannot extract fields without a known document type')
       }
 
-      const schema = await getActiveSchema(this.db, document.documentType)
-      if (!schema) {
-        throw new UnrecoverableError(`No active schema for type ${document.documentType}`)
-      }
+      const schema = await this.db.transaction(async (tx) => {
+        const current = await lockPipelineDocument(tx, job.data, 'extraction')
+        return current ? selectExtractionSchema(tx, current, correlationId) : null
+      })
+      if (!schema) return
 
       const pageRows = await this.db
         .select({
@@ -154,10 +155,24 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
 
         await tx.delete(fields).where(eq(fields.documentId, documentId))
         if (rows.length) await tx.insert(fields).values(rows)
+        await writeAudit(tx, {
+          correlationId,
+          actorType: 'system',
+          action: 'document.schema_applied',
+          objectType: 'document',
+          objectId: documentId,
+          before: { schemaId: document.schemaVersionId ?? null },
+          after: {
+            schemaId: schema.id,
+            schemaVersion: schema.version,
+            processingRevision: document.processingRevision,
+          },
+          result: 'success',
+        })
         await finishRun(tx, runId)
         await tx
           .update(documents)
-          .set({ processingStep: 'validation' })
+          .set({ processingStep: 'validation', schemaVersionId: schema.id })
           .where(eq(documents.id, documentId))
         await this.validateQueue.add('validate', job.data)
         await this.publish(documentId, 'processing', 'succeeded')

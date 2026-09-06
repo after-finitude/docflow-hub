@@ -1,6 +1,8 @@
 import 'reflect-metadata'
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readFile, mkdtemp, cp, writeFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { MockOcrProvider } from '../apps/worker/dist/ocr/mock-ocr.provider.js'
 import { randomUUID } from 'node:crypto'
 import { test } from 'node:test'
@@ -9,10 +11,18 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { eq } from 'drizzle-orm'
 import { Module } from '@nestjs/common'
-import { NestFactory } from '@nestjs/core'
+import { NestFactory, Reflector } from '@nestjs/core'
+import { RolesGuard } from '../apps/api/dist/auth/roles.guard.js'
+import { SchemasController } from '../apps/api/dist/schemas/schemas.controller.js'
+import { ExportSettingsController } from '../apps/api/dist/export/export-settings.controller.js'
 import {
   ENV,
-  EXPORT_MAPPINGS,
+  DB,
+  auditEvents,
+  getActiveSchema,
+  seedSchemas,
+  SEED_SCHEMAS,
+  loadEnv,
   DEFAULT_THRESHOLDS,
   documents,
   documentSchemas,
@@ -50,6 +60,13 @@ const rules = [
   { id: 'positive', field: 'total', type: 'number_range', min: 0, severity: 'blocking' },
 ]
 
+const configuration = (dto) => ({
+  fields: dto.fields,
+  rules: dto.rules,
+  thresholds: dto.thresholds,
+  exportMapping: dto.exportMapping,
+})
+
 test(
   'API validation and concurrent decisions on PostgreSQL',
   { skip: !adminUrl, timeout: 60000 },
@@ -82,6 +99,7 @@ test(
         isActive: true,
         jsonSchema: { fields: specs, rules },
         thresholds: { ...DEFAULT_THRESHOLDS, criticalFieldConfidence: 0.1 },
+        exportMapping: [{ column: 'Name', source: 'field:name' }],
       })
       .returning()
     const events = { async publish() {} }
@@ -106,14 +124,22 @@ test(
         send: (...args) => send(...args),
       },
     ]
-    const exports = new ExportService(db, adapters, events, {}, validation, pool)
+    const exports = new ExportService(db, adapters, events, {}, validation, pool, {
+      EXPORT_DEFAULT_DESTINATION: 'file_json',
+    })
     const service = new DocumentsService(db, {}, events, validation, {}, exports, queue, queue)
     const runs = new RunsService(db, events, queue, queue, queue, queue, queue, validation)
     // eslint-disable-next-line typescript/no-extraneous-class -- Nest module metadata.
     class TestModule {}
     Module({
-      controllers: [DocumentsController, RunsController],
+      controllers: [
+        DocumentsController,
+        RunsController,
+        SchemasController,
+        ExportSettingsController,
+      ],
       providers: [
+        { provide: DB, useValue: db },
         { provide: DocumentsService, useValue: service },
         { provide: RunsService, useValue: runs },
         { provide: PageRenderService, useValue: {} },
@@ -123,9 +149,10 @@ test(
     })(TestModule)
     const app = await NestFactory.create(TestModule, { logger: false })
     app.use((req, _res, next) => {
-      req.user = user
+      req.user = req.headers['x-test-role'] === 'admin' ? { ...user, role: 'admin' } : user
       next()
     })
+    app.useGlobalGuards(new RolesGuard(app.get(Reflector)))
     await app.listen(0, '127.0.0.1')
     t.after(() => app.close())
     const base = await app.getUrl()
@@ -159,6 +186,7 @@ test(
           documentType: 'contract',
           status,
           processingStep: step,
+          schemaVersionId: schema.id,
         })
         .returning()
       for (const spec of specs) {
@@ -639,8 +667,12 @@ test(
           ['type', { type: 'invoice' }, 'POST'],
         ])
           assert.equal((await request(id, action, body, method)).status, 409)
-        const oldMapping = EXPORT_MAPPINGS.contract
-        EXPORT_MAPPINGS.contract = [{ column: 'changed after failure', source: 'field:name' }]
+        // An out-of-band mapping change must not alter an already saved export.
+        const oldMapping = schema.exportMapping
+        await db
+          .update(documentSchemas)
+          .set({ exportMapping: [{ column: 'changed after failure', source: 'field:name' }] })
+          .where(eq(documentSchemas.id, schema.id))
         try {
           const retried = await request(id, 'export', { exportKey: 'saved-json' })
           assert.equal(retried.body.status, 'succeeded')
@@ -664,7 +696,10 @@ test(
           assert.notEqual(run.correlationId, failedRun.correlationId)
           assert.equal(run.errorCode, null)
         } finally {
-          EXPORT_MAPPINGS.contract = oldMapping
+          await db
+            .update(documentSchemas)
+            .set({ exportMapping: oldMapping })
+            .where(eq(documentSchemas.id, schema.id))
         }
       },
     )
@@ -749,8 +784,12 @@ test(
           results.every((r) => r.body.status === 'succeeded'),
           JSON.stringify(results),
         )
-        const oldMapping = EXPORT_MAPPINGS.contract
-        EXPORT_MAPPINGS.contract = [{ column: 'new mapping', source: 'field:name' }]
+        // An out-of-band mapping change must not alter an already saved export.
+        const oldMapping = schema.exportMapping
+        await db
+          .update(documentSchemas)
+          .set({ exportMapping: [{ column: 'new mapping', source: 'field:name' }] })
+          .where(eq(documentSchemas.id, schema.id))
         options.spreadsheetId = 'changed-config'
         options.sheetName = 'renamed-config'
         model.title = 'Renamed tab'
@@ -774,7 +813,10 @@ test(
           )
           assert.equal(model.reserveReads, 4, 'retry must not discover or allocate another row')
         } finally {
-          EXPORT_MAPPINGS.contract = oldMapping
+          await db
+            .update(documentSchemas)
+            .set({ exportMapping: oldMapping })
+            .where(eq(documentSchemas.id, schema.id))
         }
       },
     )
@@ -862,6 +904,502 @@ test(
           ).status,
           409,
         )
+      },
+    )
+    await t.test(
+      'Sheets rejects changed column layouts before writing, including pending header reservations',
+      async (subtest) => {
+        const model = mockSheets()
+        model.spreadsheetId = 'layout-test'
+        const adapter = new GoogleSheetsAdapter({
+          keyFile: 'unused',
+          spreadsheetId: model.spreadsheetId,
+          sheetName: "O'Brien",
+        })
+        subtest.mock.method(adapter, 'client', async () => model.client)
+        adapters[1] = adapter
+        model.rows.set(0, ['Different header'])
+        const mismatched = await request(await doc('approved'), 'export', {
+          destination: 'google_sheets',
+        })
+        assert.equal(mismatched.body.status, 'failed')
+        assert.equal(mismatched.body.errorCode, 'sheets_mapping_mismatch')
+        assert.equal(model.writes.length, 0)
+        model.rows.clear()
+        model.beforeWrite = async () => {
+          throw new Error('not written yet')
+        }
+        const pendingHeader = await request(await doc('approved'), 'export', {
+          destination: 'google_sheets',
+        })
+        assert.equal(pendingHeader.body.status, 'failed')
+        const [reserved] = await db
+          .select()
+          .from(documentExports)
+          .where(eq(documentExports.id, pendingHeader.body.id))
+        assert.equal(reserved.target.row, 2)
+        await db
+          .update(documentSchemas)
+          .set({ exportMapping: [{ column: 'New layout', source: 'field:name' }] })
+          .where(eq(documentSchemas.id, schema.id))
+        try {
+          const conflict = await request(await doc('approved'), 'export', {
+            destination: 'google_sheets',
+          })
+          assert.equal(conflict.body.errorCode, 'sheets_mapping_mismatch')
+          assert.equal(model.writes.length, 0)
+        } finally {
+          await db
+            .update(documentSchemas)
+            .set({ exportMapping: schema.exportMapping })
+            .where(eq(documentSchemas.id, schema.id))
+        }
+      },
+    )
+
+    async function configRequest(path, body, role = 'admin', method = 'PUT') {
+      const response = await fetch(`${base}/${path}`, {
+        method,
+        headers: { 'content-type': 'application/json', 'x-test-role': role },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      })
+      return { status: response.status, body: await response.json() }
+    }
+    const versions = async (type = 'contract') =>
+      (await configRequest(`schemas/${type}/versions`, undefined, 'admin', 'GET')).body
+
+    await t.test(
+      'configuration mutations enforce the real RolesGuard and reject invalid definitions',
+      async () => {
+        const original = configuration(await getActiveSchema(db, 'contract'))
+        for (const [path, body] of [
+          ['schemas/contract', original],
+          ['schemas/contract/thresholds', original.thresholds],
+          ['settings/export', { defaultDestination: 'file_json' }],
+        ])
+          assert.equal((await configRequest(path, body, 'operator')).status, 403)
+        assert.equal(
+          (await configRequest('settings/export', undefined, 'operator', 'GET')).status,
+          403,
+        )
+        assert.equal(
+          (await configRequest('settings/export', undefined, 'admin', 'GET')).status,
+          200,
+        )
+        const invalid = [
+          { fields: [...original.fields, original.fields[0]] },
+          {
+            rules: [
+              { id: 'missing', type: 'regex', field: 'absent', pattern: '.', severity: 'blocking' },
+            ],
+          },
+          {
+            rules: [
+              { id: 'bad_regex', type: 'regex', field: 'name', pattern: '[', severity: 'blocking' },
+            ],
+          },
+          {
+            rules: [
+              { id: 'type:name', type: 'regex', field: 'name', pattern: '.', severity: 'blocking' },
+            ],
+          },
+          { rules: [original.rules[0], original.rules[0]] },
+          { rules: [{ ...original.rules[0], min: 20, max: 10 }] },
+          { rules: [{ ...original.rules[0], field: 'name' }] },
+          { exportMapping: [{ column: 'Bad', source: 'meta:unsupported' }] },
+          { exportMapping: [{ column: 'Bad', source: 'field:absent' }] },
+          { exportMapping: [...original.exportMapping, original.exportMapping[0]] },
+          { fields: [{ ...original.fields[0], type: 'enum', enumValues: [] }] },
+        ]
+        for (const patch of invalid) {
+          const response = await configRequest('schemas/contract', { ...original, ...patch })
+          assert.equal(response.status, 400, JSON.stringify(response))
+        }
+        assert.equal((await versions()).length, 1)
+      },
+    )
+
+    await t.test(
+      'old results retain labels, thresholds, validation and export mapping after configuration changes',
+      async () => {
+        adapters[0] = {
+          destination: 'file_json',
+          async reserve(_db, id) {
+            return { kind: 'file_json', objectKey: `exports/${id}.json` }
+          },
+          async send() {
+            return 'exports/versioned.json'
+          },
+        }
+        const id = await doc('approved')
+        // Simulate an old record whose fields predate the document-level binding.
+        await db.update(documents).set({ schemaVersionId: null }).where(eq(documents.id, id))
+        const config = configuration(await getActiveSchema(db, 'contract'))
+        config.fields[0].label = 'Name v2'
+        config.fields.push({
+          name: 'note',
+          label: 'Note v2',
+          type: 'string',
+          required: false,
+          critical: false,
+        })
+        config.rules[0].min = 20
+        config.thresholds.fieldConfidence = 0.99
+        config.exportMapping = [{ column: 'Version two name', source: 'field:name' }]
+        const updated = await configRequest('schemas/contract', config)
+        assert.equal(updated.status, 200)
+        assert.equal(updated.body.version, 2)
+        assert.equal((await validation.run(id, { route: false })).decision.blockingCount, 0)
+        const detail = await read(id)
+        assert.equal(detail.schemaVersion, 1)
+        assert.equal(detail.fields[0].label, 'Name')
+        assert.equal(detail.fields.length, 2)
+        assert.equal(detail.thresholds.fieldConfidence, schema.thresholds.fieldConfidence)
+        const exported = await request(id, 'export', {})
+        assert.equal(exported.body.status, 'succeeded', JSON.stringify(exported))
+        const [record] = await db
+          .select()
+          .from(documentExports)
+          .where(eq(documentExports.id, exported.body.id))
+        assert.equal(record.canonicalPayload.schemaVersion, 1)
+        assert.deepEqual(record.mappingSnapshot, schema.exportMapping)
+        const [decision] = await pool
+          .query(
+            "select after from audit_events where object_id=$1 and action='document.validated' order by created_at desc limit 1",
+            [id],
+          )
+          .then((r) => r.rows)
+        assert.equal(decision.after.schemaVersion, 1)
+        assert.equal(decision.after.schemaId, schema.id)
+      },
+    )
+
+    await t.test(
+      'in-flight extraction pins its version and successful replacement adopts it atomically',
+      async () => {
+        const id = await doc('processing', {}, 'extraction')
+        await db.update(documents).set({ schemaVersionId: null }).where(eq(documents.id, id))
+        const entered = deferred(),
+          release = deferred()
+        const processor = new ExtractProcessor(
+          db,
+          {},
+          {
+            external: false,
+            async extract(input) {
+              entered.resolve(input)
+              await release.promise
+              return {
+                fields: input.fields.map((spec) => ({
+                  name: spec.name,
+                  value: spec.name === 'total' ? '30' : spec.name === 'name' ? 'New result' : null,
+                  evidence: null,
+                })),
+              }
+            },
+          },
+          events,
+          queue,
+          validation,
+        )
+        const work = processor.process({
+          data: { documentId: id, correlationId: randomUUID(), revision: 0 },
+          opts: { attempts: 1 },
+          attemptsMade: 0,
+        })
+        const input = await Promise.race([
+          entered.promise,
+          work.then(() => assert.fail('provider was not called')),
+        ])
+        assert.equal(input.fields[0].label, 'Name v2')
+        const config = configuration(await getActiveSchema(db, 'contract'))
+        config.fields[0].label = 'Name v3'
+        config.rules[0].min = 100
+        const next = await configRequest('schemas/contract', config)
+        assert.equal(next.status, 200)
+        release.resolve()
+        await work
+        assert.equal((await read(id)).schemaVersion, 2)
+        assert.equal((await read(id)).fields[0].label, 'Name v2')
+        assert.equal((await validation.run(id, { route: false })).decision.blockingCount, 0)
+        const resultVersion = (await row(id)).schemaVersionId
+        assert.ok(
+          (await db.select().from(fields).where(eq(fields.documentId, id))).every(
+            (f) => f.schemaVersionId === resultVersion,
+          ),
+        )
+        const audits = await db.select().from(auditEvents).where(eq(auditEvents.objectId, id))
+        assert.ok(
+          audits.some(
+            (a) => a.action === 'document.schema_selected' && a.after.schemaVersion === 2,
+          ),
+        )
+        assert.ok(
+          audits.some((a) => a.action === 'document.schema_applied' && a.after.schemaVersion === 2),
+        )
+      },
+    )
+
+    await t.test(
+      'explicit reprocessing selects a new version; provider retries and failed replacements preserve bindings',
+      async () => {
+        const id = await doc('needs_review')
+        await db.insert(pages).values({ documentId: id, pageNumber: 1, ocrText: 'test' })
+        const previous = (await read(id)).fields
+        assert.equal((await request(id, 'type', { type: 'contract' })).status, 201)
+        const job = {
+          data: {
+            documentId: id,
+            correlationId: randomUUID(),
+            revision: (await row(id)).processingRevision,
+          },
+          opts: { attempts: 2 },
+          attemptsMade: 0,
+        }
+        const inputs = []
+        let error = new Error('temporary provider failure')
+        const processor = new ExtractProcessor(
+          db,
+          {},
+          {
+            external: false,
+            async extract(input) {
+              inputs.push(input)
+              throw error
+            },
+          },
+          events,
+          queue,
+          validation,
+        )
+        await assert.rejects(processor.process(job), /temporary provider failure/)
+        const config = configuration(await getActiveSchema(db, 'contract'))
+        config.fields[0].label = 'Name v4'
+        assert.equal((await configRequest('schemas/contract', config)).status, 200)
+        error = new LlmInvalidResponseError('repair exhausted')
+        await processor.process({ ...job, attemptsMade: 1 })
+        assert.deepEqual(
+          inputs.map((input) => input.fields[0].label),
+          ['Name v3', 'Name v3'],
+        )
+        const failed = await read(id)
+        assert.equal(failed.status, 'needs_review')
+        assert.equal(failed.schemaVersion, 1)
+        assert.deepEqual(
+          failed.fields.map((f) => [f.name, f.rawValue, f.label]),
+          previous.map((f) => [f.name, f.rawValue, f.label]),
+        )
+        assert.equal((await request(id, 'reprocess')).status, 201)
+        assert.equal((await row(id)).extractionSchemaVersionId, null)
+        assert.equal((await row(id)).schemaVersionId, schema.id)
+        const audits = await db.select().from(auditEvents).where(eq(auditEvents.objectId, id))
+        assert.ok(
+          audits.some(
+            (a) => a.action === 'document.reprocess' && a.before.schemaVersionId === schema.id,
+          ),
+        )
+      },
+    )
+
+    await t.test(
+      'concurrent schema updates keep one active version and roll back if audit fails',
+      async () => {
+        const before = await versions()
+        const changes = await Promise.all(
+          [0.61, 0.62, 0.63].map((fieldConfidence) =>
+            configRequest('schemas/contract/thresholds', {
+              ...DEFAULT_THRESHOLDS,
+              fieldConfidence,
+            }),
+          ),
+        )
+        assert.ok(
+          changes.every((result) => result.status === 200),
+          JSON.stringify(changes),
+        )
+        assert.equal(new Set(changes.map((result) => result.body.version)).size, 3)
+        const after = await versions()
+        assert.equal(after.length, before.length + 3)
+        assert.equal(after.filter((version) => version.isActive).length, 1)
+        await assert.rejects(
+          db.insert(documentSchemas).values({
+            documentType: 'contract',
+            version: 999,
+            jsonSchema: schema.jsonSchema,
+            thresholds: schema.thresholds,
+            isActive: true,
+          }),
+          (error) => error.cause?.code === '23505',
+        )
+        await pool.query(
+          "CREATE FUNCTION reject_config_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action = 'schema.updated' THEN RAISE EXCEPTION 'audit unavailable'; END IF; RETURN NEW; END $$",
+        )
+        await pool.query(
+          'CREATE TRIGGER reject_config_audit BEFORE INSERT ON audit_events FOR EACH ROW EXECUTE FUNCTION reject_config_audit()',
+        )
+        try {
+          const response = await configRequest('schemas/contract', configuration(after[0]))
+          assert.equal(response.status, 500)
+          assert.deepEqual(await versions(), after)
+        } finally {
+          await pool.query('DROP TRIGGER reject_config_audit ON audit_events')
+          await pool.query('DROP FUNCTION reject_config_audit()')
+        }
+        const audits = await db
+          .select()
+          .from(auditEvents)
+          .where(eq(auditEvents.action, 'schema.thresholds_updated'))
+        assert.equal(audits.length, 3)
+      },
+    )
+
+    await t.test(
+      'default destination settings are audited, validated, and do not redirect saved retries',
+      async () => {
+        const existing = adapters[1]
+        adapters.splice(1)
+        assert.equal(
+          (await configRequest('settings/export', { defaultDestination: 'google_sheets' })).status,
+          400,
+        )
+        assert.equal(
+          (await configRequest('settings/export', { defaultDestination: 'unsupported' })).status,
+          400,
+        )
+        let lose = true
+        adapters[1] = {
+          destination: 'google_sheets',
+          async reserve() {
+            return {
+              kind: 'google_sheets',
+              spreadsheetId: 'mock',
+              sheetId: 42,
+              row: 2,
+              writeHeader: false,
+            }
+          },
+          async send() {
+            if (lose) {
+              lose = false
+              throw new Error('response lost')
+            }
+            return 'sheets/mock'
+          },
+        }
+        try {
+          // The environment default applies before a database override is created.
+          const configured = new ExportService(db, adapters, events, {}, validation, pool, {
+            EXPORT_DEFAULT_DESTINATION: 'google_sheets',
+          })
+          const id = await doc('approved')
+          const first = await configured.export(id, { exportKey: 'default-sheets' }, user, {})
+          assert.equal(first.destination, 'google_sheets')
+          assert.equal(first.status, 'failed')
+          assert.equal(
+            (await configRequest('settings/export', { defaultDestination: 'file_json' })).status,
+            200,
+          )
+          const retry = await request(id, 'export', { exportKey: 'default-sheets' })
+          assert.equal(retry.body.id, first.id)
+          assert.equal(retry.body.destination, 'google_sheets')
+          assert.equal(retry.body.status, 'succeeded')
+          assert.equal(
+            (await configRequest('settings/export', { defaultDestination: 'google_sheets' }))
+              .status,
+            200,
+          )
+          assert.equal(
+            (await request(await doc('approved'), 'export', {})).body.destination,
+            'google_sheets',
+          )
+          assert.equal(
+            (await request(await doc('approved'), 'export', { destination: 'file_json' })).body
+              .destination,
+            'file_json',
+          )
+          const audited = await db
+            .select()
+            .from(auditEvents)
+            .where(eq(auditEvents.action, 'export.settings_updated'))
+          assert.equal(audited.length, 2)
+        } finally {
+          adapters[1] = existing
+        }
+        const env = {
+          POSTGRES_HOST: 'localhost',
+          POSTGRES_DB: 'test',
+          POSTGRES_USER: 'test',
+          POSTGRES_PASSWORD: 'test',
+          APP_DB_PASSWORD: 'test',
+          REDIS_HOST: 'localhost',
+          REDIS_PORT: '6379',
+          MINIO_ENDPOINT: 'localhost',
+          MINIO_PORT: '9000',
+          MINIO_ROOT_USER: 'test',
+          MINIO_ROOT_PASSWORD: 'test',
+          MINIO_BUCKET: 'test',
+          JWT_SECRET: 'x'.repeat(32),
+        }
+        for (const patch of [
+          { GOOGLE_SHEETS_KEY_FILE: 'key.json' },
+          { GOOGLE_SHEETS_SPREADSHEET_ID: 'id' },
+          { GOOGLE_SHEETS_SHEET_NAME: ' ' },
+          { GOOGLE_SHEETS_KEY_FILE: ' ' },
+          { GOOGLE_SHEETS_SPREADSHEET_ID: 'https://bad' },
+          { EXPORT_DEFAULT_DESTINATION: 'google_sheets' },
+        ])
+          assert.throws(() => loadEnv({ ...env, ...patch }))
+        assert.equal(
+          loadEnv({
+            ...env,
+            GOOGLE_SHEETS_KEY_FILE: 'key.json',
+            GOOGLE_SHEETS_SPREADSHEET_ID: 'valid_id',
+            EXPORT_DEFAULT_DESTINATION: 'google_sheets',
+          }).EXPORT_DEFAULT_DESTINATION,
+          'google_sheets',
+        )
+      },
+    )
+
+    await t.test(
+      'seed is idempotent, preserves history and administrator changes, and versions changed seed definitions',
+      async () => {
+        const originalHistory = await versions()
+        await seedSchemas(db)
+        const snapshot = await db.select().from(documentSchemas)
+        await Promise.all([seedSchemas(db), seedSchemas(db)])
+        assert.deepEqual(await db.select().from(documentSchemas), snapshot)
+        for (const historical of originalHistory) {
+          const saved = (await versions()).find((version) => version.id === historical.id)
+          assert.deepEqual({ ...saved, isActive: historical.isActive }, historical)
+        }
+        const original = await getActiveSchema(db, 'invoice')
+        const originalLabel = SEED_SCHEMAS.invoice[0].label
+        try {
+          SEED_SCHEMAS.invoice[0].label = 'Changed seed label'
+          await seedSchemas(db)
+          const changed = await getActiveSchema(db, 'invoice')
+          assert.equal(changed.version, original.version + 1)
+          assert.equal(changed.fields[0].label, 'Changed seed label')
+          assert.deepEqual(
+            {
+              ...(await versions('invoice')).find((version) => version.id === original.id),
+              isActive: true,
+            },
+            original,
+          )
+          const config = configuration(changed)
+          config.fields[0].label = 'Administrator label'
+          const customized = await configRequest('schemas/invoice', config)
+          assert.equal(customized.status, 200)
+          await seedSchemas(db)
+          assert.equal((await getActiveSchema(db, 'invoice')).id, customized.body.id)
+          SEED_SCHEMAS.invoice[0].label = originalLabel
+          await seedSchemas(db)
+          assert.equal((await getActiveSchema(db, 'invoice')).version, customized.body.version + 1)
+        } finally {
+          SEED_SCHEMAS.invoice[0].label = originalLabel
+        }
       },
     )
   },
@@ -954,3 +1492,77 @@ function mockSheets() {
   }
   return model
 }
+
+test(
+  'schema migration preserves historical definitions and backfills result bindings',
+  { skip: !adminUrl, timeout: 30000 },
+  async (t) => {
+    const admin = new Pool({ connectionString: adminUrl })
+    const name = `docflow_migration_${randomUUID().replaceAll('-', '')}`
+    await admin.query(`CREATE DATABASE "${name}"`)
+    const url = new URL(adminUrl)
+    url.pathname = `/${name}`
+    const pool = new Pool({ connectionString: url.href })
+    const folder = await mkdtemp(join(tmpdir(), 'docflow-migration-'))
+    t.after(async () => {
+      await pool.end()
+      await admin.query(`DROP DATABASE "${name}"`)
+      await admin.end()
+      await rm(folder, { recursive: true, force: true })
+    })
+    await admin.query(
+      "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'docflow_app') THEN CREATE ROLE docflow_app; END IF; END $$",
+    )
+    await cp('packages/core/drizzle', folder, { recursive: true })
+    const journalPath = join(folder, 'meta/_journal.json')
+    const journal = JSON.parse(await readFile(journalPath, 'utf8'))
+    journal.entries = journal.entries.filter((entry) => entry.idx < 9)
+    await writeFile(journalPath, JSON.stringify(journal))
+    const db = drizzle(pool)
+    await migrate(db, { migrationsFolder: folder })
+    const first = randomUUID(),
+      second = randomUUID()
+    for (const [id, version] of [
+      [first, 1],
+      [second, 2],
+    ])
+      await pool.query(
+        "insert into document_schemas (id, document_type, version, json_schema, thresholds) values ($1, 'contract', $2, $3, $4)",
+        [id, version, JSON.stringify({ fields: specs, rules }), JSON.stringify(DEFAULT_THRESHOLDS)],
+      )
+    const old = randomUUID(),
+      empty = randomUUID()
+    for (const id of [old, empty])
+      await pool.query(
+        "insert into documents (id, tenant_id, source_type, original_filename, mime_type, size_bytes, checksum, storage_key, document_type, status) values ($1, $2, 'upload', 'old.pdf', 'application/pdf', 1, 'test', 'test', 'contract', 'needs_review')",
+        [id, randomUUID()],
+      )
+    await pool.query(
+      "insert into fields (document_id, schema_version_id, name, value_type) values ($1, $2, 'name', 'string')",
+      [old, first],
+    )
+    await pool.query(
+      "insert into audit_events (actor_type, action, object_type, object_id, after, result) values ('system', 'document.routed', 'document', $1, $2, 'success')",
+      [empty, JSON.stringify({ schemaId: first })],
+    )
+    await migrate(db, { migrationsFolder: 'packages/core/drizzle' })
+    const versions = await db.select().from(documentSchemas)
+    assert.ok(
+      versions.every(
+        (version) => JSON.stringify(version.jsonSchema) === JSON.stringify(versions[0].jsonSchema),
+      ),
+    )
+    assert.deepEqual(versions[0].jsonSchema, { fields: specs, rules })
+    assert.equal(versions.filter((version) => version.isActive).length, 1)
+    assert.equal(versions.find((version) => version.isActive).id, second)
+    assert.ok(versions.every((version) => version.exportMapping.length > 0))
+    assert.ok(
+      (await db.select().from(documents)).every((document) => document.schemaVersionId === first),
+    )
+    await pool.query('set role docflow_app')
+    await pool.query(
+      "insert into export_settings (key, default_destination) values ('export', 'file_json')",
+    )
+    await pool.query('reset role')
+  },
+)

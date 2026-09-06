@@ -78,9 +78,12 @@ const envSchema = z.object({
   // ─── Export (spec 6.8) ────────────────────────────────────────────────────
   EXPORT_DEFAULT_DESTINATION: z.enum(['file_json', 'google_sheets']).default('file_json'),
   // Service-account key, required for Google Sheets export.
-  GOOGLE_SHEETS_KEY_FILE: z.string().optional(),
-  GOOGLE_SHEETS_SPREADSHEET_ID: z.string().optional(),
-  GOOGLE_SHEETS_SHEET_NAME: z.string().default('Documents'),
+  GOOGLE_SHEETS_KEY_FILE: z.string().trim().min(1).optional(),
+  GOOGLE_SHEETS_SPREADSHEET_ID: z
+    .string()
+    .regex(/^[a-zA-Z0-9_-]+$/)
+    .optional(),
+  GOOGLE_SHEETS_SHEET_NAME: z.string().trim().min(1).max(100).default('Documents'),
 
   // ─── Secondary source (spec 6.1, 6.9) ─────────────────────────────────────
   // none enables UI upload only; local_folder scans a full watched-folder
@@ -140,7 +143,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     )
   }
   if (
-    env.EXPORT_DEFAULT_DESTINATION === 'google_sheets' &&
+    (env.EXPORT_DEFAULT_DESTINATION === 'google_sheets' ||
+      env.GOOGLE_SHEETS_KEY_FILE ||
+      env.GOOGLE_SHEETS_SPREADSHEET_ID) &&
     (!env.GOOGLE_SHEETS_KEY_FILE || !env.GOOGLE_SHEETS_SPREADSHEET_ID)
   ) {
     throw new Error(

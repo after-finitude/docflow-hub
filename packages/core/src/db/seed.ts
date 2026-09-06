@@ -1,12 +1,10 @@
-import { CLASSIFIABLE_DOCUMENT_TYPES } from '@docflow/shared'
-import { and, eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import { hashPassword } from '../auth/password'
 import { loadEnv } from '../config/env'
-import { documentSchemas, users } from './schema'
-import { SEED_RULES } from './seed-rules'
-import { DEFAULT_THRESHOLDS, SEED_SCHEMAS } from './seed-schemas'
+import * as schema from './schema'
+import { users } from './schema'
+import { seedSchemas } from './schemas'
 
 /**
  * Seed the required two users (spec 3.1) and four document-type schemas (spec 6.4).
@@ -14,7 +12,7 @@ import { DEFAULT_THRESHOLDS, SEED_SCHEMAS } from './seed-schemas'
 async function main(): Promise<void> {
   const env = loadEnv()
   const pool = new Pool({ connectionString: env.MIGRATION_DATABASE_URL })
-  const db = drizzle(pool)
+  const db = drizzle(pool, { schema })
 
   try {
     const seedUsers = [
@@ -45,33 +43,7 @@ async function main(): Promise<void> {
       console.log(`User ${saved.login} (${saved.role}) updated`)
     }
 
-    // Keep every persisted schema version in the current language without
-    // overwriting thresholds managed by an administrator through the API.
-    for (const documentType of CLASSIFIABLE_DOCUMENT_TYPES) {
-      const jsonSchema = { fields: SEED_SCHEMAS[documentType], rules: SEED_RULES[documentType] }
-      const [existing] = await db
-        .select({ id: documentSchemas.id })
-        .from(documentSchemas)
-        .where(and(eq(documentSchemas.documentType, documentType), eq(documentSchemas.version, 1)))
-        .limit(1)
-
-      if (existing) {
-        await db
-          .update(documentSchemas)
-          .set({ jsonSchema })
-          .where(eq(documentSchemas.documentType, documentType))
-        console.log(`Schemas for ${documentType} updated`)
-      } else {
-        await db.insert(documentSchemas).values({
-          documentType,
-          version: 1,
-          jsonSchema,
-          thresholds: DEFAULT_THRESHOLDS,
-          isActive: true,
-        })
-        console.log(`Schema ${documentType} v1 created`)
-      }
-    }
+    await seedSchemas(db)
   } finally {
     await pool.end()
   }

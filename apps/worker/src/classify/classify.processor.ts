@@ -8,6 +8,7 @@ import {
   failRun,
   finishRun,
   getActiveSchema,
+  selectExtractionSchema,
   pages,
   queueConcurrency,
   recordDeadLetter,
@@ -96,7 +97,8 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
       const result = await this.llm.classify({ pagesText })
 
       await this.db.transaction(async (db) => {
-        if (!(await lockPipelineDocument(db, job.data, 'classification'))) return
+        const document = await lockPipelineDocument(db, job.data, 'classification')
+        if (!document) return
         if (this.llm.external) {
           // Spec §11: record which pages were sent to an external provider.
           await writeAudit(db, {
@@ -115,13 +117,28 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
         }
 
         // The threshold is configured separately for each type (spec 6.3).
-        let resolvedType: typeof result.document_type | 'unknown' = 'unknown'
-        if (result.document_type) {
-          const schema = await getActiveSchema(db, result.document_type)
-          if (schema && result.confidence >= schema.thresholds.autoClassify) {
-            resolvedType = result.document_type
-          }
-        }
+        const schema = result.document_type ? await getActiveSchema(db, result.document_type) : null
+        const resolvedType =
+          schema && result.confidence >= schema.thresholds.autoClassify
+            ? result.document_type!
+            : 'unknown'
+        if (schema && resolvedType !== 'unknown')
+          await selectExtractionSchema(db, document, correlationId, schema)
+        await writeAudit(db, {
+          correlationId,
+          actorType: 'system',
+          action: 'document.classified',
+          objectType: 'document',
+          objectId: documentId,
+          after: {
+            documentType: resolvedType,
+            confidence: result.confidence,
+            schemaId: schema?.id ?? null,
+            schemaVersion: schema?.version ?? null,
+            autoClassifyThreshold: schema?.thresholds.autoClassify ?? null,
+          },
+          result: 'success',
+        })
 
         await this.syncMultiDocumentWarning(db, documentId, result.multi_document_suspected)
 

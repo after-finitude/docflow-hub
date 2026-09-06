@@ -89,6 +89,12 @@ export const documents = pgTable(
     thumbnailKey: text('thumbnail_key'),
 
     documentType: documentTypeEnum('document_type'),
+    schemaVersionId: uuid('schema_version_id').references((): AnyPgColumn => documentSchemas.id),
+    // Pinned for the current extraction, including provider retries. Results keep
+    // their previous version until the replacement extraction commits.
+    extractionSchemaVersionId: uuid('extraction_schema_version_id').references(
+      (): AnyPgColumn => documentSchemas.id,
+    ),
     typeConfidence: real('type_confidence'),
     pageCount: integer('page_count'),
 
@@ -166,10 +172,17 @@ export const documentSchemas = pgTable(
     jsonSchema: jsonb('json_schema').notNull(),
     // Routing thresholds from spec 6.7, managed through the administrator API.
     thresholds: jsonb('thresholds').notNull(),
+    exportMapping: jsonb('export_mapping').$type<ExportMapping>().notNull().default([]),
+    seedFingerprint: text('seed_fingerprint'),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('document_schemas_type_version_key').on(t.documentType, t.version)],
+  (t) => [
+    uniqueIndex('document_schemas_type_version_key').on(t.documentType, t.version),
+    uniqueIndex('document_schemas_active_type_key')
+      .on(t.documentType)
+      .where(sql`${t.isActive}`),
+  ],
 )
 
 export const fields = pgTable(
@@ -341,3 +354,9 @@ export const auditEvents = pgTable(
     index('audit_events_created_at_idx').on(t.createdAt),
   ],
 )
+
+/** One non-secret export setting; credentials and destination addresses stay in env. */
+export const exportSettings = pgTable('export_settings', {
+  key: text('key').primaryKey(),
+  defaultDestination: text('default_destination').notNull(),
+})

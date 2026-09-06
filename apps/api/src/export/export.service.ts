@@ -6,20 +6,24 @@ import {
   finishRun,
   failRun,
   DocumentEventsService,
-  EXPORT_MAPPINGS,
+  ENV,
+  exportSettings,
+  type Env,
   StorageService,
   ValidationRunnerService,
   lockDocument,
   documentExports,
   documents,
   fields,
-  getActiveSchema,
+  getDocumentSchema,
   validationIssues,
   writeAudit,
   type Database,
 } from '@docflow/core'
 import {
   buildCanonicalDocument,
+  exportSettingsSchema,
+  type ExportSettings,
   type CanonicalInputField,
   type ExportDto,
   type ExportRequest,
@@ -52,7 +56,51 @@ export class ExportService {
     private readonly storage: StorageService,
     private readonly validation: ValidationRunnerService,
     @Inject(DB_POOL) private readonly pool: Pool,
+    @Inject(ENV) private readonly env: Env,
   ) {}
+
+  async settings(db: Database = this.db) {
+    const [saved] = await db
+      .select()
+      .from(exportSettings)
+      .where(eq(exportSettings.key, 'export'))
+      .limit(1)
+    return {
+      ...exportSettingsSchema.parse({
+        defaultDestination: saved?.defaultDestination ?? this.env.EXPORT_DEFAULT_DESTINATION,
+      }),
+      availableDestinations: this.adapters.map((adapter) => adapter.destination),
+    }
+  }
+
+  async updateSettings(settings: ExportSettings, user: SessionUser, origin: RequestContext) {
+    if (!this.adapters.some((adapter) => adapter.destination === settings.defaultDestination))
+      throw new BadRequestException(`Destination ${settings.defaultDestination} is not configured`)
+    return this.db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended('docflow-export-settings', 0))`,
+      )
+      const before = await this.settings(tx)
+      await tx
+        .insert(exportSettings)
+        .values({ key: 'export', ...settings })
+        .onConflictDoUpdate({ target: exportSettings.key, set: settings })
+      await writeAudit(tx, {
+        correlationId: origin.correlationId,
+        actorType: 'user',
+        actorId: user.id,
+        action: 'export.settings_updated',
+        objectType: 'export_settings',
+        objectId: 'export',
+        before,
+        after: settings,
+        result: 'success',
+        ip: origin.ip,
+        userAgent: origin.userAgent,
+      })
+      return this.settings(tx)
+    })
+  }
 
   async listForDocument(documentId: string, db: Database = this.db): Promise<ExportDto[]> {
     const rows = await db
@@ -115,7 +163,9 @@ export class ExportService {
     user: SessionUser,
     origin: RequestContext,
   ): Promise<ExportDto> {
-    const destination = request.destination ?? 'file_json'
+    const previous = request.exportKey ? await this.findByKey(db, request.exportKey) : undefined
+    const destination =
+      request.destination ?? previous?.destination ?? (await this.settings()).defaultDestination
     const exportKey = request.exportKey ?? `${documentId}:${destination}`
     const adapter = this.adapters.find((candidate) => candidate.destination === destination)
 
@@ -173,7 +223,7 @@ export class ExportService {
         }
         const snapshot = {
           canonicalPayload: await this.buildCanonical(tx, document),
-          mappingSnapshot: EXPORT_MAPPINGS[document.documentType],
+          mappingSnapshot: (await getDocumentSchema(tx, document))!.exportMapping,
         }
         if (record) {
           ;[record] = await tx
@@ -316,10 +366,7 @@ export class ExportService {
   }
 
   private async buildCanonical(db: Database, document: typeof documents.$inferSelect) {
-    const schema =
-      document.documentType && document.documentType !== 'unknown'
-        ? await getActiveSchema(db, document.documentType)
-        : null
+    const schema = await getDocumentSchema(db, document)
 
     const fieldRows = await db
       .select()

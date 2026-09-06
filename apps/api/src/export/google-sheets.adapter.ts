@@ -8,7 +8,8 @@ import {
   type ExportTarget,
 } from '@docflow/shared'
 import { Injectable, Logger } from '@nestjs/common'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
+import { isDeepStrictEqual } from 'node:util'
 import { DestinationUnavailableError, type ExportAdapter } from './export-adapter'
 
 export interface GoogleSheetsOptions {
@@ -28,7 +29,7 @@ export class GoogleSheetsAdapter implements ExportAdapter {
 
   constructor(private readonly options: GoogleSheetsOptions) {}
 
-  async reserve(db: Database, _exportId: string): Promise<ExportTarget> {
+  async reserve(db: Database, exportId: string): Promise<ExportTarget> {
     try {
       const sheets = await this.client()
       const spreadsheetId = this.options.spreadsheetId
@@ -60,6 +61,30 @@ export class GoogleSheetsAdapter implements ExportAdapter {
       // ponytail: scan used rows when reserving; a persistent high-water counter
       // can replace this read if sheet size makes allocation measurably slow.
       const used = existing.data.values?.length ?? 0
+      const [record] = await db
+        .select({ mapping: documentExports.mappingSnapshot })
+        .from(documentExports)
+        .where(eq(documentExports.id, exportId))
+      if (!record?.mapping) throw new Error('Export mapping snapshot is missing')
+      const header = toHeader(record.mapping)
+      const [previous] = await db
+        .select({ mapping: documentExports.mappingSnapshot })
+        .from(documentExports)
+        .where(
+          sql`${documentExports.target}->>'spreadsheetId' = ${spreadsheetId} and ${documentExports.target}->>'sheetId' = ${String(sheetId)}`,
+        )
+        .limit(1)
+      // A changed column layout needs another managed tab. Include reservations
+      // whose header has not reached Sheets yet, so concurrent exports agree.
+      const existingHeader = existing.data.values?.[0]
+      if (
+        (existingHeader?.length && !isDeepStrictEqual(existingHeader, header)) ||
+        (previous?.mapping && !isDeepStrictEqual(toHeader(previous.mapping), header))
+      )
+        throw new DestinationUnavailableError(
+          'sheets_mapping_mismatch',
+          'Use a dedicated tab with columns matching the saved export mapping',
+        )
       const [reserved] = await db
         .select({
           row: sql<number>`coalesce(max((${documentExports.target}->>'row')::int), 1)::int`,
@@ -159,6 +184,7 @@ export class GoogleSheetsAdapter implements ExportAdapter {
   }
 
   private classify(error: unknown): DestinationUnavailableError {
+    if (error instanceof DestinationUnavailableError) return error
     const status =
       (error as { code?: number; status?: number }).status ?? (error as { code?: number }).code
     const message = error instanceof Error ? error.message : String(error)

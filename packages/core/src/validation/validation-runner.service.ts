@@ -20,7 +20,7 @@ import type { Env } from '../config/env'
 import { writeAudit } from '../db/audit'
 import { DB, type Database } from '../db/db.module'
 import { documents, fields, validationIssues } from '../db/schema'
-import { getActiveSchema } from '../db/schemas'
+import { getDocumentSchema } from '../db/schemas'
 import { lockDocument } from '../db/workflow'
 
 export interface ValidationRunOptions {
@@ -100,8 +100,9 @@ export class ValidationRunnerService {
       }
     }
 
-    const schema = await getActiveSchema(db, document.documentType)
-    if (!schema) throw new Error(`No active schema for type ${document.documentType}`)
+    const schema = await getDocumentSchema(db, document)
+    if (!schema || schema.documentType !== document.documentType)
+      throw new Error(`No matching result schema for document ${documentId}`)
 
     const fieldRows = await db.select().from(fields).where(eq(fields.documentId, documentId))
     const storedNames = new Set(fieldRows.map((row) => row.name))
@@ -129,6 +130,7 @@ export class ValidationRunnerService {
       normalizedValue: byName.get(spec.name)?.normalizedValue ?? null,
       isRequired: spec.required,
       isCritical: spec.critical,
+      enumValues: spec.enumValues,
     }))
 
     const issues = validateDocument(validationFields, schema.rules, {

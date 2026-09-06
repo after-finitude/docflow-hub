@@ -72,13 +72,15 @@ Specification: 3, 4, 6.4, 6.6–6.8, 8.
 
 Primary files: `packages/core/src/db/seed.ts`, `packages/core/src/db/schemas.ts`, `packages/core/src/validation/validation-runner.service.ts`, `apps/api/src/schemas/schemas.controller.ts`, `packages/core/src/export/mappings.ts`.
 
-- [ ] Make seeding idempotent without overwriting historical schema/rule versions. A changed definition creates a new version.
-- [ ] Bind extraction, validation decisions, displayed field metadata, and canonical export to the versions actually used. Explicit reprocessing may adopt a newer version and must record that decision.
-- [ ] Serialize concurrent schema-version changes so there is one active version per document type.
-- [ ] Provide administrator-only API/configuration support for schema/rule changes and export mappings/settings within the specified scope. Reuse existing Zod validation and audit logging; do not add a settings screen.
-- [ ] Validate destination configuration and honor the configured default destination consistently.
+- [x] Make seeding idempotent without overwriting historical schema/rule versions. A changed definition creates a new version.
+- [x] Bind extraction, validation decisions, displayed field metadata, and canonical export to the versions actually used. Explicit reprocessing may adopt a newer version and must record that decision.
+- [x] Serialize concurrent schema-version changes so there is one active version per document type.
+- [x] Provide administrator-only API/configuration support for schema/rule changes and export mappings/settings within the specified scope. Reuse existing Zod validation and audit logging; do not add a settings screen.
+- [x] Validate destination configuration and honor the configured default destination consistently.
 
 **Done when:** running seed again leaves historical definitions unchanged; a new configuration affects subsequent processing without relabeling old results; operator requests to configuration mutations receive 403; changes have an audit trail.
+
+Verification (2026-09-06): 141 checks pass with `TEST_DATABASE_URL=postgres://… npm test`. The real PostgreSQL/API suite verifies operator 403 responses, invalid configuration rejection, immutable historical labels/rules/thresholds/mappings, schema changes during an in-flight LLM call, pinned retries, failed replacement recovery, concurrent version creation, audit-transaction rollback, environment and persisted export defaults, and unchanged/changed/concurrent seed runs. A separate migration check upgrades pre-0009 records, preserving historical definitions and recovering bindings from fields or decision audit records. Enum choices are enforced during validation. Sheets column-layout checks cover existing headers and reservations whose header write has not completed, using the agreed Google API mock. Type checks, lint, formatting and the web production build pass. Migration `0009_versioned_configuration.sql` adds document bindings, versioned mappings, the seed fingerprint and export settings; a partial unique index enforces one active schema per type. API usage, reprocessing/version behavior and tab-layout restrictions are documented in `docs/configuration.md` and `docs/runbook.md`.
 
 ## 5. OCR preprocessing and file scenarios
 

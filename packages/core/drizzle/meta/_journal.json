@@ -64,6 +64,13 @@
       "when": 1788681228044,
       "tag": "0008_durable_exports",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788683027160,
+      "tag": "0009_versioned_configuration",
+      "breakpoints": true
     }
   ]
 }
