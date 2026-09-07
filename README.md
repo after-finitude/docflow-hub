@@ -40,6 +40,7 @@ Verification, evaluation, screenshots and video use an explicitly configured dis
 
 ## Documentation
 
+- [In-app test flow (Russian)](docs/basic-flow.md)
 - [Architecture](docs/architecture.md)
 - [Configuration](docs/configuration.md)
 - [Runbook](docs/runbook.md)
@@ -48,4 +49,4 @@ Verification, evaluation, screenshots and video use an explicitly configured dis
 - [Evaluation report](evaluation/last-run.md)
 - [Demonstration video](docs/demo.webm)
 
-The external technical specification remains the requirements source. This repository is English-only; generated demo documents are synthetic and contain no real personal data.
+The external technical specification remains the requirements source. The interface is in English; a Russian user walkthrough is linked above. Generated demo documents are synthetic and contain no real personal data.
