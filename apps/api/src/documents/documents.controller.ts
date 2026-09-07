@@ -1,5 +1,6 @@
 import {
   ACCEPTED_MIME_TYPES,
+  reviewMetricsQuerySchema,
   oversizedUploadRequestSchema,
   type OversizedUploadRequest,
   UPLOAD_MAX_BYTES,
@@ -44,7 +45,7 @@ import type { Response } from 'express'
 import { ENV, type Env } from '@docflow/core'
 import { Inject } from '@nestjs/common'
 import { ZodValidationPipe } from '../common/zod-validation.pipe'
-import { CurrentUser, Origin, type RequestContext } from '../auth/decorators'
+import { CurrentUser, Origin, Roles, type RequestContext } from '../auth/decorators'
 import { DocumentsService } from './documents.service'
 import { ExportService } from '../export/export.service'
 import { PageRenderService } from './page-render.service'
@@ -84,6 +85,35 @@ export class DocumentsController {
     private readonly exports: ExportService,
     @Inject(ENV) private readonly env: Env,
   ) {}
+
+  @Get('review-metrics')
+  @Roles('admin')
+  async reviewMetrics(
+    @Query(new ZodValidationPipe(reviewMetricsQuerySchema)) query: { since?: string },
+  ) {
+    return {
+      review: await this.documents.reviewMetrics(query.since),
+      providers: {
+        ocr: this.env.OCR_PROVIDER ?? 'mock',
+        llm: this.env.LLM_PROVIDER ?? 'mock',
+        model: this.env.LLM_MODEL ?? null,
+      },
+      concurrency: {
+        default: this.env.QUEUE_CONCURRENCY_DEFAULT ?? 4,
+        ocr: this.env.QUEUE_CONCURRENCY_OCR ?? this.env.QUEUE_CONCURRENCY_DEFAULT ?? 4,
+        extraction: this.env.QUEUE_CONCURRENCY_EXTRACT ?? this.env.QUEUE_CONCURRENCY_DEFAULT ?? 4,
+      },
+    }
+  }
+
+  @Post(':id/review-opened')
+  openReview(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: SessionUser,
+    @Origin() origin: RequestContext,
+  ): Promise<void> {
+    return this.documents.openReview(id, user, origin)
+  }
 
   @Post('oversized')
   rejectOversized(

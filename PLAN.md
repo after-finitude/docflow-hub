@@ -107,15 +107,23 @@ Specification: 6.10, 12, 13; acceptance criterion 12.
 
 Primary files: `scripts/eval.mjs`, `scripts/generate-dataset.mjs`, `evaluation/dataset/ground-truth.json`, `apps/web/app/documents/[id]/review-workspace.tsx`, review API/contracts.
 
-- [ ] Report the 15 labeled documents separately from the general corpus, with explicit denominators and schema/rule versions.
-- [ ] Count rejected valid documents and failed/Unknown extraction in the relevant quality denominators. Count correct Missing according to ground truth, not merely non-null values.
-- [ ] Define false auto-approval against expected correctness, including classification and known invalid-document cases. Add labeled negative cases while keeping the required dataset size.
-- [ ] Use the same confidence, validation, and routing behavior as production. Clearly identify checks that require the database or a live stack and report them separately.
-- [ ] Record review opening and approval timestamps; report median elapsed time without activity tracking.
-- [ ] Measure upload-to-decision for documents up to ten pages, first-page-and-fields display time, and queue behavior with 20 documents at documented concurrency.
-- [ ] Run mock evaluation first, then the labeled and general datasets with configured Google Vision and a real LLM. Store provider/model identity, date, sample sizes, failures, and measured metrics.
+- [x] Report the 15 labeled documents separately from the general corpus, with explicit denominators and schema/rule versions.
+- [x] Count rejected valid documents and failed/Unknown extraction in the relevant quality denominators. Count correct Missing according to ground truth, not merely non-null values.
+- [x] Define false auto-approval against expected correctness, including classification and known invalid-document cases. Add labeled negative cases while keeping the required dataset size.
+- [x] Use the same confidence, validation, and routing behavior as production. Clearly identify checks that require the database or a live stack and report them separately.
+- [x] Record review opening and approval timestamps; expose the median elapsed time without activity tracking, excluding and reporting approvals without a matching opening.
+- [x] Measure upload-to-decision for one- and ten-page text fixtures, first-page-and-fields display time, and queue behavior with 20 documents at documented concurrency on the mock stack.
+- [x] Run the labeled and general datasets with mock providers and store provider/model identity, date, sample sizes, failures, and measured metrics.
+- [ ] Deferred by the user on 2026-09-07: repeat quality and performance with configured Google Vision and a real LLM, including dense/scanned ten-page files and real Russian/English rotation/deskew quality.
+- [ ] Collect a human review-time sample; an unattended browser check or artificial delay does not measure operator speed.
 
 **Done when:** classification is at least 95%, critical exact match at least 90%, field coverage at least 98%, and false auto-approval is zero on the labeled set, or the report explicitly marks unmet targets. Source coverage and straight-through rate are published. Review and performance measurements are present; a mock-only result cannot close this stage.
+
+Verification (2026-09-07): `evaluation/last-run.md` and JSON record 46 synthetic uploads through authenticated Nest HTTP, production BullMQ workers, PostgreSQL 18, Redis 7 and MinIO on an isolated stack. The 15 labeled cases cover all four types plus corrupt, multi-document, required-Missing and invalid-sum cases. Classification is 14/14, critical exact match 72/72, field coverage 117/117 and false auto-approval 0/8; source coverage is 116/116 and straight-through rate 8/15. The full corpus has 97.6% field coverage below the 98% target, explicitly reported with exit code 1; the poor image scan is Unknown under mock OCR. Numeric taxpayer IDs returned by the mock violate the string schema and route tax letters to review. Ground truth is taken from generator inputs, not predictions.
+
+`evaluation/performance.md` and JSON record three one-page uploads (median 141 ms), three ten-page uploads with nonblank text attachments (136 ms), 20 simultaneous uploads completed in 817 ms, and six fresh Chrome navigations with first-page/fields median 146.5 ms. Native API/worker and a production Next build used a local Colima data-services VM with 2 CPUs/4 GiB; worker concurrency was default 4, OCR 2, extraction 2. Sampled queue peaks respected these limits and all queues drained without failures. These are small localhost/mock samples, not production or external-provider latency measurements.
+
+All 164 checks pass with the isolated PostgreSQL role and `npm test`, including ground-truth denominators, correct Missing, false approvals, concurrent/idempotent opening records, actor/revision pairing, missing-opening counts, median calculation and administrator-only metrics. Browser checks verify the real review-opening endpoint and loaded first page/fields. Type checks, lint, formatting and the web production build pass. Timing reuses immutable audit events; no new table, dependency or activity tracking was added. No human reviews were performed. Stage 6 remains open for the deferred real-provider run and human sample.
 
 ## 7. Security, configuration, and delivery
 

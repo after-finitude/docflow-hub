@@ -2,7 +2,11 @@
 
 ## Provider validation
 
-The committed evaluation report uses deterministic mock OCR and LLM providers. It validates pipeline behavior, not real-provider model quality. Run `npm run eval` with configured Google Vision and OpenAI-compatible providers before production use.
+The committed evaluation and performance reports use deterministic mock OCR and LLM providers through a real API/worker/PostgreSQL/Redis/MinIO stack. The 15 labeled cases meet the quality targets; the full 46-document corpus has 97.6% field coverage against a 98% target because the poor image scan is Unknown under mock OCR. False auto-approval is zero. Mock extraction also returns numeric taxpayer IDs against a string schema; validation sends these tax letters to review. These are reported findings, not evidence of real-provider quality.
+
+The user deferred the real-provider run on 2026-09-07. Repeat the isolated evaluation with configured Google Vision and a real LLM, including Russian/English rotated and skewed scans; commands and denominator definitions are in `docs/runbook.md` and `evaluation/last-run.md`. Stage 6 remains open for this verification and a human review-time sample.
+
+Performance results are small localhost samples with warm processes and mock providers. The ten-page fixture contains one invoice plus nine nonblank text attachments. It does not establish dense/scanned ten-page performance, production capacity, external-provider latency or human review speed. Review timing uses the approving user's first opening in the current processing revision; time away from the page is included, and approvals without a matching opening are counted separately.
 
 ## OCR and documents
 

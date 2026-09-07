@@ -1,4 +1,6 @@
 {
+  "version": 2,
+  "labelSource": "synthetic generator inputs; null means visibly absent",
   "baseDate": "2026-06-01",
   "documents": [
     {
@@ -12,6 +14,37 @@
         "subtotal": 3142.32,
         "grand_total": 3739.36
       },
+      "expectedFields": {
+        "supplier_name": "Umbrella SA",
+        "invoice_number": "INV-2026-1000",
+        "invoice_date": "2026-07-10",
+        "currency": "EUR",
+        "subtotal": 3142.32,
+        "grand_total": 3739.36,
+        "due_date": "2026-07-24",
+        "tax_total": 597.04,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 2,
+            "unit_price": 1047.44,
+            "amount": null
+          },
+          {
+            "description": "Position 2",
+            "quantity": 3,
+            "unit_price": 1047.44,
+            "amount": null
+          },
+          {
+            "description": "Position 3",
+            "quantity": 2,
+            "unit_price": 1047.44,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": true,
       "eval": true
     },
     {
@@ -25,6 +58,31 @@
         "subtotal": 1023.45,
         "grand_total": 1228.14
       },
+      "expectedFields": {
+        "supplier_name": "Hooli Inc",
+        "invoice_number": "INV-2026-1001",
+        "invoice_date": "2026-07-06",
+        "currency": "EUR",
+        "subtotal": 1023.45,
+        "grand_total": 1228.14,
+        "due_date": "2026-08-05",
+        "tax_total": 204.69,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 5,
+            "unit_price": 511.73,
+            "amount": null
+          },
+          {
+            "description": "Position 2",
+            "quantity": 6,
+            "unit_price": 511.73,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": true,
       "eval": true
     },
     {
@@ -38,7 +96,38 @@
         "subtotal": 8437.32,
         "grand_total": 10040.41
       },
-      "eval": true
+      "expectedFields": {
+        "supplier_name": "Acme GmbH",
+        "invoice_number": "INV-2026-1002",
+        "invoice_date": "2026-07-05",
+        "currency": "USD",
+        "subtotal": 8437.32,
+        "grand_total": 10040.41,
+        "due_date": "2026-07-19",
+        "tax_total": 1603.09,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 8,
+            "unit_price": 2812.44,
+            "amount": null
+          },
+          {
+            "description": "Position 2",
+            "quantity": 5,
+            "unit_price": 2812.44,
+            "amount": null
+          },
+          {
+            "description": "Position 3",
+            "quantity": 3,
+            "unit_price": 2812.44,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": true,
+      "eval": false
     },
     {
       "file": "invoice-004.pdf",
@@ -51,7 +140,26 @@
         "subtotal": 3035.33,
         "grand_total": 3035.33
       },
-      "eval": true
+      "expectedFields": {
+        "supplier_name": "Vector LLC",
+        "invoice_number": "INV-2026-1003",
+        "invoice_date": "2026-07-05",
+        "currency": "GBP",
+        "subtotal": 3035.33,
+        "grand_total": 3035.33,
+        "due_date": "2026-08-04",
+        "tax_total": 0,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 1,
+            "unit_price": 3035.33,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": true,
+      "eval": false
     },
     {
       "file": "invoice-005.pdf",
@@ -64,7 +172,32 @@
         "subtotal": 5860.67,
         "grand_total": 6270.92
       },
-      "eval": true
+      "expectedFields": {
+        "supplier_name": "Stark Industries",
+        "invoice_number": "INV-2026-1004",
+        "invoice_date": "2026-06-20",
+        "currency": "GBP",
+        "subtotal": 5860.67,
+        "grand_total": 6270.92,
+        "due_date": "2026-07-04",
+        "tax_total": 410.25,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 5,
+            "unit_price": 2930.34,
+            "amount": null
+          },
+          {
+            "description": "Position 2",
+            "quantity": 7,
+            "unit_price": 2930.34,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": true,
+      "eval": false
     },
     {
       "file": "invoice-006.pdf",
@@ -77,7 +210,32 @@
         "subtotal": 4878.81,
         "grand_total": 5854.57
       },
-      "eval": true
+      "expectedFields": {
+        "supplier_name": "Acme GmbH",
+        "invoice_number": "INV-2026-1005",
+        "invoice_date": "2026-06-14",
+        "currency": "EUR",
+        "subtotal": 4878.81,
+        "grand_total": 5854.57,
+        "due_date": "2026-07-29",
+        "tax_total": 975.76,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 9,
+            "unit_price": 2439.41,
+            "amount": null
+          },
+          {
+            "description": "Position 2",
+            "quantity": 2,
+            "unit_price": 2439.41,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": true,
+      "eval": false
     },
     {
       "file": "invoice-007.pdf",
@@ -90,7 +248,26 @@
         "subtotal": 2779.15,
         "grand_total": 2779.15
       },
-      "eval": true
+      "expectedFields": {
+        "supplier_name": "Megabuild LLC",
+        "invoice_number": "INV-2026-1006",
+        "invoice_date": "2026-06-14",
+        "currency": "USD",
+        "subtotal": 2779.15,
+        "grand_total": 2779.15,
+        "due_date": "2026-07-29",
+        "tax_total": 0,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 2,
+            "unit_price": 2779.15,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": true,
+      "eval": false
     },
     {
       "file": "invoice-008.pdf",
@@ -103,7 +280,26 @@
         "subtotal": 8262.46,
         "grand_total": 8262.46
       },
-      "eval": true
+      "expectedFields": {
+        "supplier_name": "Initech BV",
+        "invoice_number": "INV-2026-1007",
+        "invoice_date": "2026-06-05",
+        "currency": "EUR",
+        "subtotal": 8262.46,
+        "grand_total": 8262.46,
+        "due_date": "2026-06-19",
+        "tax_total": 0,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 2,
+            "unit_price": 8262.46,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": true,
+      "eval": false
     },
     {
       "file": "invoice-009.pdf",
@@ -116,7 +312,26 @@
         "subtotal": 1948.78,
         "grand_total": 2319.05
       },
-      "eval": true
+      "expectedFields": {
+        "supplier_name": "Globex Ltd",
+        "invoice_number": "INV-2026-1008",
+        "invoice_date": "2026-07-03",
+        "currency": "EUR",
+        "subtotal": 1948.78,
+        "grand_total": 2319.05,
+        "due_date": "2026-07-17",
+        "tax_total": 370.27,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 6,
+            "unit_price": 1948.78,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": true,
+      "eval": false
     },
     {
       "file": "invoice-010.pdf",
@@ -129,7 +344,26 @@
         "subtotal": 1690.61,
         "grand_total": 2011.83
       },
-      "eval": true
+      "expectedFields": {
+        "supplier_name": "Stark Industries",
+        "invoice_number": "INV-2026-1009",
+        "invoice_date": "2026-06-15",
+        "currency": "EUR",
+        "subtotal": 1690.61,
+        "grand_total": 2011.83,
+        "due_date": "2026-07-15",
+        "tax_total": 321.22,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 5,
+            "unit_price": 1690.61,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": true,
+      "eval": false
     },
     {
       "file": "invoice-011.pdf",
@@ -142,7 +376,32 @@
         "subtotal": 8775.66,
         "grand_total": 9389.96
       },
-      "eval": true
+      "expectedFields": {
+        "supplier_name": "Vector LLC",
+        "invoice_number": "INV-2026-1010",
+        "invoice_date": "2026-06-11",
+        "currency": "USD",
+        "subtotal": 8775.66,
+        "grand_total": 9389.96,
+        "due_date": "2026-07-26",
+        "tax_total": 614.3,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 8,
+            "unit_price": 4387.83,
+            "amount": null
+          },
+          {
+            "description": "Position 2",
+            "quantity": 3,
+            "unit_price": 4387.83,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": true,
+      "eval": false
     },
     {
       "file": "invoice-012.pdf",
@@ -155,7 +414,38 @@
         "subtotal": 1331.62,
         "grand_total": 1597.94
       },
-      "eval": true
+      "expectedFields": {
+        "supplier_name": "Megabuild LLC",
+        "invoice_number": "INV-2026-1011",
+        "invoice_date": "2026-06-02",
+        "currency": "GBP",
+        "subtotal": 1331.62,
+        "grand_total": 1597.94,
+        "due_date": "2026-07-02",
+        "tax_total": 266.32,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 5,
+            "unit_price": 443.87,
+            "amount": null
+          },
+          {
+            "description": "Position 2",
+            "quantity": 9,
+            "unit_price": 443.87,
+            "amount": null
+          },
+          {
+            "description": "Position 3",
+            "quantity": 8,
+            "unit_price": 443.87,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": true,
+      "eval": false
     },
     {
       "file": "bank_statement-001.pdf",
@@ -168,6 +458,16 @@
         "opening_balance": 5192.26,
         "closing_balance": 4989.5
       },
+      "expectedFields": {
+        "bank_name": "Alpha Banking",
+        "account_number": "DE9781426099",
+        "period_start": "2026-06-15",
+        "period_end": "2026-07-15",
+        "opening_balance": 5192.26,
+        "closing_balance": 4989.5,
+        "currency": "EUR"
+      },
+      "expectedAutoAllowed": true,
       "eval": true
     },
     {
@@ -181,6 +481,16 @@
         "opening_balance": 6738.72,
         "closing_balance": 6943.94
       },
+      "expectedFields": {
+        "bank_name": "Meridian Trust",
+        "account_number": "DE6988367265",
+        "period_start": "2026-06-13",
+        "period_end": "2026-07-13",
+        "opening_balance": 6738.72,
+        "closing_balance": 6943.94,
+        "currency": "USD"
+      },
+      "expectedAutoAllowed": true,
       "eval": true
     },
     {
@@ -194,6 +504,16 @@
         "opening_balance": 2134.08,
         "closing_balance": 1855.94
       },
+      "expectedFields": {
+        "bank_name": "Nordbank AG",
+        "account_number": "DE7063106785",
+        "period_start": "2026-06-21",
+        "period_end": "2026-07-21",
+        "opening_balance": 2134.08,
+        "closing_balance": 1855.94,
+        "currency": "EUR"
+      },
+      "expectedAutoAllowed": true,
       "eval": true
     },
     {
@@ -207,6 +527,16 @@
         "opening_balance": 5875.99,
         "closing_balance": 5559.11
       },
+      "expectedFields": {
+        "bank_name": "Alpha Banking",
+        "account_number": "DE6570907381",
+        "period_start": "2026-06-10",
+        "period_end": "2026-07-10",
+        "opening_balance": 5875.99,
+        "closing_balance": 5559.11,
+        "currency": "GBP"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -220,6 +550,16 @@
         "opening_balance": 4356.68,
         "closing_balance": 4833.09
       },
+      "expectedFields": {
+        "bank_name": "Nordbank AG",
+        "account_number": "DE9067595863",
+        "period_start": "2026-06-07",
+        "period_end": "2026-07-07",
+        "opening_balance": 4356.68,
+        "closing_balance": 4833.09,
+        "currency": "EUR"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -233,6 +573,16 @@
         "opening_balance": 5115.3,
         "closing_balance": 5346.26
       },
+      "expectedFields": {
+        "bank_name": "First Bank PLC",
+        "account_number": "DE1867509744",
+        "period_start": "2026-06-04",
+        "period_end": "2026-07-04",
+        "opening_balance": 5115.3,
+        "closing_balance": 5346.26,
+        "currency": "USD"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -246,6 +596,16 @@
         "opening_balance": 5361.15,
         "closing_balance": 5740.11
       },
+      "expectedFields": {
+        "bank_name": "Nordbank AG",
+        "account_number": "DE8656457377",
+        "period_start": "2026-06-04",
+        "period_end": "2026-07-04",
+        "opening_balance": 5361.15,
+        "closing_balance": 5740.11,
+        "currency": "USD"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -259,6 +619,16 @@
         "opening_balance": 8309.13,
         "closing_balance": 8464.11
       },
+      "expectedFields": {
+        "bank_name": "First Bank PLC",
+        "account_number": "DE1937565038",
+        "period_start": "2026-06-16",
+        "period_end": "2026-07-16",
+        "opening_balance": 8309.13,
+        "closing_balance": 8464.11,
+        "currency": "GBP"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -272,6 +642,16 @@
         "opening_balance": 6122.72,
         "closing_balance": 6133.73
       },
+      "expectedFields": {
+        "bank_name": "Alpha Banking",
+        "account_number": "DE7755482251",
+        "period_start": "2026-06-08",
+        "period_end": "2026-07-08",
+        "opening_balance": 6122.72,
+        "closing_balance": 6133.73,
+        "currency": "EUR"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -283,7 +663,18 @@
         "letter_date": "2026-06-09",
         "taxpayer_name": "Soylent Corp"
       },
-      "eval": false
+      "expectedFields": {
+        "authority_name": "Federal Tax Office",
+        "letter_number": "TX-0500",
+        "letter_date": "2026-06-09",
+        "taxpayer_name": "Soylent Corp",
+        "taxpayer_id": "4654069688",
+        "subject": "Request for clarification",
+        "amount_due": 1608.94,
+        "due_date": "2026-07-09"
+      },
+      "expectedAutoAllowed": true,
+      "eval": true
     },
     {
       "file": "tax_letter-002.pdf",
@@ -294,7 +685,18 @@
         "letter_date": "2026-06-13",
         "taxpayer_name": "Wayne Enterprises"
       },
-      "eval": false
+      "expectedFields": {
+        "authority_name": "City Revenue Service",
+        "letter_number": "TX-0501",
+        "letter_date": "2026-06-13",
+        "taxpayer_name": "Wayne Enterprises",
+        "taxpayer_id": "8293373414",
+        "subject": "Tax base clarification",
+        "amount_due": 780.28,
+        "due_date": "2026-07-13"
+      },
+      "expectedAutoAllowed": true,
+      "eval": true
     },
     {
       "file": "tax_letter-003.pdf",
@@ -305,7 +707,18 @@
         "letter_date": "2026-06-13",
         "taxpayer_name": "Initech BV"
       },
-      "eval": false
+      "expectedFields": {
+        "authority_name": "HM Revenue & Customs",
+        "letter_number": "TX-0502",
+        "letter_date": "2026-06-13",
+        "taxpayer_name": "Initech BV",
+        "taxpayer_id": "4805452509",
+        "subject": "Tax base clarification",
+        "amount_due": 1157.48,
+        "due_date": "2026-07-13"
+      },
+      "expectedAutoAllowed": true,
+      "eval": true
     },
     {
       "file": "tax_letter-004.pdf",
@@ -316,6 +729,17 @@
         "letter_date": "2026-06-11",
         "taxpayer_name": "Acme GmbH"
       },
+      "expectedFields": {
+        "authority_name": "HM Revenue & Customs",
+        "letter_number": "TX-0503",
+        "letter_date": "2026-06-11",
+        "taxpayer_name": "Acme GmbH",
+        "taxpayer_id": "7914874642",
+        "subject": "Request for clarification",
+        "amount_due": 666.79,
+        "due_date": "2026-07-11"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -327,6 +751,17 @@
         "letter_date": "2026-06-17",
         "taxpayer_name": "Soylent Corp"
       },
+      "expectedFields": {
+        "authority_name": "City Revenue Service",
+        "letter_number": "TX-0504",
+        "letter_date": "2026-06-17",
+        "taxpayer_name": "Soylent Corp",
+        "taxpayer_id": "1572013732",
+        "subject": "Payment reminder",
+        "amount_due": 128.4,
+        "due_date": "2026-07-17"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -338,6 +773,17 @@
         "letter_date": "2026-06-21",
         "taxpayer_name": "Megabuild LLC"
       },
+      "expectedFields": {
+        "authority_name": "Federal Tax Office",
+        "letter_number": "TX-0505",
+        "letter_date": "2026-06-21",
+        "taxpayer_name": "Megabuild LLC",
+        "taxpayer_id": "8249298652",
+        "subject": "Request for clarification",
+        "amount_due": 1351.63,
+        "due_date": "2026-07-21"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -349,6 +795,17 @@
         "letter_date": "2026-06-05",
         "taxpayer_name": "Acme GmbH"
       },
+      "expectedFields": {
+        "authority_name": "Federal Tax Office",
+        "letter_number": "TX-0506",
+        "letter_date": "2026-06-05",
+        "taxpayer_name": "Acme GmbH",
+        "taxpayer_id": "5132154071",
+        "subject": "Payment reminder",
+        "amount_due": 1786.34,
+        "due_date": "2026-07-05"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -360,6 +817,17 @@
         "letter_date": "2026-06-22",
         "taxpayer_name": "Globex Ltd"
       },
+      "expectedFields": {
+        "authority_name": "Federal Tax Office",
+        "letter_number": "TX-0507",
+        "letter_date": "2026-06-22",
+        "taxpayer_name": "Globex Ltd",
+        "taxpayer_id": "6304343747",
+        "subject": "Tax base clarification",
+        "amount_due": 1873.24,
+        "due_date": "2026-07-22"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -371,6 +839,17 @@
         "letter_date": "2026-06-23",
         "taxpayer_name": "Soylent Corp"
       },
+      "expectedFields": {
+        "authority_name": "Federal Tax Office",
+        "letter_number": "TX-0508",
+        "letter_date": "2026-06-23",
+        "taxpayer_name": "Soylent Corp",
+        "taxpayer_id": "8342612418",
+        "subject": "Payment reminder",
+        "amount_due": 645.8,
+        "due_date": "2026-07-23"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -382,7 +861,19 @@
         "party_a": "Megabuild LLC",
         "party_b": "Umbrella SA"
       },
-      "eval": false
+      "expectedFields": {
+        "contract_number": "CT-0300",
+        "contract_date": "2026-06-22",
+        "party_a": "Megabuild LLC",
+        "party_b": "Umbrella SA",
+        "subject": "Software development services",
+        "contract_value": 35880.48,
+        "currency": "USD",
+        "start_date": "2026-06-22",
+        "end_date": "2027-06-22"
+      },
+      "expectedAutoAllowed": true,
+      "eval": true
     },
     {
       "file": "contract-002.pdf",
@@ -393,7 +884,19 @@
         "party_a": "Globex Ltd",
         "party_b": "Megabuild LLC"
       },
-      "eval": false
+      "expectedFields": {
+        "contract_number": "CT-0301",
+        "contract_date": "2026-06-17",
+        "party_a": "Globex Ltd",
+        "party_b": "Megabuild LLC",
+        "subject": "Consulting services",
+        "contract_value": 34200.24,
+        "currency": "USD",
+        "start_date": "2026-06-17",
+        "end_date": "2027-06-17"
+      },
+      "expectedAutoAllowed": true,
+      "eval": true
     },
     {
       "file": "contract-003.pdf",
@@ -404,7 +907,19 @@
         "party_a": "Globex Ltd",
         "party_b": "Megabuild LLC"
       },
-      "eval": false
+      "expectedFields": {
+        "contract_number": "CT-0302",
+        "contract_date": "2026-06-10",
+        "party_a": "Globex Ltd",
+        "party_b": "Megabuild LLC",
+        "subject": "Supply of office equipment",
+        "contract_value": 4944.54,
+        "currency": "USD",
+        "start_date": "2026-06-10",
+        "end_date": "2027-06-10"
+      },
+      "expectedAutoAllowed": true,
+      "eval": true
     },
     {
       "file": "contract-004.pdf",
@@ -415,6 +930,18 @@
         "party_a": "Globex Ltd",
         "party_b": "Hooli Inc"
       },
+      "expectedFields": {
+        "contract_number": "CT-0303",
+        "contract_date": "2026-06-18",
+        "party_a": "Globex Ltd",
+        "party_b": "Hooli Inc",
+        "subject": "Consulting services",
+        "contract_value": 45295.37,
+        "currency": "GBP",
+        "start_date": "2026-06-18",
+        "end_date": "2027-06-18"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -426,6 +953,18 @@
         "party_a": "Wayne Enterprises",
         "party_b": "Initech BV"
       },
+      "expectedFields": {
+        "contract_number": "CT-0304",
+        "contract_date": "2026-06-02",
+        "party_a": "Wayne Enterprises",
+        "party_b": "Initech BV",
+        "subject": "Software development services",
+        "contract_value": 21958.14,
+        "currency": "GBP",
+        "start_date": "2026-06-02",
+        "end_date": "2027-06-02"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -437,6 +976,18 @@
         "party_a": "Acme GmbH",
         "party_b": "Soylent Corp"
       },
+      "expectedFields": {
+        "contract_number": "CT-0305",
+        "contract_date": "2026-06-27",
+        "party_a": "Acme GmbH",
+        "party_b": "Soylent Corp",
+        "subject": "Software development services",
+        "contract_value": 9263.24,
+        "currency": "GBP",
+        "start_date": "2026-06-27",
+        "end_date": "2027-06-27"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -448,6 +999,18 @@
         "party_a": "Stark Industries",
         "party_b": "Megabuild LLC"
       },
+      "expectedFields": {
+        "contract_number": "CT-0306",
+        "contract_date": "2026-06-08",
+        "party_a": "Stark Industries",
+        "party_b": "Megabuild LLC",
+        "subject": "Software development services",
+        "contract_value": 21778.86,
+        "currency": "GBP",
+        "start_date": "2026-06-08",
+        "end_date": "2027-06-08"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -459,6 +1022,18 @@
         "party_a": "Vector LLC",
         "party_b": "Megabuild LLC"
       },
+      "expectedFields": {
+        "contract_number": "CT-0307",
+        "contract_date": "2026-06-22",
+        "party_a": "Vector LLC",
+        "party_b": "Megabuild LLC",
+        "subject": "Supply of office equipment",
+        "contract_value": 6899.72,
+        "currency": "USD",
+        "start_date": "2026-06-22",
+        "end_date": "2027-06-22"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -470,6 +1045,18 @@
         "party_a": "Vector LLC",
         "party_b": "Soylent Corp"
       },
+      "expectedFields": {
+        "contract_number": "CT-0308",
+        "contract_date": "2026-06-28",
+        "party_a": "Vector LLC",
+        "party_b": "Soylent Corp",
+        "subject": "Software development services",
+        "contract_value": 28554.81,
+        "currency": "EUR",
+        "start_date": "2026-06-28",
+        "end_date": "2027-06-28"
+      },
+      "expectedAutoAllowed": true,
       "eval": false
     },
     {
@@ -483,6 +1070,31 @@
         "subtotal": 2391.03,
         "grand_total": 2391.03
       },
+      "expectedFields": {
+        "supplier_name": "Hooli Inc",
+        "invoice_number": "INV-2026-1900",
+        "invoice_date": "2026-06-26",
+        "currency": "USD",
+        "subtotal": 2391.03,
+        "grand_total": 2391.03,
+        "due_date": "2026-07-26",
+        "tax_total": 0,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 3,
+            "unit_price": 1195.52,
+            "amount": null
+          },
+          {
+            "description": "Position 2",
+            "quantity": 8,
+            "unit_price": 1195.52,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": false,
       "eval": false,
       "note": "Poor scan: rotation, noise, reduced contrast, and handwritten note"
     },
@@ -497,6 +1109,37 @@
         "subtotal": 3142.32,
         "grand_total": 3739.36
       },
+      "expectedFields": {
+        "supplier_name": "Umbrella SA",
+        "invoice_number": "INV-2026-1000",
+        "invoice_date": "2026-07-10",
+        "currency": "EUR",
+        "subtotal": 3142.32,
+        "grand_total": 3739.36,
+        "due_date": "2026-07-24",
+        "tax_total": 597.04,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 2,
+            "unit_price": 1047.44,
+            "amount": null
+          },
+          {
+            "description": "Position 2",
+            "quantity": 3,
+            "unit_price": 1047.44,
+            "amount": null
+          },
+          {
+            "description": "Position 3",
+            "quantity": 2,
+            "unit_price": 1047.44,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": false,
       "eval": false,
       "note": "Checksum duplicate of invoice-001.pdf"
     },
@@ -504,7 +1147,9 @@
       "file": "corrupted.pdf",
       "expectedType": null,
       "criticalFields": {},
-      "eval": false,
+      "expectedFields": {},
+      "expectedAutoAllowed": false,
+      "eval": true,
       "note": "Corrupted file expected to be rejected before an LLM call"
     },
     {
@@ -518,8 +1163,139 @@
         "subtotal": 703.96,
         "grand_total": 844.75
       },
-      "eval": false,
+      "expectedFields": {
+        "supplier_name": "Initech BV",
+        "invoice_number": "INV-2026-1901",
+        "invoice_date": "2026-06-25",
+        "currency": "EUR",
+        "subtotal": 703.96,
+        "grand_total": 844.75,
+        "due_date": "2026-07-25",
+        "tax_total": 140.79,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 9,
+            "unit_price": 703.96,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": false,
+      "multiDocument": true,
+      "eval": true,
       "note": "Two documents in one file; warning expected"
+    },
+    {
+      "file": "missing-critical.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": null,
+        "invoice_number": "INV-2026-1953",
+        "invoice_date": "2026-06-07",
+        "currency": "USD",
+        "subtotal": 8754.35,
+        "grand_total": 9367.15
+      },
+      "expectedFields": {
+        "supplier_name": null,
+        "invoice_number": "INV-2026-1953",
+        "invoice_date": "2026-06-07",
+        "currency": "USD",
+        "subtotal": 8754.35,
+        "grand_total": 9367.15,
+        "due_date": "2026-07-22",
+        "tax_total": 612.8,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 3,
+            "unit_price": 8754.35,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": false,
+      "eval": true,
+      "note": "missing-critical"
+    },
+    {
+      "file": "sum-mismatch.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "Hooli Inc",
+        "invoice_number": "INV-2026-1954",
+        "invoice_date": "2026-07-11",
+        "currency": "USD",
+        "subtotal": 3325.24,
+        "grand_total": 3335.24
+      },
+      "expectedFields": {
+        "supplier_name": "Hooli Inc",
+        "invoice_number": "INV-2026-1954",
+        "invoice_date": "2026-07-11",
+        "currency": "USD",
+        "subtotal": 3325.24,
+        "grand_total": 3335.24,
+        "due_date": "2026-07-25",
+        "tax_total": 0,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 2,
+            "unit_price": 1662.62,
+            "amount": null
+          },
+          {
+            "description": "Position 2",
+            "quantity": 9,
+            "unit_price": 1662.62,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": false,
+      "eval": true,
+      "note": "sum-mismatch"
+    },
+    {
+      "file": "optional-missing.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "Acme GmbH",
+        "invoice_number": "INV-2026-1955",
+        "invoice_date": "2026-06-30",
+        "currency": "GBP",
+        "subtotal": 3984.97,
+        "grand_total": 4263.92
+      },
+      "expectedFields": {
+        "supplier_name": "Acme GmbH",
+        "invoice_number": "INV-2026-1955",
+        "invoice_date": "2026-06-30",
+        "currency": "GBP",
+        "subtotal": 3984.97,
+        "grand_total": 4263.92,
+        "due_date": null,
+        "tax_total": 278.95,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 3,
+            "unit_price": 1992.49,
+            "amount": null
+          },
+          {
+            "description": "Position 2",
+            "quantity": 4,
+            "unit_price": 1992.49,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": true,
+      "eval": false,
+      "note": "optional-missing"
     }
   ]
 }

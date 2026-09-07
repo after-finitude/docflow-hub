@@ -1,0 +1,638 @@
+{
+  "startedAt": "2026-09-07T04:15:04.985Z",
+  "providers": {
+    "ocr": "mock",
+    "llm": "mock",
+    "model": null
+  },
+  "concurrency": {
+    "default": 4,
+    "ocr": 2,
+    "extraction": 2
+  },
+  "environment": {
+    "description": "Native API and worker; production Next web; PostgreSQL 18, Redis 7 and MinIO in Colima VM (2 CPU, 4 GiB); localhost; one worker process; concurrency verified in worker startup log: default 4, OCR 2, extraction 2.",
+    "node": "v24.14.1",
+    "os": "darwin 25.6.0",
+    "cpu": "Apple M1",
+    "logicalCpus": 8,
+    "memoryGiB": 16
+  },
+  "existingDocuments": 46,
+  "processing": [
+    {
+      "pages": 1,
+      "samples": [
+        {
+          "id": "01a07a13-ad5a-7169-b1fa-db391b29b050",
+          "status": "needs_review",
+          "pageCount": 1,
+          "elapsedMs": 148,
+          "error": null
+        },
+        {
+          "id": "01a07a13-adee-7686-9654-2e9b57be3600",
+          "status": "needs_review",
+          "pageCount": 1,
+          "elapsedMs": 141,
+          "error": null
+        },
+        {
+          "id": "01a07a13-ae78-76c0-8468-23ec44d0f050",
+          "status": "needs_review",
+          "pageCount": 1,
+          "elapsedMs": 136,
+          "error": null
+        }
+      ],
+      "medianMs": 141,
+      "maxMs": 148
+    },
+    {
+      "pages": 10,
+      "samples": [
+        {
+          "id": "01a07a13-af00-7b10-b5b2-e518ee544b26",
+          "status": "needs_review",
+          "pageCount": 10,
+          "elapsedMs": 135,
+          "error": null
+        },
+        {
+          "id": "01a07a13-af88-7a2f-a821-b2946e2847a1",
+          "status": "needs_review",
+          "pageCount": 10,
+          "elapsedMs": 136,
+          "error": null
+        },
+        {
+          "id": "01a07a13-b011-71ac-9f92-bb6eab396cba",
+          "status": "needs_review",
+          "pageCount": 10,
+          "elapsedMs": 136,
+          "error": null
+        }
+      ],
+      "medianMs": 136,
+      "maxMs": 136
+    }
+  ],
+  "load": {
+    "submitted": 20,
+    "elapsedMs": 817,
+    "medianMs": 705,
+    "results": [
+      {
+        "file": "invoice-001.pdf",
+        "id": "01a07a13-b0c8-7514-a8b6-dd7dffb633ad",
+        "status": "needs_review",
+        "elapsedMs": 642,
+        "error": null
+      },
+      {
+        "file": "invoice-002.pdf",
+        "id": "01a07a13-b0c0-7222-b0f5-193bde9cd0b2",
+        "status": "needs_review",
+        "elapsedMs": 817,
+        "error": null
+      },
+      {
+        "file": "invoice-003.pdf",
+        "id": "01a07a13-b0b9-75b7-82f0-1c929fd24119",
+        "status": "needs_review",
+        "elapsedMs": 471,
+        "error": null
+      },
+      {
+        "file": "invoice-004.pdf",
+        "id": "01a07a13-b0bf-7c9b-8a41-ee9404579418",
+        "status": "needs_review",
+        "elapsedMs": 455,
+        "error": null
+      },
+      {
+        "file": "invoice-005.pdf",
+        "id": "01a07a13-b0cb-765f-87b3-dbf9e04d1223",
+        "status": "needs_review",
+        "elapsedMs": 705,
+        "error": null
+      },
+      {
+        "file": "invoice-006.pdf",
+        "id": "01a07a13-b0ca-71ad-8f9e-7f06063a065b",
+        "status": "needs_review",
+        "elapsedMs": 776,
+        "error": null
+      },
+      {
+        "file": "invoice-007.pdf",
+        "id": "01a07a13-b0cb-7a05-8ac8-b8bece43fab8",
+        "status": "needs_review",
+        "elapsedMs": 737,
+        "error": null
+      },
+      {
+        "file": "invoice-008.pdf",
+        "id": "01a07a13-b0c9-728b-bc58-8a968381c10f",
+        "status": "needs_review",
+        "elapsedMs": 800,
+        "error": null
+      },
+      {
+        "file": "invoice-009.pdf",
+        "id": "01a07a13-b0c7-7d86-8667-9a53cfe00f5a",
+        "status": "needs_review",
+        "elapsedMs": 754,
+        "error": null
+      },
+      {
+        "file": "invoice-010.pdf",
+        "id": "01a07a13-b0ca-768d-a4ed-91b111f4965a",
+        "status": "needs_review",
+        "elapsedMs": 817,
+        "error": null
+      },
+      {
+        "file": "invoice-011.pdf",
+        "id": "01a07a13-b0cc-718b-bec3-691a23915cb9",
+        "status": "needs_review",
+        "elapsedMs": 817,
+        "error": null
+      },
+      {
+        "file": "invoice-012.pdf",
+        "id": "01a07a13-b0bb-79cb-ae4c-35d46e5adc0d",
+        "status": "needs_review",
+        "elapsedMs": 465,
+        "error": null
+      },
+      {
+        "file": "bank_statement-001.pdf",
+        "id": "01a07a13-b0cd-7117-b2cc-aca572d94941",
+        "status": "approved",
+        "elapsedMs": 775,
+        "error": null
+      },
+      {
+        "file": "bank_statement-002.pdf",
+        "id": "01a07a13-b0c5-7aad-b48c-a38ba02e1f21",
+        "status": "approved",
+        "elapsedMs": 705,
+        "error": null
+      },
+      {
+        "file": "bank_statement-003.pdf",
+        "id": "01a07a13-b0c3-7f28-867e-87eeaa7944c9",
+        "status": "approved",
+        "elapsedMs": 549,
+        "error": null
+      },
+      {
+        "file": "bank_statement-004.pdf",
+        "id": "01a07a13-b0be-7def-a1c6-cb2f50579bce",
+        "status": "approved",
+        "elapsedMs": 578,
+        "error": null
+      },
+      {
+        "file": "bank_statement-005.pdf",
+        "id": "01a07a13-b0c5-7292-abe8-9c9d29315b49",
+        "status": "approved",
+        "elapsedMs": 591,
+        "error": null
+      },
+      {
+        "file": "bank_statement-006.pdf",
+        "id": "01a07a13-b0c9-78ca-a196-aad69f8eb937",
+        "status": "approved",
+        "elapsedMs": 779,
+        "error": null
+      },
+      {
+        "file": "bank_statement-007.pdf",
+        "id": "01a07a13-b0c7-7029-a31e-b579dfb9ecdc",
+        "status": "approved",
+        "elapsedMs": 636,
+        "error": null
+      },
+      {
+        "file": "bank_statement-008.pdf",
+        "id": "01a07a13-b0c2-73f4-a00f-afa33d2ccb39",
+        "status": "approved",
+        "elapsedMs": 577,
+        "error": null
+      }
+    ],
+    "queueSnapshots": [
+      {
+        "at": "2026-09-07T04:15:05.850Z",
+        "queues": {
+          "preprocess": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "ocr": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "classify": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "extract": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "validate": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "at": "2026-09-07T04:15:05.968Z",
+        "queues": {
+          "preprocess": {
+            "active": 4,
+            "wait": 16,
+            "delayed": 0,
+            "failed": 0
+          },
+          "ocr": {
+            "active": 1,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "classify": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "extract": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "validate": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "at": "2026-09-07T04:15:06.069Z",
+        "queues": {
+          "preprocess": {
+            "active": 4,
+            "wait": 6,
+            "delayed": 0,
+            "failed": 0
+          },
+          "ocr": {
+            "active": 2,
+            "wait": 5,
+            "delayed": 0,
+            "failed": 0
+          },
+          "classify": {
+            "active": 2,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "extract": {
+            "active": 1,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "validate": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "at": "2026-09-07T04:15:06.171Z",
+        "queues": {
+          "preprocess": {
+            "active": 3,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "ocr": {
+            "active": 2,
+            "wait": 10,
+            "delayed": 0,
+            "failed": 0
+          },
+          "classify": {
+            "active": 2,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "extract": {
+            "active": 2,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "validate": {
+            "active": 1,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "at": "2026-09-07T04:15:06.273Z",
+        "queues": {
+          "preprocess": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "ocr": {
+            "active": 2,
+            "wait": 7,
+            "delayed": 0,
+            "failed": 0
+          },
+          "classify": {
+            "active": 3,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "extract": {
+            "active": 2,
+            "wait": 3,
+            "delayed": 0,
+            "failed": 0
+          },
+          "validate": {
+            "active": 3,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "at": "2026-09-07T04:15:06.375Z",
+        "queues": {
+          "preprocess": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "ocr": {
+            "active": 2,
+            "wait": 2,
+            "delayed": 0,
+            "failed": 0
+          },
+          "classify": {
+            "active": 3,
+            "wait": 1,
+            "delayed": 0,
+            "failed": 0
+          },
+          "extract": {
+            "active": 2,
+            "wait": 4,
+            "delayed": 0,
+            "failed": 0
+          },
+          "validate": {
+            "active": 2,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "at": "2026-09-07T04:15:06.477Z",
+        "queues": {
+          "preprocess": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "ocr": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "classify": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "extract": {
+            "active": 2,
+            "wait": 7,
+            "delayed": 0,
+            "failed": 0
+          },
+          "validate": {
+            "active": 2,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "at": "2026-09-07T04:15:06.579Z",
+        "queues": {
+          "preprocess": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "ocr": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "classify": {
+            "active": 0,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "extract": {
+            "active": 1,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          },
+          "validate": {
+            "active": 2,
+            "wait": 0,
+            "delayed": 0,
+            "failed": 0
+          }
+        }
+      }
+    ],
+    "peak": {
+      "preprocess": {
+        "active": 4,
+        "wait": 16,
+        "delayed": 0,
+        "failed": 0
+      },
+      "ocr": {
+        "active": 2,
+        "wait": 10,
+        "delayed": 0,
+        "failed": 0
+      },
+      "classify": {
+        "active": 3,
+        "wait": 1,
+        "delayed": 0,
+        "failed": 0
+      },
+      "extract": {
+        "active": 2,
+        "wait": 7,
+        "delayed": 0,
+        "failed": 0
+      },
+      "validate": {
+        "active": 3,
+        "wait": 0,
+        "delayed": 0,
+        "failed": 0
+      }
+    },
+    "final": {
+      "preprocess": {
+        "active": 0,
+        "wait": 0,
+        "delayed": 0,
+        "failed": 0
+      },
+      "ocr": {
+        "active": 0,
+        "wait": 0,
+        "delayed": 0,
+        "failed": 0
+      },
+      "classify": {
+        "active": 0,
+        "wait": 0,
+        "delayed": 0,
+        "failed": 0
+      },
+      "extract": {
+        "active": 0,
+        "wait": 0,
+        "delayed": 0,
+        "failed": 0
+      },
+      "validate": {
+        "active": 0,
+        "wait": 0,
+        "delayed": 0,
+        "failed": 0
+      }
+    }
+  },
+  "display": {
+    "browser": "145.0.7632.116",
+    "viewport": "1440x900",
+    "context": "Fresh browser context per full navigation; empty HTTP cache; warm API/worker/web processes and shared server caches; no CPU/network throttling. Mark recorded after hydration and first-page image load with fields rendered.",
+    "samples": [
+      {
+        "id": "01a07a13-ad5a-7169-b1fa-db391b29b050",
+        "pages": 1,
+        "readyMs": 231,
+        "ttfbMs": 56,
+        "imageLoaded": true,
+        "fieldCount": 8
+      },
+      {
+        "id": "01a07a13-adee-7686-9654-2e9b57be3600",
+        "pages": 1,
+        "readyMs": 105,
+        "ttfbMs": 20,
+        "imageLoaded": true,
+        "fieldCount": 8
+      },
+      {
+        "id": "01a07a13-ae78-76c0-8468-23ec44d0f050",
+        "pages": 1,
+        "readyMs": 109,
+        "ttfbMs": 25,
+        "imageLoaded": true,
+        "fieldCount": 8
+      },
+      {
+        "id": "01a07a13-af00-7b10-b5b2-e518ee544b26",
+        "pages": 10,
+        "readyMs": 161,
+        "ttfbMs": 20,
+        "imageLoaded": true,
+        "fieldCount": 8
+      },
+      {
+        "id": "01a07a13-af88-7a2f-a821-b2946e2847a1",
+        "pages": 10,
+        "readyMs": 142,
+        "ttfbMs": 19,
+        "imageLoaded": true,
+        "fieldCount": 8
+      },
+      {
+        "id": "01a07a13-b011-71ac-9f92-bb6eab396cba",
+        "pages": 10,
+        "readyMs": 151,
+        "ttfbMs": 20,
+        "imageLoaded": true,
+        "fieldCount": 8
+      }
+    ],
+    "medianMs": 146.5,
+    "maxMs": 231
+  },
+  "finishedAt": "2026-09-07T04:15:15.701Z",
+  "review": {
+    "approvals": 0,
+    "measured": 0,
+    "medianMs": null,
+    "missingOpening": 0
+  },
+  "failures": []
+}

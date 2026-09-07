@@ -6,6 +6,7 @@ import {
   StorageService,
   ValidationRunnerService,
   documents,
+  auditEvents,
   fields,
   getDocumentSchema,
   selectExtractionSchema,
@@ -123,6 +124,61 @@ export class DocumentsService {
     @InjectQueue(QUEUE.PREPROCESS) private readonly preprocessQueue: Queue,
     @InjectQueue(QUEUE.EXTRACT) private readonly extractQueue: Queue,
   ) {}
+
+  private async reviewOpening(db: Database, id: string, actorId: string, revision: number) {
+    const [entry] = await db
+      .select({ at: auditEvents.createdAt })
+      .from(auditEvents)
+      .where(
+        and(
+          eq(auditEvents.objectId, id),
+          eq(auditEvents.actorId, actorId),
+          eq(auditEvents.action, 'document.review_opened'),
+          sql`${auditEvents.after}->>'revision' = ${String(revision)}`,
+        ),
+      )
+      .orderBy(auditEvents.createdAt)
+      .limit(1)
+    return entry?.at ?? null
+  }
+
+  async openReview(id: string, user: SessionUser, origin: RequestContext): Promise<void> {
+    await this.db.transaction(async (db) => {
+      const document = await lockDocument(db, id)
+      if (!document) throw new NotFoundException('Document not found')
+      if (document.status !== 'needs_review') return
+      if (await this.reviewOpening(db, id, user.id, document.processingRevision)) return
+      await writeAudit(db, {
+        actorType: 'user',
+        actorId: user.id,
+        action: 'document.review_opened',
+        objectType: 'document',
+        objectId: id,
+        correlationId: origin.correlationId,
+        after: { revision: document.processingRevision },
+        result: 'success',
+      })
+    })
+  }
+
+  async reviewMetrics(since?: string) {
+    const [result] = await this.db
+      .select({
+        approvals: sql<number>`count(*)::int`,
+        measured: sql<number>`count(${auditEvents.after}->>'reviewDurationMs')::int`,
+        medianMs: sql<
+          number | null
+        >`percentile_cont(0.5) within group (order by (${auditEvents.after}->>'reviewDurationMs')::double precision)`,
+      })
+      .from(auditEvents)
+      .where(
+        and(
+          eq(auditEvents.action, 'document.approved'),
+          since ? gte(auditEvents.createdAt, new Date(since)) : undefined,
+        ),
+      )
+    return { ...result, missingOpening: result.approvals - result.measured }
+  }
 
   async rejectOversized(
     body: Omit<OversizedUploadRequest, 'sizeBytes'> & { sizeBytes: number | null },
@@ -439,12 +495,14 @@ export class DocumentsService {
         )
       }
 
+      const approvedAt = new Date()
+      const openedAt = await this.reviewOpening(db, id, user.id, document.processingRevision)
       await db
         .update(documents)
         .set({
           status: 'approved',
           statusReason: null,
-          processedAt: new Date(),
+          processedAt: approvedAt,
           processingStep: null,
           processingRevision: document.processingRevision + 1,
         })
@@ -455,6 +513,14 @@ export class DocumentsService {
         actorType: 'user',
         actorId: user.id,
         action: 'document.approved',
+        after: {
+          revision: document.processingRevision,
+          reviewOpenedAt: openedAt?.toISOString() ?? null,
+          approvedAt: approvedAt.toISOString(),
+          reviewDurationMs: openedAt
+            ? Math.max(0, approvedAt.getTime() - openedAt.getTime())
+            : null,
+        },
         objectType: 'document',
         objectId: id,
         result: 'success',

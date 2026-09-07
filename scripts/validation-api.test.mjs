@@ -228,6 +228,58 @@ test(
     const row = async (id) => (await db.select().from(documents).where(eq(documents.id, id)))[0]
 
     await t.test(
+      'review timing is idempotent, actor/revision specific, and metrics are administrator-only',
+      async () => {
+        const id = await doc('needs_review')
+        await Promise.all([service.openReview(id, user, {}), service.openReview(id, user, {})])
+        let logs = await db.select().from(auditEvents).where(eq(auditEvents.objectId, id))
+        assert.equal(logs.filter((log) => log.action === 'document.review_opened').length, 1)
+        assert.equal((await request(id, 'approve')).status, 201)
+        logs = await db.select().from(auditEvents).where(eq(auditEvents.objectId, id))
+        const approval = logs.find((log) => log.action === 'document.approved')
+        assert.ok(approval.after.reviewDurationMs >= 0)
+        assert.ok(approval.after.reviewOpenedAt)
+        assert.ok(approval.after.approvedAt)
+        const [other] = await db
+          .insert(users)
+          .values({ login: 'reviewer', passwordHash: 'test', role: 'operator' })
+          .returning()
+        const otherActor = await doc('needs_review')
+        await service.openReview(otherActor, other, {})
+        assert.equal((await request(otherActor, 'approve')).status, 201)
+        const otherApproval = (
+          await db.select().from(auditEvents).where(eq(auditEvents.objectId, otherActor))
+        ).find((log) => log.action === 'document.approved')
+        assert.equal(otherApproval.after.reviewDurationMs, null)
+        const stale = await doc('needs_review')
+        await service.openReview(stale, user, {})
+        await db.update(documents).set({ processingRevision: 1 }).where(eq(documents.id, stale))
+        assert.equal((await request(stale, 'approve')).status, 201)
+        const staleApproval = (
+          await db.select().from(auditEvents).where(eq(auditEvents.objectId, stale))
+        ).find((log) => log.action === 'document.approved')
+        assert.equal(staleApproval.after.reviewDurationMs, null)
+        assert.equal((await fetch(`${base}/documents/review-metrics`)).status, 403)
+        const response = await fetch(`${base}/documents/review-metrics`, {
+          headers: { 'x-test-role': 'admin' },
+        })
+        assert.equal(response.status, 200)
+        const metrics = await response.json()
+        assert.equal(metrics.review.measured, 1)
+        assert.equal(metrics.review.missingOpening, 2)
+        assert.equal(metrics.review.medianMs, approval.after.reviewDurationMs)
+        assert.equal(
+          (
+            await fetch(`${base}/documents/review-metrics?since=bad`, {
+              headers: { 'x-test-role': 'admin' },
+            })
+          ).status,
+          400,
+        )
+      },
+    )
+
+    await t.test(
       'oversized metadata creates a rejected document, failed ingest and audit without storage or jobs',
       async () => {
         const beforeJobs = jobs.length,

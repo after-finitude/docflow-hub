@@ -10,6 +10,7 @@ export interface SourceHighlight {
 }
 
 interface DocumentViewerProps {
+  onReady?: () => void
   documentId: string
   pageCount: number
   highlights: SourceHighlight[]
@@ -22,6 +23,7 @@ const ZOOM_STEPS = [0.75, 1, 1.25, 1.5, 2, 3]
 const RENDER_WIDTH = 1400
 
 export function DocumentViewer({
+  onReady,
   documentId,
   pageCount,
   highlights,
@@ -43,6 +45,10 @@ export function DocumentViewer({
     },
     [page],
   )
+
+  useEffect(() => {
+    if (loaded.page === page) onReady?.()
+  }, [loaded, page, onReady])
 
   const active = highlights.find((highlight) => highlight.fieldName === activeField)
 

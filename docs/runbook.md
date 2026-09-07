@@ -61,3 +61,34 @@ Files larger than 25 MiB create a **Rejected** queue entry and a failed **Ingest
 3. Reject the combined upload with a note that it was split, then upload the separate files from the queue. Review their classification, values and source highlights independently. Docflow does not split files automatically.
 
 `npm test` includes controlled Google Vision responses over real raster operations, rotated/skewed image and scanned-PDF fixtures, all eight JPEG/PNG EXIF orientations, blank pages, malformed later PDF pages, protected files and upload refusal. These checks validate processing and coordinate behavior; they do not establish Google Vision recognition accuracy on real Russian/English scans. That check requires configured Vision credentials and belongs with the real-provider evaluation.
+
+## Quality and performance evaluation
+
+Use a disposable stack with its own database, Redis and object storage, migrated and seeded normally. Disable source ingestion (`SOURCE_PROVIDER=none`). Never point these commands at production: they upload synthetic documents. Quality evaluation refuses a nonempty document database because duplicate and uniqueness rules depend on previous documents. Use a separate Compose project and unused port overrides if another stack is running; do not remove existing volumes to make it empty.
+
+API and worker must share OCR/LLM, model and queue-concurrency configuration. Start both after building the backend. Select `OCR_PROVIDER=mock` and `LLM_PROVIDER=mock` for the initial run; rerun on a fresh isolated stack with real providers when credentials are available. `npm run eval` does not start or reconfigure services. The administrator metrics response records API configuration; verify the worker's startup log agrees. Authentication cookies stay in process memory and are not written into reports.
+
+```bash
+npm run dataset
+export EVAL_BASE_URL=http://127.0.0.1:3001
+export EVAL_LOGIN=admin
+# Set EVAL_PASSWORD to the disposable stack's seed administrator password.
+npm run eval
+```
+
+Set the URL to the API's actual address, without a trailing slash, or the web proxy URL ending in `/api`. The harness uploads all 46 files and waits for production workers, writing `evaluation/last-run.json` and `evaluation/last-run.md`. It reports the 15 labeled cases separately, with expected values, schema/rule versions, thresholds, manifest hash, date, provider/model identity and each outcome. Ground truth comes from generator inputs and includes explicit Missing and invalid cases. Rejected valid files, failures and Unknown remain in applicable denominators. A missed target produces exit code 1 **after saving the report**; the current mock corpus run intentionally reports 97.6% coverage below 98%. `EVAL_TIMEOUT_MS` defaults to 180000 per document and counts unfinished work as a failure without cancelling it.
+
+For latency and load, keep that stack running and start a production web build with its `API_INTERNAL_URL` pointing at the same API (this value is needed during both build and runtime). Use the installed system Chrome; optionally set `EVAL_CHROME_PATH` to another Chromium executable. No browser download is required.
+
+```bash
+export EVAL_WEB_URL=http://127.0.0.1:3000
+export EVAL_REDIS_URL=redis://127.0.0.1:6379
+export EVAL_ENVIRONMENT='Describe process/container mode, VM resources and worker count'
+npm run eval:performance
+```
+
+Use the actual reachable Redis address of this disposable stack. The benchmark uploads three one-page and three ten-page files, then 20 files simultaneously. It records direct BullMQ active/waiting/delayed/failed counts, per-document decisions and timings, and six fresh browser navigations to the real Review Workspace. The page's `docflow-review-ready` performance mark follows hydration and first-page image loading. Browser checks require visible source controls and a loaded image, and verify the review-opening request succeeds. Results go to `evaluation/performance.json` and `evaluation/performance.md`. Existing documents are counted and normal duplicate checks remain active. The ten-page fixture uses nonblank text attachments; it is not a scanned-document benchmark.
+
+Opening a Needs review page sends `POST /documents/:id/review-opened` and appends `document.review_opened` once per user and processing revision. Approval appends server-side opening/approval timestamps and elapsed milliseconds to `document.approved`. No mouse, keyboard, focus or activity tracking is collected. `GET /documents/review-metrics?since=<ISO timestamp>` is administrator-only and returns manual-approval count, measured count, median milliseconds and missing-opening count. Reprocessing or changing type starts a new revision; another user's opening cannot be paired with approval. Time away is included; missing openings are excluded from the median and reported separately. The unattended benchmark does not supply a human review-time sample.
+
+`npm test` checks metric denominators and false approvals without a live stack. Set `TEST_DATABASE_URL` to a PostgreSQL role that can create databases for the review timing/permissions regression; it creates, migrates and drops its own random test database. Real-provider quality and a timed human review sample remain separate, unverified checks.

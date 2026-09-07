@@ -196,3 +196,8 @@ export const WORKFLOW_STATE_LABELS: Record<WorkflowState, string> = {
 
 export const ALL_WORKFLOW_STEPS = WORKFLOW_STEPS
 export const ALL_WORKFLOW_STATES = WORKFLOW_STATES
+
+/** Filter review aggregates without recording operator activity. */
+export const reviewMetricsQuerySchema = z.object({
+  since: z.iso.datetime({ offset: true }).optional(),
+})

@@ -77,6 +77,8 @@ const BASE_DATE = new Date(Date.UTC(2026, 5, 1))
 
 async function renderPdf(lines, layout) {
   const pdf = await PDFDocument.create()
+  pdf.setCreationDate(BASE_DATE)
+  pdf.setModificationDate(BASE_DATE)
   pdf.registerFontkit(fontkit)
   const regular = await pdf.embedFont(readFileSync(fontPath), { subset: true })
   const bold = await pdf.embedFont(readFileSync(fontBoldPath), { subset: true })
@@ -162,6 +164,11 @@ function invoice(index) {
     lines,
     layout,
     expectedType: 'invoice',
+    extra: {
+      due_date: formatDate(due, 'iso'),
+      tax_total: tax,
+      line_items: items.map((item) => ({ ...item, amount: null })),
+    },
     critical: {
       supplier_name: supplier,
       invoice_number: number,
@@ -202,6 +209,7 @@ function bankStatement(index) {
       { gap: 10 },
       { text: `Statement #${index + 1}`, size: 8 },
     ],
+    extra: { currency },
     critical: {
       bank_name: bank,
       account_number: account,
@@ -219,6 +227,8 @@ function taxLetter(index) {
   const number = `TX-${pad(500 + index)}`
   const date = addDays(BASE_DATE, between(0, 30))
   const amount = between(5000, 200000) / 100
+  const taxpayerId = String(between(1000000000, 9999999999))
+  const subject = pick(SUBJECTS)
 
   return {
     layout: 'classic',
@@ -230,12 +240,18 @@ function taxLetter(index) {
       { text: `Letter No: ${number}` },
       { text: `Date: ${formatDate(date, 'eu')}` },
       { text: `Taxpayer: ${taxpayer}` },
-      { text: `Taxpayer ID: ${between(1000000000, 9999999999)}` },
-      { text: `Subject: ${pick(SUBJECTS)}` },
+      { text: `Taxpayer ID: ${taxpayerId}` },
+      { text: `Subject: ${subject}` },
       { rule: true },
       { text: `Amount Due: ${amount.toFixed(2)}` },
       { text: `Pay By: ${formatDate(addDays(date, 30), 'eu')}` },
     ],
+    extra: {
+      taxpayer_id: taxpayerId,
+      subject,
+      amount_due: amount,
+      due_date: formatDate(addDays(date, 30), 'iso'),
+    },
     critical: {
       authority_name: authority,
       letter_number: number,
@@ -251,6 +267,8 @@ function contract(index) {
   const number = `CT-${pad(300 + index)}`
   const date = addDays(BASE_DATE, between(0, 30))
   const value = between(100000, 5000000) / 100
+  const subject = pick(CONTRACT_SUBJECTS)
+  const currency = pick(CURRENCIES)
 
   return {
     layout: 'wide',
@@ -262,12 +280,19 @@ function contract(index) {
       { text: `Date: ${formatDate(date, 'eu')}` },
       { text: `Party A: ${partyA}` },
       { text: `Party B: ${partyB}` },
-      { text: `Subject: ${pick(CONTRACT_SUBJECTS)}` },
+      { text: `Subject: ${subject}` },
       { text: `Value: ${value.toFixed(2)}` },
-      { text: `Currency: ${pick(CURRENCIES)}` },
+      { text: `Currency: ${currency}` },
       { text: `Valid From: ${formatDate(date, 'eu')}` },
       { text: `Valid To: ${formatDate(addDays(date, 365), 'eu')}` },
     ],
+    extra: {
+      subject,
+      contract_value: value,
+      currency,
+      start_date: formatDate(date, 'iso'),
+      end_date: formatDate(addDays(date, 365), 'iso'),
+    },
     critical: {
       contract_number: number,
       contract_date: formatDate(date, 'iso'),
@@ -339,8 +364,10 @@ async function main() {
         file,
         expectedType: spec.expectedType,
         criticalFields: spec.critical,
+        expectedFields: { ...spec.critical, ...spec.extra },
+        expectedAutoAllowed: true,
         // The labeled evaluation set contains 15 documents (spec §12).
-        eval: manifest.length < 15,
+        eval: index < (type === 'invoice' ? 2 : 3),
       })
     }
   }
@@ -353,6 +380,8 @@ async function main() {
     file: 'scan-low-quality.jpg',
     expectedType: 'invoice',
     criticalFields: scanSource.critical,
+    expectedFields: { ...scanSource.critical, ...scanSource.extra },
+    expectedAutoAllowed: false,
     eval: false,
     note: 'Poor scan: rotation, noise, reduced contrast, and handwritten note',
   })
@@ -363,6 +392,8 @@ async function main() {
     file: 'duplicate-invoice.pdf',
     expectedType: 'invoice',
     criticalFields: manifest.find((item) => item.file === firstInvoiceFile).criticalFields,
+    expectedFields: manifest.find((item) => item.file === firstInvoiceFile).expectedFields,
+    expectedAutoAllowed: false,
     eval: false,
     note: `Checksum duplicate of ${firstInvoiceFile}`,
   })
@@ -376,7 +407,9 @@ async function main() {
     file: 'corrupted.pdf',
     expectedType: null,
     criticalFields: {},
-    eval: false,
+    expectedFields: {},
+    expectedAutoAllowed: false,
+    eval: true,
     note: 'Corrupted file expected to be rejected before an LLM call',
   })
 
@@ -388,13 +421,48 @@ async function main() {
     file: 'multi-document.pdf',
     expectedType: 'invoice',
     criticalFields: multi.critical,
-    eval: false,
+    expectedFields: { ...multi.critical, ...multi.extra },
+    expectedAutoAllowed: false,
+    multiDocument: true,
+    eval: true,
     note: 'Two documents in one file; warning expected',
   })
 
+  for (const scenario of ['missing-critical', 'sum-mismatch', 'optional-missing']) {
+    const spec = invoice(910 + manifest.length)
+    const expectedFields = { ...spec.critical, ...spec.extra }
+    if (scenario === 'missing-critical') {
+      spec.lines = spec.lines.filter((line) => !line.text?.startsWith('Supplier:'))
+      expectedFields.supplier_name = null
+      spec.critical.supplier_name = null
+    } else if (scenario === 'sum-mismatch') {
+      expectedFields.grand_total += 10
+      spec.critical.grand_total += 10
+      spec.lines = spec.lines.map((line) =>
+        line.text?.startsWith('Total:')
+          ? { ...line, text: `Total: ${expectedFields.grand_total.toFixed(2)}` }
+          : line,
+      )
+    } else {
+      spec.lines = spec.lines.filter((line) => !line.text?.startsWith('Due Date:'))
+      expectedFields.due_date = null
+    }
+    const file = `${scenario}.pdf`
+    writeFileSync(join(outDir, file), await renderPdf(spec.lines, spec.layout))
+    manifest.push({
+      file,
+      expectedType: 'invoice',
+      criticalFields: spec.critical,
+      expectedFields,
+      expectedAutoAllowed: scenario === 'optional-missing',
+      eval: scenario !== 'optional-missing',
+      note: scenario,
+    })
+  }
+
   writeFileSync(
     join(outDir, 'ground-truth.json'),
-    `${JSON.stringify({ baseDate: formatDate(BASE_DATE, 'iso'), documents: manifest }, null, 2)}\n`,
+    `${JSON.stringify({ version: 2, labelSource: 'synthetic generator inputs; null means visibly absent', baseDate: formatDate(BASE_DATE, 'iso'), documents: manifest }, null, 2)}\n`,
   )
 
   const evalCount = manifest.filter((item) => item.eval).length

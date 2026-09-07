@@ -24,7 +24,7 @@ import {
 import { uploadFile } from '../../../lib/upload-file'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DocumentViewer, type SourceHighlight } from './document-viewer'
 import { FieldCard } from './field-card'
 import { LineItemsEditor } from './line-items-editor'
@@ -37,6 +37,13 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState(false)
+
+  useEffect(() => {
+    performance.clearMarks('docflow-review-ready')
+    if (initial.status === 'needs_review') {
+      void fetch(`/api/documents/${initial.id}/review-opened`, { method: 'POST' }).catch(() => {})
+    }
+  }, [initial.id, initial.status])
 
   const exportReserved = document.exports.some(
     (item) => item.status === 'pending' || item.status === 'failed',
@@ -267,6 +274,10 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
         <section className="flex min-w-0 basis-[55%] flex-col">
           {document.pageCount ? (
             <DocumentViewer
+              onReady={() => {
+                if (!performance.getEntriesByName('docflow-review-ready').length)
+                  performance.mark('docflow-review-ready')
+              }}
               documentId={document.id}
               pageCount={document.pageCount}
               highlights={highlights}
