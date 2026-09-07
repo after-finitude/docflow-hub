@@ -6,7 +6,9 @@ import { useState } from 'react'
 interface LineItemsEditorProps {
   value: LineItem[]
   disabled: boolean
-  onSave: (items: LineItem[]) => Promise<void>
+  dirty: boolean
+  onDirtyChange: (dirty: boolean) => void
+  onSave: (items: LineItem[]) => Promise<boolean>
 }
 
 const EMPTY_ITEM: LineItem = { description: '', quantity: null, unit_price: null, amount: null }
@@ -18,21 +20,22 @@ function parseNumber(text: string): number | null {
 }
 
 /** Line-items table with row addition and removal (spec 5.2). */
-export function LineItemsEditor({ value, disabled, onSave }: LineItemsEditorProps) {
+export function LineItemsEditor({ value, disabled, dirty, onDirtyChange, onSave }: LineItemsEditorProps) {
   const [items, setItems] = useState<LineItem[]>(value)
-  const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
 
   function update(index: number, patch: Partial<LineItem>) {
     setItems((current) => current.map((item, i) => (i === index ? { ...item, ...patch } : item)))
-    setDirty(true)
+    onDirtyChange(true)
   }
 
   async function save() {
     setSaving(true)
-    await onSave(items)
-    setSaving(false)
-    setDirty(false)
+    try {
+      await onSave(items)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const cell = 'field field--mono h-8 px-2 text-xs'
@@ -99,7 +102,7 @@ export function LineItemsEditor({ value, disabled, onSave }: LineItemsEditorProp
                     disabled={disabled}
                     onClick={() => {
                       setItems((current) => current.filter((_, i) => i !== index))
-                      setDirty(true)
+                      onDirtyChange(true)
                     }}
                     className="text-muted transition-colors duration-[120ms] hover:text-danger disabled:opacity-40"
                     title="Remove row"
@@ -119,7 +122,7 @@ export function LineItemsEditor({ value, disabled, onSave }: LineItemsEditorProp
           disabled={disabled}
           onClick={() => {
             setItems((current) => [...current, { ...EMPTY_ITEM }])
-            setDirty(true)
+            onDirtyChange(true)
           }}
           className="btn btn--ghost btn--sm"
         >

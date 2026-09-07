@@ -21,6 +21,7 @@ import {
   type FieldDto,
   type FieldFilter,
   type LineItem,
+  type TableValue,
   type RejectReason,
 } from '@docflow/shared'
 import { uploadFile } from '../../../lib/upload-file'
@@ -30,6 +31,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { DocumentViewer, type SourceHighlight } from './document-viewer'
 import { FieldCard } from './field-card'
 import { LineItemsEditor } from './line-items-editor'
+import { TransactionsEditor } from './transactions-editor'
 
 export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
   const router = useRouter()
@@ -40,6 +42,8 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
   const [error, setError] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState(false)
   const [refreshFailed, setRefreshFailed] = useState(false)
+  const [tableDirty, setTableDirty] = useState(false)
+  const actionsDisabled = busy || tableDirty
   const processing = document.status === 'received' || document.status === 'processing'
 
   useEffect(() => {
@@ -137,6 +141,11 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
     .map((field) => ({ fieldName: field.name, page: field.sourcePage!, bbox: field.sourceBbox! }))
 
   async function call(path: string, init: RequestInit): Promise<boolean> {
+    // Document actions must not discard the draft; field PATCH requests can still save it.
+    if (tableDirty && init.method === 'POST') {
+      setError('Save table changes before continuing')
+      return false
+    }
     setBusy(true)
     setError(null)
     try {
@@ -168,12 +177,14 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
     })
   }
 
-  async function saveLineItems(items: LineItem[]) {
-    if (!lineItemsField) return
-    await call(`/api/documents/${document.id}/fields/${lineItemsField.name}`, {
+  async function saveTable(items: TableValue) {
+    if (!lineItemsField) return false
+    const saved = await call(`/api/documents/${document.id}/fields/${lineItemsField.name}`, {
       method: 'PATCH',
       body: JSON.stringify({ value: items }),
     })
+    if (saved) setTableDirty(false)
+    return saved
   }
 
   async function changeType(type: ClassifiableDocumentType) {
@@ -188,6 +199,10 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
    * document separately: its status may have changed to exported.
    */
   async function runExport(destination: ExportDestination, exportKey?: string) {
+    if (tableDirty) {
+      setError('Save table changes before exporting')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -340,7 +355,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
               <select
                 className="field"
                 value={document.documentType ?? 'unknown'}
-                disabled={busy || readOnly}
+                disabled={actionsDisabled || readOnly}
                 onChange={(event) =>
                   void changeType(event.target.value as ClassifiableDocumentType)
                 }
@@ -387,10 +402,16 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
               </p>
             )}
 
+            {tableDirty && (
+              <p role="status" className="mt-3 text-xs text-ink-2">
+                Save table changes before approving, exporting or restarting processing.
+              </p>
+            )}
+
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={!document.canApprove || busy}
+                disabled={!document.canApprove || actionsDisabled}
                 title={
                   document.blockingIssues > 0 ? 'There are unresolved blocking issues' : undefined
                 }
@@ -403,7 +424,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
               </button>
               <button
                 type="button"
-                disabled={busy || readOnly}
+                disabled={actionsDisabled || readOnly}
                 onClick={() => setRejecting(true)}
                 className="btn btn--danger"
               >
@@ -412,7 +433,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
               <button
                 type="button"
                 disabled={
-                  busy ||
+                  actionsDisabled ||
                   exportReserved ||
                   !document.hasOriginal ||
                   ['received', 'processing', 'exported'].includes(document.status)
@@ -428,7 +449,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                   at the source, so they do not have this button. */}
               {document.sourceType === 'upload' && document.isActive && (
                 <ReplaceFileButton
-                  disabled={busy || readOnly}
+                  disabled={actionsDisabled || readOnly}
                   onSelect={async (file) => {
                     setBusy(true)
                     setError(null)
@@ -459,7 +480,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
             {(document.status === 'approved' || document.status === 'exported') && (
               <ExportPanel
                 exports={document.exports}
-                busy={busy}
+                busy={actionsDisabled}
                 onExport={(destination, exportKey) => void runExport(destination, exportKey)}
                 onDownload={(exportId) => void runDownload(exportId)}
               />
@@ -512,12 +533,25 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
               />
             ))}
 
-            {lineItemsField && (
+            {lineItemsField?.name === 'transactions' ? (
+              <TransactionsEditor
+                key={lineItemsField.rawValue ?? 'empty'}
+                field={lineItemsField}
+                issues={issuesByField.get(lineItemsField.name) ?? []}
+                disabled={busy || readOnly}
+                dirty={tableDirty}
+                onDirtyChange={setTableDirty}
+                onSave={saveTable}
+                onFocusSource={() => setActiveField(lineItemsField.name)}
+              />
+            ) : lineItemsField && (
               <LineItemsEditor
                 key={lineItemsField.rawValue ?? 'empty'}
                 value={parseLineItems(lineItemsField)}
                 disabled={busy || readOnly}
-                onSave={saveLineItems}
+                dirty={tableDirty}
+                onDirtyChange={setTableDirty}
+                onSave={saveTable}
               />
             )}
           </div>

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { CLASSIFIABLE_DOCUMENT_TYPES } from '../enums'
-import { lineItemSchema } from './review'
+import { tableValueSchema, tableValueSchemaFor } from './review'
 import type { FieldSpec } from './schema'
 
 /**
@@ -30,7 +30,7 @@ export const extractionResponseSchema = z.object({
     z.object({
       name: z.string(),
       /** Verbatim document value, or null when missing (spec §9). */
-      value: z.union([z.string(), z.array(lineItemSchema.strict()), z.null()]),
+      value: z.union([z.string(), tableValueSchema, z.null()]),
       /**
        * Verbatim source excerpt and page (spec 6.4). No evidence means no source.
        */
@@ -57,6 +57,15 @@ export function extractionResponseSchemaFor(specs: FieldSpec[]) {
         ctx.addIssue({ code: 'custom', path, message: 'Unknown or duplicate field name' })
       }
       seen.add(field.name)
+      if (spec?.type === 'array' && Array.isArray(field.value)) {
+        if (!tableValueSchemaFor(spec.name).safeParse(field.value).success) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [...path, 'value'],
+            message: 'Invalid table row shape',
+          })
+        }
+      }
       if (spec && field.value !== null && Array.isArray(field.value) !== (spec.type === 'array')) {
         ctx.addIssue({
           code: 'custom',

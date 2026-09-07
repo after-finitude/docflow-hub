@@ -58,6 +58,16 @@ export const validationRuleSchema = z.discriminatedUnion('type', [
     tolerance: z.number().nonnegative(),
   }),
   z.object({ ...base, type: z.literal('array_or_absent'), field: z.string() }),
+  z.object({
+    ...base,
+    type: z.literal('statement_balance'),
+    field: z.literal('transactions'),
+    opening: z.string(),
+    closing: z.string(),
+    creditTotal: z.string(),
+    debitTotal: z.string(),
+    tolerance: z.number().nonnegative(),
+  }),
 ])
 
 export type ValidationRule = z.infer<typeof validationRuleSchema>

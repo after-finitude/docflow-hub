@@ -1,7 +1,7 @@
 import type { IssueSeverity, ValueType } from '../enums'
 import type { ValidationRule } from './rules'
 import { normalizeDate } from '../normalize/values'
-import { lineItemSchema } from '../contracts/review'
+import { bankTransactionSchema, tableValueSchemaFor } from '../contracts/review'
 
 /**
  * Validation engine (spec 6.6). A pure function gives reproducible results
@@ -212,6 +212,74 @@ function applyRule(
       })
     }
 
+    case 'statement_balance': {
+      const parsed = bankTransactionSchema
+        .array()
+        .safeParse(byName.get(rule.field)?.normalizedValue)
+      if (!parsed.success) return null // Missing/invalid tables are handled by field validation.
+      const rows = parsed.data
+      let credits = 0
+      let debits = 0
+      for (const [index, row] of rows.entries()) {
+        if (
+          !row.date?.trim() ||
+          !row.description.trim() ||
+          (row.credit === null && row.debit === null) ||
+          ((row.credit ?? 0) > 0 && (row.debit ?? 0) > 0)
+        ) {
+          return issue(rule, rule.field, {
+            message: `Transaction ${index + 1} needs a date, description and an unambiguous paid-in or paid-out amount`,
+            expected: 'a complete transaction',
+            actual: `row ${index + 1}`,
+          })
+        }
+        // Only validate the calendar date here; keep the printed numeric order in the row.
+        if (!normalizeDate(row.date!) && !normalizeDate(row.date!, 'mdy')) {
+          return issue(rule, rule.field, {
+            message: `Transaction ${index + 1} has an invalid or unsupported date; enter a complete date such as YYYY-MM-DD`,
+            expected: 'a valid calendar date with a year',
+            actual: `row ${index + 1}`,
+          })
+        }
+        credits += row.credit ?? 0
+        debits += row.debit ?? 0
+      }
+      // Check aggregate balances independent of whether the bank prints newest or oldest first.
+      const opening = asNumber(byName.get(rule.opening)?.normalizedValue)
+      const closing = asNumber(byName.get(rule.closing)?.normalizedValue)
+      const comparisons = [
+        {
+          label: 'Closing balance',
+          actual: closing,
+          expected: opening === null ? null : opening + credits - debits,
+        },
+        {
+          label: 'Total paid in',
+          actual: asNumber(byName.get(rule.creditTotal)?.normalizedValue),
+          expected: credits,
+        },
+        {
+          label: 'Total paid out',
+          actual: asNumber(byName.get(rule.debitTotal)?.normalizedValue),
+          expected: debits,
+        },
+      ]
+      for (const comparison of comparisons) {
+        if (
+          comparison.actual !== null &&
+          comparison.expected !== null &&
+          Math.abs(comparison.actual - comparison.expected) > rule.tolerance + 1e-9
+        ) {
+          return issue(rule, rule.field, {
+            message: `${comparison.label} does not match the transactions; review amounts and missing or repeated rows`,
+            expected: format(comparison.expected),
+            actual: format(comparison.actual),
+          })
+        }
+      }
+      return null
+    }
+
     case 'array_or_absent':
       return checkSingle(rule, byName, (field) => {
         // Accept either an array or an explicit missing value (spec §13).
@@ -259,7 +327,8 @@ function isEmpty(field: ValidationField): boolean {
   if (field.normalizedValue === null || field.normalizedValue === undefined) {
     return field.rawValue === null || field.rawValue.trim() === ''
   }
-  if (Array.isArray(field.normalizedValue)) return field.normalizedValue.length === 0
+  if (Array.isArray(field.normalizedValue))
+    return field.name !== 'transactions' && field.normalizedValue.length === 0
   return String(field.normalizedValue).trim() === ''
 }
 
@@ -271,10 +340,7 @@ function hasValidValueType(field: ValidationField): boolean {
     case 'boolean':
       return typeof value === 'boolean'
     case 'array':
-      return (
-        Array.isArray(value) &&
-        value.every((item) => lineItemSchema.strict().safeParse(item).success)
-      )
+      return tableValueSchemaFor(field.name).safeParse(value).success
     case 'date':
       return typeof value === 'string' && normalizeDate(value) === value
     case 'enum':

@@ -79,10 +79,12 @@ export const schemaConfigurationSchema = schemaFieldsSchema
     const fields = new Map(config.fields.map((field) => [field.name, field]))
     if (!fields.size) issue('At least one field is required')
     if (fields.size !== config.fields.length) issue('Field names must be unique')
-    // Canonical JSON has one lineItems array, with the shared flat item contract.
+    // One table per schema; the reserved transactions field uses bank-statement rows.
     if (config.fields.filter((field) => field.type === 'array').length > 1)
-      issue('Only one line-item array is supported')
+      issue('Only one table array is supported')
     for (const field of config.fields) {
+      if (field.name === 'transactions' && field.type !== 'array')
+        issue('The transactions field must be an array')
       if (field.type === 'enum' && !field.enumValues?.length)
         issue(`Enum field ${field.name} requires enumValues`)
     }
@@ -96,26 +98,31 @@ export const schemaConfigurationSchema = schemaFieldsSchema
         issue(`Duplicate or reserved rule id: ${rule.id}`)
       ids.add(rule.id)
       const names =
-        rule.type === 'sum'
-          ? [rule.target, ...rule.operands]
-          : rule.type === 'number_compare'
-            ? [rule.field, rule.other]
-            : rule.type === 'date_order'
-              ? [rule.field, rule.notEarlierThan]
-              : [rule.field]
+        rule.type === 'statement_balance'
+          ? [rule.field, rule.opening, rule.closing, rule.creditTotal, rule.debitTotal]
+          : rule.type === 'sum'
+            ? [rule.target, ...rule.operands]
+            : rule.type === 'number_compare'
+              ? [rule.field, rule.other]
+              : rule.type === 'date_order'
+                ? [rule.field, rule.notEarlierThan]
+                : [rule.field]
       for (const name of names) {
         const field = fields.get(name)
         if (!field) {
           issue(`Unknown rule field: ${name}`)
           continue
         }
-        const expected = ['sum', 'number_range', 'number_compare'].includes(rule.type)
-          ? ['number']
-          : ['date_order', 'date_offset'].includes(rule.type)
-            ? ['date']
-            : rule.type === 'array_or_absent'
-              ? ['array']
-              : ['string', 'enum', 'currency']
+        const expected =
+          rule.type === 'statement_balance'
+            ? [name === rule.field ? 'array' : 'number']
+            : ['sum', 'number_range', 'number_compare'].includes(rule.type)
+              ? ['number']
+              : ['date_order', 'date_offset'].includes(rule.type)
+                ? ['date']
+                : rule.type === 'array_or_absent'
+                  ? ['array']
+                  : ['string', 'enum', 'currency']
         if (!expected.includes(field.type)) issue(`Rule ${rule.id} is incompatible with ${name}`)
       }
       if (rule.type === 'regex') {

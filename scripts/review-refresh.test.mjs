@@ -82,7 +82,8 @@ test(
       )
     let current = fixture('first', 'processing'),
       reads = 0,
-      failReads = false
+      failReads = false,
+      failSave = false
     const opened = [],
       requests = []
     const api = createServer(async (request, response) => {
@@ -115,6 +116,22 @@ test(
         request.resume()
         current = fixture('replacement', 'processing')
         return json({ id: current.id }, 201)
+      }
+      if (request.method === 'PATCH' && path.startsWith(`/documents/${current.id}/fields/`)) {
+        let body = ''
+        for await (const chunk of request) body += chunk
+        if (failSave) return json({ message: 'Save unavailable' }, 503)
+        const { value } = JSON.parse(body)
+        const name = path.split('/').at(-1)
+        current = {
+          ...current,
+          status: 'needs_review',
+          canApprove: true,
+          fields: current.fields.map((field) => field.name === name
+            ? { ...field, rawValue: JSON.stringify(value), normalizedValue: value, isEdited: true }
+            : field),
+        }
+        return json(current)
       }
       return json({ message: 'Unexpected test request' }, 404)
     })
@@ -243,6 +260,46 @@ test(
       assert.ok(requests.includes('POST /documents/first/reprocess'))
       assert.ok(requests.includes('POST /documents/first/type'))
       assert.ok(requests.includes('POST /documents/first/file'))
+
+      // Both table editors must protect unsaved values, including after a failed save.
+      for (const name of ['transactions', 'line_items']) {
+        const bank = name === 'transactions'
+        const rows = bank
+          ? [{ date: '2026-09-07', reference: null, payment_type: null, description: 'Original', credit: 10, debit: null, balance: 10 }]
+          : [{ description: 'Original', quantity: 1, unit_price: 10, amount: 10 }]
+        current = fixture(name, 'needs_review')
+        current.documentType = bank ? 'bank_statement' : 'invoice'
+        current.fields = [{
+          ...current.fields[0], name, label: bank ? 'Transactions' : 'Line items',
+          valueType: 'array', rawValue: JSON.stringify(rows), normalizedValue: rows,
+        }]
+        await page.goto(`${base}/documents/${name}`)
+        const description = page.locator('tbody tr').first().getByRole('textbox').first()
+        const input = bank ? page.getByRole('textbox', { name: 'Description, transaction 1', exact: true }) : description
+        const save = page.getByRole('button', { name: bank ? 'Save transactions' : 'Save line items', exact: true })
+        const approve = page.getByRole('button', { name: 'Approve', exact: true })
+        await input.fill('Corrected')
+        assert.equal(await approve.isEnabled(), false)
+        assert.equal(await page.getByRole('button', { name: 'Reprocess', exact: true }).isEnabled(), false)
+        failSave = true
+        await save.click()
+        await page.getByRole('alert').filter({ hasText: 'Save unavailable' }).waitFor()
+        assert.equal(await approve.isEnabled(), false)
+        assert.equal(await input.inputValue(), 'Corrected')
+        failSave = false
+        await save.click()
+        await save.waitFor({ state: 'hidden' })
+        assert.equal(current.fields[0].normalizedValue[0].description, 'Corrected')
+        assert.equal(await approve.isEnabled(), true)
+
+        current = { ...current, status: 'approved', canApprove: false }
+        await page.reload()
+        const exportButton = page.getByRole('button', { name: 'Export to JSON file', exact: true })
+        await input.fill('Pending export edit')
+        assert.equal(await exportButton.isEnabled(), false)
+        assert.equal(current.fields[0].normalizedValue[0].description, 'Corrected')
+        assert.equal(requests.some((request) => request === `POST /documents/${name}/export`), false)
+      }
       assert.deepEqual(pageErrors, [])
     } catch (error) {
       t.diagnostic(logs)

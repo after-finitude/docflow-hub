@@ -22,6 +22,7 @@ import {
 import {
   REJECT_REASON_LABELS,
   normalizeByType,
+  tableValueSchemaFor,
   capSourceConfidence,
   NO_SOURCE_CONFIDENCE_CAP,
   type ClassifiableDocumentType,
@@ -410,6 +411,9 @@ export class DocumentsService {
         throw new BadRequestException('Value does not match the field type')
       }
       const isArray = Array.isArray(value)
+      if (isArray && !tableValueSchemaFor(field.name).safeParse(value).success) {
+        throw new BadRequestException('Rows do not match the field table type')
+      }
       const rawValue = value === null ? null : isArray ? JSON.stringify(value) : value
       const normalizedValue =
         value === null ? null : isArray ? value : normalizeByType(value, field.valueType)

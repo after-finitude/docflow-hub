@@ -1,6 +1,6 @@
 import { scoreConfidence, type ConfidenceSignals } from '../confidence/score'
 import type { BoundingBox } from '../contracts/ocr'
-import type { LineItem } from '../contracts/review'
+import type { TableValue } from '../contracts/review'
 import type { FieldSpec } from '../contracts/schema'
 import type { ValueType } from '../enums'
 import { matchEvidence, type EvidencePage } from '../matching/evidence-matcher'
@@ -18,7 +18,7 @@ import { normalizeByType } from '../normalize/values'
 export const EXTRACTION_BASE_CONFIDENCE = 0.9
 
 export interface LlmFieldValue {
-  value: string | LineItem[] | null
+  value: string | TableValue | null
   evidence: { text: string; page: number } | null
 }
 

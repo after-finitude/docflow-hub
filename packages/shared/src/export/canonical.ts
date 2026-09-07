@@ -70,7 +70,7 @@ export function buildCanonicalDocument(input: CanonicalInput): CanonicalDocument
   let lineItems: LineItem[] | null = null
 
   for (const field of input.fields) {
-    if (field.valueType === 'array') {
+    if (field.valueType === 'array' && field.name !== 'transactions') {
       // Keep line items separate because destinations handle their structure
       // differently from scalar fields.
       lineItems = Array.isArray(field.normalizedValue)
@@ -79,6 +79,7 @@ export function buildCanonicalDocument(input: CanonicalInput): CanonicalDocument
       continue
     }
 
+    // Statement transactions stay in fields, preserving edits and table source metadata.
     fields[field.name] = {
       value: field.normalizedValue ?? null,
       raw: field.rawValue,

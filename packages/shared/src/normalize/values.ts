@@ -59,8 +59,8 @@ const CURRENCY_ALIASES: Record<string, string> = {
   '\u0440\u0443\u0431\u043b\u0435\u0439': 'RUB',
 }
 
-/** Date → 'YYYY-MM-DD'. */
-export function normalizeDate(raw: string): string | null {
+/** Date → 'YYYY-MM-DD'; numeric dates use the selected order. */
+export function normalizeDate(raw: string, order: 'dmy' | 'mdy' = 'dmy'): string | null {
   const text = raw.trim().toLowerCase()
 
   // ISO: 2026-07-15
@@ -69,10 +69,13 @@ export function normalizeDate(raw: string): string | null {
 
   // European order: 15.07.2026, 15/07/2026, 15-07-2026
   m = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/.exec(text)
-  if (m) return validDate(Number(m[3]), Number(m[2]), Number(m[1]))
+  if (m)
+    return order === 'mdy'
+      ? validDate(Number(m[3]), Number(m[1]), Number(m[2]))
+      : validDate(Number(m[3]), Number(m[2]), Number(m[1]))
 
   // Written month: “15 July 2026” and its supported Russian equivalent.
-  m = /^(\d{1,2})\s+([a-z\u0400-\u04ff]+),?\s+(\d{4})/.exec(text)
+  m = /^(\d{1,2})\s+([a-z\u0400-\u04ff]+),?\s+(\d{4})(?:\s+\u0433\.?)?$/.exec(text)
   if (m) {
     const month = MONTHS_EN[m[2]!] ?? MONTHS_RU[m[2]!]
     if (month) return validDate(Number(m[3]), month, Number(m[1]))
@@ -100,12 +103,16 @@ function validDate(year: number, month: number, day: number): string | null {
  * The final dot or comma followed by one or two digits is the decimal separator.
  */
 export function normalizeAmount(raw: string): number | null {
-  let text = raw.trim().replace(/[\s  ]/g, '')
+  let text = raw.trim().replace(/−/g, '-')
+  // Read the marker before removing spaces; DR must not be part of a currency like IDR.
+  const accountingNegative =
+    /^\(.*\)$/.test(text) || /(?:^|[^a-z])DR$/i.test(text) || text.endsWith('-')
+  text = text.replace(/[\s  ]/g, '')
   // Ignore currency symbols and codes around the amount.
   text = text.replace(/^[^\d+-]+/, '').replace(/[^\d.,]+$/, '')
   if (!/\d/.test(text)) return null
 
-  const negative = text.startsWith('-')
+  const negative = accountingNegative || text.startsWith('-')
   text = text.replace(/^[+-]/, '')
 
   const lastComma = text.lastIndexOf(',')
