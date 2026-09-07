@@ -1,7 +1,7 @@
 import 'reflect-metadata'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mkdtemp, readFile, writeFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
@@ -305,4 +305,39 @@ test('paused Google integrations register no adapters and fall back to JSON with
     exports.updateSettings({ defaultDestination: 'google_sheets' }, null, null),
     /not configured/,
   )
+})
+
+test('deployment rsync replaces code but preserves server secrets, environment and incoming files', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'docflow-deploy-test-'))
+  try {
+    const staging = join(dir, 'staging'),
+      app = join(dir, 'app')
+    await mkdir(staging)
+    await mkdir(join(app, 'secrets', 'worker'), { recursive: true })
+    await mkdir(join(app, 'docker', 'source-inbox'), { recursive: true })
+    const retained = [
+      '.env',
+      'docker-compose.override.yml',
+      'docker/source-inbox/invoice.pdf',
+      'secrets/worker/llm.enc',
+    ]
+    for (const file of retained) await writeFile(join(app, file), 'retained', { mode: 0o600 })
+    await writeFile(join(app, 'obsolete.ts'), 'old')
+    await writeFile(join(app, 'current.ts'), 'old')
+    await writeFile(join(staging, 'current.ts'), 'new version')
+    const script = await readFile('docker/deploy.sh', 'utf8')
+    const command = script.slice(script.indexOf('rsync -a --delete'), script.indexOf('\n\ncd '))
+    assert.match(command, /^rsync /)
+    execFileSync('sh', ['-c', command], {
+      env: { ...process.env, staging_dir: staging, app_dir: app },
+    })
+    for (const file of retained) {
+      assert.equal(await readFile(join(app, file), 'utf8'), 'retained')
+      assert.equal((await stat(join(app, file))).mode & 0o777, 0o600)
+    }
+    assert.equal(await readFile(join(app, 'current.ts'), 'utf8'), 'new version')
+    await assert.rejects(stat(join(app, 'obsolete.ts')), { code: 'ENOENT' })
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })
