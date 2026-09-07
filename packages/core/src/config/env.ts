@@ -62,7 +62,8 @@ const envSchema = z.object({
   // ─── OCR (spec 6.2) ───────────────────────────────────────────────────────
   // mock is deterministic and uses the PDF text layer through PDF.js;
   // google uses Google Cloud Vision.
-  OCR_PROVIDER: z.enum(['mock', 'google']).default('mock'),
+  OCR_PROVIDER: z.enum(['mock', 'google', 'openrouter']).default('mock'),
+  OCR_MODEL: z.string().trim().min(1).default('qwen/qwen3-vl-32b-instruct'),
   // Service-account key path, required when OCR_PROVIDER=google.
   GOOGLE_VISION_KEY_FILE: z.string().optional(),
   INTEGRATION_KEY_FILE: z.string().min(1).optional(),
@@ -154,6 +155,12 @@ export function loadEnv(
   if (service === 'worker' && env.OCR_PROVIDER === 'google' && !env.GOOGLE_VISION_KEY_FILE) {
     throw new Error('OCR_PROVIDER=google requires GOOGLE_VISION_KEY_FILE')
   }
+  if (
+    service === 'worker' &&
+    env.OCR_PROVIDER === 'openrouter' &&
+    (!env.LLM_BASE_URL || !env.LLM_API_KEY_FILE)
+  )
+    throw new Error('OCR_PROVIDER=openrouter requires LLM_BASE_URL and LLM_API_KEY_FILE')
   if (
     service === 'worker' &&
     env.LLM_PROVIDER === 'openai_compatible' &&

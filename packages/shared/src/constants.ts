@@ -20,3 +20,6 @@ export const MIN_OCR_CONFIDENCE = 0.6
  * mismatched values and redirect loops when Next builds without .env.
  */
 export const SESSION_COOKIE_NAME = 'docflow_session'
+
+/** Temporarily paused at the user's request; enable after live Drive/Sheets acceptance. */
+export const GOOGLE_WORKSPACE_ENABLED = false

@@ -11,6 +11,7 @@ export interface OcrPageQuality {
   /** Mean block confidence, or null when the provider omitted it. */
   confidence: number | null
   textLength: number
+  requiresReview?: boolean
 }
 
 export interface OcrQualityIssue {
@@ -34,9 +35,12 @@ export function assessOcrQuality(
     (page) => page.textLength > 0 && page.confidence !== null && page.confidence < minConfidence,
   )
 
-  if (empty.length === 0 && weak.length === 0) return null
+  const uncalibrated = pages.filter((page) => page.requiresReview)
+  if (empty.length === 0 && weak.length === 0 && uncalibrated.length === 0) return null
 
-  const affected = [...empty, ...weak].map((page) => page.pageNumber).toSorted((a, b) => a - b)
+  const affected = [
+    ...new Set([...empty, ...weak, ...uncalibrated].map((page) => page.pageNumber)),
+  ].toSorted((a, b) => a - b)
   const worst = weak.reduce<number | null>(
     (min, page) => (min === null || page.confidence! < min ? page.confidence! : min),
     null,
@@ -45,7 +49,9 @@ export function assessOcrQuality(
   const details =
     empty.length > 0
       ? `no text recognized on pages: ${empty.map((p) => p.pageNumber).join(', ')}`
-      : `OCR confidence ${worst!.toFixed(2)} on pages: ${weak.map((p) => p.pageNumber).join(', ')}`
+      : weak.length > 0
+        ? `OCR confidence ${worst!.toFixed(2)} on pages: ${weak.map((p) => p.pageNumber).join(', ')}`
+        : `uncalibrated OCR text and coordinates on pages: ${uncalibrated.map((p) => p.pageNumber).join(', ')}`
 
   return {
     message: `Low OCR quality: ${details}. Review the values or replace the file`,

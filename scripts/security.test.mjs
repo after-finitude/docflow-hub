@@ -67,6 +67,7 @@ test('encrypted credentials authenticate contents, reject plaintext/wrong keys, 
       POSTGRES_USER: 'owner',
       POSTGRES_PASSWORD: 'owner-secret',
       SEED_ADMIN_PASSWORD: 'seed-secret',
+      OCR_PROVIDER: 'openrouter',
       LLM_PROVIDER: 'openai_compatible',
       LLM_BASE_URL: 'https://llm.invalid',
       LLM_MODEL: 'test',
@@ -74,6 +75,12 @@ test('encrypted credentials authenticate contents, reject plaintext/wrong keys, 
       INTEGRATION_KEY_FILE: key,
     })
     assert.equal(runtime.LLM_API_KEY, secret)
+    assert.equal(runtime.OCR_MODEL, 'qwen/qwen3-vl-32b-instruct')
+    assert.throws(
+      () => loadEnv({ ...env, OCR_PROVIDER: 'openrouter' }),
+      /requires LLM_BASE_URL and LLM_API_KEY_FILE/,
+    )
+    assert.equal(loadEnv({ ...env, OCR_PROVIDER: 'openrouter' }, 'api').OCR_PROVIDER, 'openrouter')
     for (const field of [
       'POSTGRES_USER',
       'POSTGRES_PASSWORD',
@@ -256,4 +263,46 @@ test('missing qpdf is a retryable service error rather than a rejected valid fil
   } finally {
     process.env.PATH = original
   }
+})
+
+test('paused Google integrations register no adapters and fall back to JSON without changing saved exports', async () => {
+  const { ExportModule } = await import('../apps/api/dist/export/export.module.js')
+  const { ExportService } = await import('../apps/api/dist/export/export.service.js')
+  const { EXPORT_ADAPTERS } = await import('../apps/api/dist/export/export-adapter.js')
+  const { SyncModule } = await import('../apps/worker/dist/sync/sync.module.js')
+  const { SOURCE_PROVIDER } = await import('../apps/worker/dist/sync/source-provider.js')
+  const exportFactory = Reflect.getMetadata('providers', ExportModule).find(
+    (provider) => provider.provide === EXPORT_ADAPTERS,
+  ).useFactory
+  const sourceFactory = Reflect.getMetadata('providers', SyncModule).find(
+    (provider) => provider.provide === SOURCE_PROVIDER,
+  ).useFactory
+  const configured = {
+    GOOGLE_SHEETS_KEY_FILE: 'must-not-be-read',
+    GOOGLE_SHEETS_SPREADSHEET_ID: 'test-sheet',
+    GOOGLE_DRIVE_KEY_FILE: 'must-not-be-read',
+    GOOGLE_DRIVE_FOLDER_ID: 'test-folder',
+    SOURCE_PROVIDER: 'google_drive',
+    EXPORT_DEFAULT_DESTINATION: 'google_sheets',
+  }
+  const json = { destination: 'file_json' }
+  assert.deepEqual(exportFactory(configured, json), [json])
+  assert.equal(sourceFactory(configured), null)
+  assert.equal(sourceFactory({ SOURCE_PROVIDER: 'none' }), null)
+  assert.equal(
+    sourceFactory({ SOURCE_PROVIDER: 'local_folder', LOCAL_SOURCE_DIR: '/tmp' }).name,
+    'local_folder',
+  )
+  const saved = { defaultDestination: 'google_sheets' }
+  const db = { select: () => ({ from: () => ({ where: () => ({ limit: async () => [saved] }) }) }) }
+  const exports = new ExportService(db, [json], null, null, null, null, configured)
+  assert.deepEqual(await exports.settings(), {
+    defaultDestination: 'file_json',
+    availableDestinations: ['file_json'],
+  })
+  assert.equal(saved.defaultDestination, 'google_sheets')
+  await assert.rejects(
+    exports.updateSettings({ defaultDestination: 'google_sheets' }, null, null),
+    /not configured/,
+  )
 })

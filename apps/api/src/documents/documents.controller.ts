@@ -95,6 +95,7 @@ export class DocumentsController {
       review: await this.documents.reviewMetrics(query.since),
       providers: {
         ocr: this.env.OCR_PROVIDER ?? 'mock',
+        ocrModel: this.env.OCR_PROVIDER === 'openrouter' ? this.env.OCR_MODEL : null,
         llm: this.env.LLM_PROVIDER ?? 'mock',
         model: this.env.LLM_MODEL ?? null,
       },

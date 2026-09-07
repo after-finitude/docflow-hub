@@ -154,7 +154,13 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
     db: Database,
     documentId: string,
     // Do not call this `pages`; that name is already used by the imported table.
-    recognized: { pageNumber: number; text: string; confidence: number | null; blank?: boolean }[],
+    recognized: {
+      pageNumber: number
+      text: string
+      confidence: number | null
+      blank?: boolean
+      requiresReview?: boolean
+    }[],
   ): Promise<void> {
     await db
       .delete(validationIssues)
@@ -172,6 +178,7 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
         .map((page) => ({
           pageNumber: page.pageNumber,
           confidence: page.confidence,
+          requiresReview: page.requiresReview,
           textLength: page.text.trim().length,
         })),
     )

@@ -1,8 +1,7 @@
-import type { OcrBlock } from '@docflow/shared'
-import { openPdf } from '@docflow/core'
+import { readPdfText } from './pdf-text'
 import { Injectable, Logger } from '@nestjs/common'
 import sharp from 'sharp'
-import type { OcrPageResult, OcrProvider, OcrResult } from './ocr-provider'
+import type { OcrProvider, OcrResult } from './ocr-provider'
 
 /**
  * Deterministic OCR without external calls, using the PDF text layer through PDF.js.
@@ -40,92 +39,7 @@ export class MockOcrProvider implements OcrProvider {
       }
     }
 
-    const document = await openPdf(buffer)
-    const pages: OcrPageResult[] = []
-    try {
-      for (let index = 0; index < document.numPages; index++) {
-        const page = await document.getPage(index + 1)
-        try {
-          const viewport = page.getViewport({ scale: 1 })
-          const { width, height } = viewport
-          const content = await page.getTextContent({ disableNormalization: true })
-          const blocks: OcrBlock[] = []
-          let line = '',
-            bounds: number[] = []
-          const flush = () => {
-            if (line.trim() && bounds.length) {
-              const x = Math.max(0, bounds[0]),
-                y = Math.max(0, bounds[1])
-              const right = Math.min(width, bounds[2]),
-                bottom = Math.min(height, bounds[3])
-              if (right > x && bottom > y)
-                blocks.push({
-                  text: line,
-                  bbox: {
-                    x: x / width,
-                    y: y / height,
-                    width: (right - x) / width,
-                    height: (bottom - y) / height,
-                  },
-                  confidence: 1,
-                })
-            }
-            line = ''
-            bounds = []
-          }
-          for (const item of content.items) {
-            if (!('str' in item)) continue
-            if (item.str) {
-              const [a, b, c, d, e, f] = item.transform as number[]
-              const style = content.styles[item.fontName]
-              const ascent = style?.ascent ?? 0.8,
-                descent = style?.descent ?? -0.2
-              const length = Math.hypot(a, b) || 1
-              const dx = (a / length) * item.width,
-                dy = (b / length) * item.width
-              // Text transforms are in PDF coordinates; the viewport applies CropBox and rotation.
-              const corners = [
-                [e + c * ascent, f + d * ascent],
-                [e + c * ascent + dx, f + d * ascent + dy],
-                [e + c * descent, f + d * descent],
-                [e + c * descent + dx, f + d * descent + dy],
-              ].map(([x, y]) => viewport.convertToViewportPoint(x, y))
-              const box = [
-                Math.min(...corners.map((p) => p[0])),
-                Math.min(...corners.map((p) => p[1])),
-                Math.max(...corners.map((p) => p[0])),
-                Math.max(...corners.map((p) => p[1])),
-              ]
-              line += item.str
-              bounds = bounds.length
-                ? [
-                    Math.min(bounds[0], box[0]),
-                    Math.min(bounds[1], box[1]),
-                    Math.max(bounds[2], box[2]),
-                    Math.max(bounds[3], box[3]),
-                  ]
-                : box
-            }
-            if (item.hasEOL) flush()
-          }
-          flush()
-          pages.push({
-            pageNumber: index + 1,
-            width,
-            height,
-            text: blocks.map((block) => block.text).join('\n'),
-            confidence: blocks.length ? 1 : null,
-            blocks,
-            sentToProvider: false,
-          })
-        } finally {
-          page.cleanup()
-        }
-      }
-    } finally {
-      await document.loadingTask.destroy()
-    }
-
+    const { pages } = await readPdfText(buffer)
     return { pages }
   }
 }

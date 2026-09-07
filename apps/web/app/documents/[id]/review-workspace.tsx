@@ -6,6 +6,7 @@ import {
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_TYPE_LABELS,
   EXPORT_DESTINATIONS,
+  GOOGLE_WORKSPACE_ENABLED,
   EXPORT_DESTINATION_LABELS,
   FIELD_FILTERS,
   fieldConfidenceThreshold,
@@ -534,7 +535,12 @@ function ExportPanel({
             <button
               type="button"
               className="btn btn--ghost btn--sm ml-2"
-              disabled={busy}
+              disabled={busy || (item.destination === 'google_sheets' && !GOOGLE_WORKSPACE_ENABLED)}
+              title={
+                item.destination === 'google_sheets' && !GOOGLE_WORKSPACE_ENABLED
+                  ? 'Google Sheets is temporarily disabled'
+                  : undefined
+              }
               onClick={() => onExport(item.destination, item.exportKey)}
             >
               Retry export
@@ -550,11 +556,14 @@ function ExportPanel({
             <button
               key={destination}
               type="button"
-              disabled={busy}
+              disabled={busy || (destination === 'google_sheets' && !GOOGLE_WORKSPACE_ENABLED)}
               onClick={() => onExport(destination)}
               className="btn btn--ghost btn--sm"
             >
               Export to {EXPORT_DESTINATION_LABELS[destination]}
+              {destination === 'google_sheets' && !GOOGLE_WORKSPACE_ENABLED
+                ? ' (temporarily disabled)'
+                : ''}
             </button>
           )
         })}

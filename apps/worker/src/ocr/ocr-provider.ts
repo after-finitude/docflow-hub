@@ -19,6 +19,8 @@ export interface OcrPageResult {
   sentToProvider: boolean
   /** A visually blank raster is distinct from an OCR failure to find text. */
   blank?: boolean
+  /** Provider confidence/geometry has not been calibrated for automatic approval. */
+  requiresReview?: boolean
   /** Correction applied to the OCR copy only; persisted boxes use original coordinates. */
   rotationDegrees?: number
   providerCalls?: number

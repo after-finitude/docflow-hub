@@ -65,9 +65,12 @@ export class ExportService {
       .from(exportSettings)
       .where(eq(exportSettings.key, 'export'))
       .limit(1)
+    const configured = saved?.defaultDestination ?? this.env.EXPORT_DEFAULT_DESTINATION
     return {
       ...exportSettingsSchema.parse({
-        defaultDestination: saved?.defaultDestination ?? this.env.EXPORT_DEFAULT_DESTINATION,
+        defaultDestination: this.adapters.some((adapter) => adapter.destination === configured)
+          ? configured
+          : 'file_json',
       }),
       availableDestinations: this.adapters.map((adapter) => adapter.destination),
     }

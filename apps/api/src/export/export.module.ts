@@ -1,4 +1,5 @@
 import { ENV, StorageService, type Env } from '@docflow/core'
+import { GOOGLE_WORKSPACE_ENABLED } from '@docflow/shared'
 import { Module } from '@nestjs/common'
 import { EXPORT_ADAPTERS, type ExportAdapter } from './export-adapter'
 import { ExportService } from './export.service'
@@ -17,7 +18,11 @@ import { GoogleSheetsAdapter } from './google-sheets.adapter'
         const adapters: ExportAdapter[] = [fileJson]
         // Enable Sheets only when credentials are configured so a missing key
         // fails at configuration time rather than inside an API call.
-        if (env.GOOGLE_SHEETS_KEY_FILE && env.GOOGLE_SHEETS_SPREADSHEET_ID) {
+        if (
+          GOOGLE_WORKSPACE_ENABLED &&
+          env.GOOGLE_SHEETS_KEY_FILE &&
+          env.GOOGLE_SHEETS_SPREADSHEET_ID
+        ) {
           adapters.push(
             new GoogleSheetsAdapter({
               keyFile: env.GOOGLE_SHEETS_KEY_FILE,

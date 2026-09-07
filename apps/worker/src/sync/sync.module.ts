@@ -1,4 +1,5 @@
 import { ENV, type Env } from '@docflow/core'
+import { GOOGLE_WORKSPACE_ENABLED } from '@docflow/shared'
 import { Module } from '@nestjs/common'
 import { GoogleDriveSource } from './google-drive.source'
 import { LocalFolderSource } from './local-folder.source'
@@ -21,7 +22,7 @@ import { SyncService } from './sync.service'
         if (env.SOURCE_PROVIDER === 'local_folder') {
           return new LocalFolderSource(env.LOCAL_SOURCE_DIR!)
         }
-        if (env.SOURCE_PROVIDER === 'google_drive') {
+        if (GOOGLE_WORKSPACE_ENABLED && env.SOURCE_PROVIDER === 'google_drive') {
           return new GoogleDriveSource({
             keyFile: env.GOOGLE_DRIVE_KEY_FILE!,
             integrationKeyFile: env.INTEGRATION_KEY_FILE!,

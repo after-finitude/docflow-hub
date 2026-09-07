@@ -15,10 +15,35 @@ The application role name is fixed as `docflow_app`; its password is created onl
 
 ## Processing providers
 
-- `OCR_PROVIDER=mock|google`. Google requires `GOOGLE_VISION_KEY_FILE`.
+Google Drive and Google Sheets are temporarily disabled by `GOOGLE_WORKSPACE_ENABLED=false` in `packages/shared/src/constants.ts`, even with configured credentials. New exports default to JSON when the saved destination is unavailable; historical export retries retain their original destination and cannot send to disabled Sheets. To re-enable, change the gate, configure credentials and rebuild/restart API, worker and web. Uploads and local-folder synchronization remain available.
+
+- `OCR_PROVIDER=mock|google|openrouter`. Google requires `GOOGLE_VISION_KEY_FILE`. OpenRouter uses `OCR_MODEL` and the shared `LLM_BASE_URL` / encrypted `LLM_API_KEY_FILE`.
 - `LLM_PROVIDER=mock|openai_compatible`. A real provider requires `LLM_BASE_URL`, `LLM_API_KEY_FILE`, and `LLM_MODEL`.
 - `EXPORT_DEFAULT_DESTINATION=file_json|google_sheets` selects the initial export default. JSON is always available. Sheets is enabled when both `GOOGLE_SHEETS_KEY_FILE` and `GOOGLE_SHEETS_SPREADSHEET_ID` are set; partial configuration is rejected. `GOOGLE_SHEETS_SHEET_NAME` defaults to `Documents`. All integration key files are encrypted envelopes, mounted read-only inside the service that uses them.
 - `SOURCE_PROVIDER=none|local_folder|google_drive`. Local folder requires `LOCAL_SOURCE_DIR`; Drive requires its key file and folder ID.
+
+### OpenRouter: Qwen OCR + Gemini extraction
+
+The selected economical preset uses one OpenRouter key for both stages. Keep mock providers until the encrypted key is provisioned using the instructions below, then set:
+
+```dotenv
+OCR_PROVIDER=openrouter
+OCR_MODEL=qwen/qwen3-vl-32b-instruct
+LLM_PROVIDER=openai_compatible
+LLM_BASE_URL=https://openrouter.ai/api/v1
+LLM_MODEL=google/gemini-2.5-flash-lite
+LLM_API_KEY_FILE=/run/integrations/llm.enc
+```
+
+Restart API and worker together after configuration changes. For native processes, use the host paths of the encrypted envelope and `INTEGRATION_KEY_FILE`; `/run/integrations` is the Compose mount. No Google Vision key is needed for this preset. Drive and Sheets remain separate Google integrations.
+
+PDF.js reads native PDF text and coordinates locally. Pages with at least 40 text characters, no replacement/control characters and no image-paint operations bypass paid OCR. Any image on a page, including a logo or a scan beneath a text header, conservatively triggers vision OCR. Blank rasters are skipped. Mixed PDFs retain their original page numbers; EXIF orientation and PDF CropBox/rotation match the viewer.
+
+Qwen receives one normalized PNG per nonblank fallback page and returns text blocks with boxes on a 0–1000 coordinate grid. Invalid JSON or box geometry permits at most two repair calls; every attempt is journaled before transmission. Boxes are checked for valid bounds, **not verified against the image**. Vision confidence is uncalibrated: page confidence stays null, block confidence uses a conservative zero floor, and an OCR warning requires manual review. Real-document accuracy and bounding-box alignment must be measured before allowing automatic approval for these scans. Good native text pages retain the existing confidence behavior.
+
+Classification and extraction use Gemini with the existing schema validation and evidence matching. Responses are limited to 16,384 output tokens per OCR call and 8,192 per classification/extraction call. A truncated response fails processing instead of accepting partial document data. Repairs and queue retries can incur additional charges; these token limits are not a document or account spending limit. Model prices and quality must be checked using actual OpenRouter usage and the evaluation corpus after the key is available.
+
+Run `npm test` for offline request-contract, page-selection, geometry, retry and credential checks. These use simulated provider responses and do not establish real-model OCR quality.
 
 ## Operations
 

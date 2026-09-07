@@ -23,6 +23,8 @@ Performance results are small localhost samples with warm processes and mock pro
 
 ## Export and sources
 
+Google Drive and Google Sheets are temporarily disabled at the user's request on 2026-09-07, including when credentials exist. The shared `GOOGLE_WORKSPACE_ENABLED=false` gate prevents adapter registration and disables Sheets export/retry buttons. JSON export and local-folder ingestion remain available; historical source/export records are retained. Real Google acceptance is deferred until these integrations are re-enabled.
+
 - Google Sheets and Google Drive require service-account credentials and have not been demonstrated by the mock evaluation. Sheets allocation/retry behavior is covered against PostgreSQL with a mocked Google API; a real Sheets verification is deferred at the user's request.
 - Export failures require an operator retry; there are intentionally no automatic export retries. The approved payload is frozen until delivery finishes.
 - A Sheets tab requires a consistent column layout across document types and schema versions. Changing the layout requires another tab; mismatches fail before writing.

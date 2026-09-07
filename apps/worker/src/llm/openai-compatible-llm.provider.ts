@@ -28,11 +28,14 @@ export interface OpenAiCompatibleOptions {
   apiKey: string
   model: string
   timeoutMs: number
+  maxTokens?: number
 }
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
-  content: string
+  content:
+    | string
+    | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>
 }
 
 /**
@@ -116,7 +119,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
   }
 
   /** Request with response validation and a repair loop. */
-  private async complete<T>(
+  async complete<T>(
     messages: ChatMessage[],
     schema: ZodType<T>,
     details: Omit<ExternalCallDetails, 'attempt'>,
@@ -178,6 +181,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
           model: this.options.model,
           messages,
           temperature: 0,
+          max_tokens: this.options.maxTokens ?? 8192,
           response_format: { type: 'json_object' },
         }),
         signal: AbortSignal.timeout(this.options.timeoutMs),
@@ -198,8 +202,10 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
     const payload = (await response.json().catch(() => {
       throw new Error('LLM API returned malformed transport JSON')
     })) as {
-      choices?: Array<{ message?: { content?: string } }>
+      choices?: Array<{ message?: { content?: string }; finish_reason?: string }>
     }
+    if (payload.choices?.[0]?.finish_reason === 'length')
+      throw new LlmInvalidResponseError('response exceeded output token limit')
     const content = payload.choices?.[0]?.message?.content
     if (typeof content !== 'string' || !content)
       throw new Error('LLM API returned an empty or invalid response')

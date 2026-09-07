@@ -23,10 +23,15 @@ async function prepare(png: Buffer, pageNumber: number): Promise<RasterPage> {
 }
 
 /** Rasterize one PDF page at a time; release native pixmaps before provider waits. */
-export async function* rasterizePdf(buffer: Buffer, dpi: number): AsyncGenerator<RasterPage> {
+export async function* rasterizePdf(
+  buffer: Buffer,
+  dpi: number,
+  pageNumbers?: number[],
+): AsyncGenerator<RasterPage> {
   const document = await openPdf(buffer)
   try {
     for (let index = 0; index < document.numPages; index++) {
+      if (pageNumbers && !pageNumbers.includes(index + 1)) continue
       const page = await document.getPage(index + 1)
       let raster: RasterPage
       try {

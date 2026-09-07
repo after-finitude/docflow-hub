@@ -1,6 +1,6 @@
 # Technical Specification v2 Completion Plan
 
-Status: phase 1 implemented and verified offline; phases 2–8 remain planned. Full specification compliance has not been established.
+Status: implementation for phases 1–5 and 7 is complete; phase 6 still needs real-provider measurements and a human review sample, and phase 8 final acceptance remains open. Google Drive and Google Sheets are temporarily disabled at the user's request on 2026-09-07; their live acceptance is deferred until re-enablement. Full specification compliance has not been established.
 
 Requirements source: `TZ-1-Document-Operations-Hub-v2.md`, supplied by the user. Section numbers below refer to that document. This plan covers the gaps identified during the 2026-09-06 review; phase 1 was implemented on 2026-09-06.
 
@@ -64,7 +64,7 @@ Primary files: `apps/api/src/export/export.service.ts`, `apps/api/src/export/goo
 
 Verification (2026-09-06): 131 checks pass with `TEST_DATABASE_URL=postgres://… npm test`. The PostgreSQL/API suite exercises competing document/destination bindings, punctuation/Unicode JSON keys, identical payload and mapping replay, destination unavailability, lost responses after JSON/Sheets writes, and a terminated PostgreSQL session after the object write. Pending snapshots recover through a manual retry; each export has its own Execution Log entry. Concurrent Sheets reservations use distinct rows, and retries retain spreadsheet/sheet identity after configuration changes or a tab rename. Sheets tests run the real adapter against a controlled Google API mock; using mocks for this stage was explicitly accepted by the user. Browser checks cover custom-key Failed and Pending retries, a simulated HTTP 500, frozen edits, and completion. Type checks, lint, formatting, and the web production build pass. Migration `0008_durable_exports.sql` adds payload/mapping/target snapshots and links execution entries to exports. Operational restrictions and legacy-export reconciliation are documented in `docs/runbook.md`.
 
-- [ ] Deferred verification: repeat the recovery checks against a configured Google Sheets spreadsheet when service-account credentials become available. This is not claimed as verified by the mock run.
+- [ ] Deferred verification: Google Drive and Google Sheets are temporarily disabled at the user's request on 2026-09-07. Repeat recovery checks against configured Google Sheets after explicit re-enablement; the mock run does not verify live integration.
 
 ## 4. Schema versions and administrator configuration
 

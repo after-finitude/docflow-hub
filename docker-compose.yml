@@ -22,6 +22,7 @@ x-runtime-environment: &runtime-environment
   SIGNED_URL_TTL_SECONDS: ${SIGNED_URL_TTL_SECONDS:-900}
   # Provider identity is public configuration; credentials are scoped below.
   OCR_PROVIDER: ${OCR_PROVIDER:-mock}
+  OCR_MODEL: ${OCR_MODEL:-qwen/qwen3-vl-32b-instruct}
   LLM_PROVIDER: ${LLM_PROVIDER:-mock}
   LLM_MODEL: ${LLM_MODEL:-}
 

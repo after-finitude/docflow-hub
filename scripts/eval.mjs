@@ -63,7 +63,7 @@ const lines = [
   `Run: ${startedAt}`,
   `Dataset v${manifest.version}: ${manifest.documents.length} synthetic documents; 15 labeled across all four types and negative cases.`,
   `Manifest SHA-256: \`${report.datasetSha256}\``,
-  `OCR: \`${runtime.providers.ocr}\`; LLM: \`${runtime.providers.llm}\`; model: \`${runtime.providers.model ?? 'deterministic mock'}\`.`,
+  `OCR: \`${runtime.providers.ocr}\` (model: \`${runtime.providers.ocrModel ?? 'native/default'}\`); LLM: \`${runtime.providers.llm}\`; model: \`${runtime.providers.model ?? 'deterministic mock'}\`.`,
   `Validation date: ${report.validationDate}. Rules and thresholds are those stored in each schema version.`,
   '',
   'The run uploads files through the real authenticated API and waits for production workers, PostgreSQL, Redis and object storage. No validation/confidence/routing code is reimplemented in the evaluator.',
