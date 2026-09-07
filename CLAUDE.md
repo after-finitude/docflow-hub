@@ -9,7 +9,7 @@ npm run build          # tsc -b across shared → core → api → worker (web b
 npm run typecheck      # same as build; web is only type-checked by `next build`
 npm run lint           # oxlint
 npm run format         # prettier --write
-npm run verify         # full check: static + live stack (needs Docker and .env)
+npm run verify         # explicit disposable-stack checks (see runbook)
 ```
 
 ```bash
@@ -24,28 +24,12 @@ compiled output, so keep `npm run build` in watch mode or rebuild before restart
 `npm run dev:api`, `npm run dev:worker`, `npm run dev:web`.
 
 ```bash
-npm test               # tsc -b, then node:test over packages/shared/dist/**/*.test.js
+npm test               # shared/provider tests; PostgreSQL suite with TEST_DATABASE_URL
 npm run dataset        # regenerate the demo corpus (deterministic, seeded)
 npm run eval           # quality report over the labelled set → evaluation/last-run.md
 ```
 
-`npm run eval` deliberately runs the **same modules as production** — providers,
-`buildExtractedField` (evidence→bbox matching), the validation engine and
-routing — with only the DB and queues left out. Anything that measures a
-reimplementation measures nothing, so keep shared pipeline logic in
-`packages/shared/src/pipeline` rather than inlining it into processors.
-With `LLM_PROVIDER=mock` the numbers reflect pipeline health, not model quality;
-the report says so itself.
-
-Unit tests live next to their modules in `packages/shared/src` as `*.test.ts`
-(node:test + node:assert, no test framework dependency) and run compiled.
-Integration and E2E tests are still pending (PLAN.md §3); `npm run verify`
-covers live-stack behaviour meanwhile.
-
-`npm run verify` is the closest thing to a test suite today: it type-checks,
-lints, checks formatting, builds the web app, brings up the stack, and then
-asserts real behaviour (migrations applied, audit table immutable, login through
-the web port, no redirect loops, upload accepted, corrupted file rejected).
+`npm run eval` uses the real HTTP API, worker, PostgreSQL, Redis and storage on an explicitly configured disposable stack. Mock results measure pipeline behavior, not model quality. `scripts/validation-api.test.mjs` creates and drops its own database when `TEST_DATABASE_URL` is supplied. Shared node:test tests are compiled from `packages/shared/src`; provider/security checks live in `scripts/`. `npm run verify` requires explicit test endpoints and never starts or resets a default Compose project. See `docs/runbook.md` for evaluation, security checks and delivery artifact commands.
 
 ## Architecture
 
@@ -84,7 +68,7 @@ or above the schema threshold, `needs_review` otherwise (spec 6.7). Export runs
 synchronously in the API (see below), not through the `export` queue — that
 queue stays registered for future batch export and the stage-9 DLQ. Providers
 are config-selected: `OCR_PROVIDER` (`mock` reads the PDF
-text layer via mupdf — no external calls, real coordinates; `google` rasterizes
+text layer via PDF.js — no external calls, real coordinates; `google` rasterizes
 pages and sends them one by one, blank pages never sent) and `LLM_PROVIDER`
 (`mock` is keyed to the demo-set "Label: value" format; `openai_compatible`
 works with any chat-completions endpoint, e.g. DeepSeek). Permanent provider
@@ -169,12 +153,12 @@ spec 6.10).
 
 ### Review Workspace viewer
 
-Pages are rasterized server-side by mupdf (`GET /documents/:id/pages/:n/image`)
+Pages are rasterized server-side by PDF.js (`GET /documents/:id/pages/:n/image`)
 and shown as `<img>`, deliberately **not** pdfjs-dist in the browser as the spec
-suggests. Source bboxes are normalized against the page size mupdf reported
+suggests. Source bboxes are normalized against the page size PDF.js reported
 during OCR, so rendering with the same engine guarantees the overlays line up;
 a different engine may disagree on CropBox vs MediaBox. The same path serves
-scans — mupdf opens images as documents. Overlays are positioned in percent, so
+scans; Sharp handles JPEG/PNG orientation and sizing. Overlays are positioned in percent, so
 they are independent of zoom and render resolution.
 
 ### Session handling
@@ -240,7 +224,7 @@ that relies on the old JS compiler API. Consequences already handled — do not
 - **Ambient `@types` augmentation is not picked up.** Types that a package only
   contributes globally (e.g. `Express.Multer.File`) must be declared locally.
 - **Dynamic `import()` is preserved** in CommonJS output, so ESM-only packages
-  such as `mupdf` are used via `await import()`.
+  such as `pdfjs-dist` are used via `await import()`.
 
 `moduleResolution` is `node16`; `node10` was removed.
 

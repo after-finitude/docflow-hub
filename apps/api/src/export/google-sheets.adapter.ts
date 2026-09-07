@@ -1,4 +1,4 @@
-import { documentExports, type Database } from '@docflow/core'
+import { documentExports, readGoogleCredentials, type Database } from '@docflow/core'
 import {
   toHeader,
   toRow,
@@ -14,6 +14,7 @@ import { DestinationUnavailableError, type ExportAdapter } from './export-adapte
 
 export interface GoogleSheetsOptions {
   keyFile: string
+  integrationKeyFile: string
   spreadsheetId: string
   sheetName: string
 }
@@ -185,21 +186,23 @@ export class GoogleSheetsAdapter implements ExportAdapter {
 
   private classify(error: unknown): DestinationUnavailableError {
     if (error instanceof DestinationUnavailableError) return error
-    const status =
+    const rawStatus =
       (error as { code?: number; status?: number }).status ?? (error as { code?: number }).code
-    const message = error instanceof Error ? error.message : String(error)
+    const status =
+      typeof rawStatus === 'number' && Number.isFinite(rawStatus) ? rawStatus : undefined
+    const message = `Google Sheets request failed (status ${status ?? 'unknown'})`
     const transient = typeof status === 'number' && TRANSIENT_STATUSES.has(status)
-    this.logger.error(`Google Sheets export failed (${status}): ${message}`)
+    this.logger.error(message)
     return new DestinationUnavailableError(
       transient ? 'sheets_unavailable' : `sheets_error_${status ?? 'unknown'}`,
-      `Google Sheets: ${message}`,
+      message,
     )
   }
 
   private async client() {
     const { sheets, auth } = await import('@googleapis/sheets')
     const authClient = new auth.GoogleAuth({
-      keyFile: this.options.keyFile,
+      credentials: readGoogleCredentials(this.options.keyFile, this.options.integrationKeyFile),
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     })
     return sheets({ version: 'v4', auth: authClient })

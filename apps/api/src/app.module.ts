@@ -20,7 +20,7 @@ import { SchemasModule } from './schemas/schemas.module'
 
 @Module({
   imports: [
-    ConfigModule,
+    ConfigModule.forService('api'),
     DbModule,
     StorageModule,
     QueueModule,

@@ -304,12 +304,14 @@ function contract(index) {
 
 /** Poor scan with rotation, noise, and reduced contrast (spec §13). */
 async function degrade(pdfBuffer) {
-  const mupdf = await import('mupdf')
-  const document = mupdf.Document.openDocument(pdfBuffer, 'application/pdf')
-  const pixmap = document
-    .loadPage(0)
-    .toPixmap(mupdf.Matrix.scale(1.6, 1.6), mupdf.ColorSpace.DeviceRGB, false, true)
-  const png = Buffer.from(pixmap.asPNG())
+  const { openPdf, renderPdfPage } = await import('../packages/core/dist/pdf.js')
+  const document = await openPdf(pdfBuffer)
+  let png
+  try {
+    png = (await renderPdfPage(await document.getPage(1), 1.6)).png
+  } finally {
+    await document.loadingTask.destroy()
+  }
 
   const meta = await sharp(png).metadata()
   const noise = Buffer.alloc((meta.width ?? 1) * (meta.height ?? 1))

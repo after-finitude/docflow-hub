@@ -19,7 +19,7 @@ import { ValidateModule } from './validate/validate.module'
 
 @Module({
   imports: [
-    ConfigModule,
+    ConfigModule.forService('worker'),
     DbModule,
     StorageModule,
     QueueModule,

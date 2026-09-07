@@ -21,6 +21,7 @@ import { GoogleSheetsAdapter } from './google-sheets.adapter'
           adapters.push(
             new GoogleSheetsAdapter({
               keyFile: env.GOOGLE_SHEETS_KEY_FILE,
+              integrationKeyFile: env.INTEGRATION_KEY_FILE!,
               spreadsheetId: env.GOOGLE_SHEETS_SPREADSHEET_ID,
               sheetName: env.GOOGLE_SHEETS_SHEET_NAME,
             }),

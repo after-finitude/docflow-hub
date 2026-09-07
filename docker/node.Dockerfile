@@ -15,6 +15,7 @@ COPY apps/worker apps/worker
 RUN npm run build
 
 FROM node:24-alpine AS runtime
+RUN apk add --no-cache qpdf
 WORKDIR /app
 ENV NODE_ENV=production
 

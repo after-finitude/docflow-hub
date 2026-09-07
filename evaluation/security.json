@@ -1,0 +1,15 @@
+{
+  "checkedAt": "2026-09-07T05:52:25.295Z",
+  "environment": "isolated phase7 mock stack; PDF.js; native M1; disposable PostgreSQL/Redis/MinIO",
+  "checks": [
+    "public health and invalid-cookie logout",
+    "anonymous and invalid-session file/API denial",
+    "cross-document export download denial",
+    "signed URL default 900 seconds and real expiration",
+    "private bucket rejects unsigned URL",
+    "24-hour orphan boundary on MinIO",
+    "operator admin mutation denial",
+    "real BullMQ failure and DLQ; original restored for manual retry"
+  ],
+  "retryDocumentId": "01a07a6c-b1b8-76b5-8e67-ff5c488d56ac"
+}

@@ -24,6 +24,8 @@ import {
   IngestService,
   DB,
   auditEvents,
+  externalCallRecorder,
+  auditedExternalCall,
   getActiveSchema,
   seedSchemas,
   SEED_SCHEMAS,
@@ -92,6 +94,73 @@ test(
     )
     const db = drizzle(pool)
     await migrate(db, { migrationsFolder: 'packages/core/drizzle' })
+    await t.test(
+      'actual application login can append audit but cannot alter audit or schema',
+      { skip: !process.env.TEST_APP_DB_PASSWORD },
+      async () => {
+        const appUrl = new URL(url)
+        appUrl.username = 'docflow_app'
+        appUrl.password = process.env.TEST_APP_DB_PASSWORD
+        const appPool = new Pool({ connectionString: appUrl.href })
+        try {
+          assert.equal(
+            (await appPool.query('select current_user')).rows[0].current_user,
+            'docflow_app',
+          )
+          const appDb = drizzle(appPool)
+          const correlationId = randomUUID()
+          const record = externalCallRecorder(appDb, {
+            documentId: randomUUID(),
+            correlationId,
+            runId: randomUUID(),
+            provider: 'controlled',
+          })
+          await assert.rejects(
+            auditedExternalCall(
+              record,
+              { purpose: 'extraction', pages: [2], fields: ['total'], attempt: 1 },
+              async () => {
+                throw new Error('controlled failure')
+              },
+            ),
+          )
+          await auditedExternalCall(
+            record,
+            { purpose: 'extraction', pages: [2], fields: ['total'], attempt: 2 },
+            async () => 'repaired',
+          )
+          const journal = (
+            await appPool.query(
+              'select after from audit_events where correlation_id = $1 order by created_at',
+              [correlationId],
+            )
+          ).rows.map((row) => row.after)
+          assert.deepEqual(
+            journal.map((row) => row.state),
+            ['attempted', 'failed', 'attempted', 'succeeded'],
+          )
+          assert.ok(journal.every((row) => row.pages[0] === 2 && row.fields[0] === 'total'))
+          for (const sql of [
+            'update audit_events set result = result',
+            'delete from audit_events',
+            'truncate audit_events',
+            'create table forbidden_probe (id int)',
+          ]) {
+            await assert.rejects(appPool.query(sql), (error) => error.code === '42501', sql)
+          }
+          assert.equal(
+            (
+              await appPool.query('select count(*) from audit_events where correlation_id = $1', [
+                correlationId,
+              ])
+            ).rows[0].count,
+            '4',
+          )
+        } finally {
+          await appPool.end()
+        }
+      },
+    )
     const [user] = await db
       .insert(users)
       .values({ login: 'operator', passwordHash: 'test', role: 'operator' })
@@ -226,6 +295,47 @@ test(
     }
     const read = async (id) => (await request(id, '', undefined, 'GET')).body
     const row = async (id) => (await db.select().from(documents).where(eq(documents.id, id)))[0]
+
+    await t.test(
+      'retention keeps inactive originals for exactly 90 days and preserves active documents',
+      async () => {
+        const id = await doc()
+        const active = await doc()
+        const deactivatedAt = new Date('2020-01-01T00:00:00Z')
+        await db
+          .update(documents)
+          .set({ isActive: false, deactivatedAt })
+          .where(eq(documents.id, id))
+        const removed = []
+        const retention = new RetentionService(
+          db,
+          { RETENTION_DAYS: 90, ORPHAN_TTL_HOURS: 24 },
+          {
+            async removePrefix(prefix) {
+              removed.push(prefix)
+            },
+            async list() {
+              return []
+            },
+          },
+        )
+        const boundary = new Date(deactivatedAt.getTime() + 90 * 86400000)
+        assert.equal((await retention.run(randomUUID(), boundary)).purgedDocuments, 0)
+        assert.ok(await row(id))
+        assert.equal(
+          (await retention.run(randomUUID(), new Date(boundary.getTime() + 1))).purgedDocuments,
+          1,
+        )
+        assert.equal(await row(id), undefined)
+        assert.ok(await row(active))
+        assert.equal(removed.length, 1)
+        assert.ok(
+          (await db.select().from(auditEvents).where(eq(auditEvents.objectId, id))).some(
+            (e) => e.action === 'document.purged',
+          ),
+        )
+      },
+    )
 
     await t.test(
       'review timing is idempotent, actor/revision specific, and metrics are administrator-only',
@@ -414,21 +524,7 @@ test(
           ),
         )
         const broken = Buffer.from(await pdf.save({ useObjectStreams: false }))
-        const mupdf = await import('mupdf')
-        const valid = await PDFDocument.create()
-        valid.addPage([300, 400])
-        const encryptedDoc = mupdf.Document.openDocument(await valid.save(), 'application/pdf')
-        let encrypted
-        try {
-          const saved = encryptedDoc.saveToBuffer('encrypt=aes-256,user-password=secret')
-          try {
-            encrypted = Buffer.from(saved.asUint8Array())
-          } finally {
-            saved.destroy()
-          }
-        } finally {
-          encryptedDoc.destroy()
-        }
+        const encrypted = await readFile('scripts/fixtures/password-protected.pdf')
         for (const buffer of [broken, encrypted, Buffer.alloc(0), Buffer.from('not PDF')]) {
           const id = await doc('received', {}, 'preprocess'),
             before = jobs.length
@@ -1731,6 +1827,7 @@ test(
           loadEnv({
             ...env,
             GOOGLE_SHEETS_KEY_FILE: 'key.json',
+            INTEGRATION_KEY_FILE: 'runtime.key',
             GOOGLE_SHEETS_SPREADSHEET_ID: 'valid_id',
             EXPORT_DEFAULT_DESTINATION: 'google_sheets',
           }).EXPORT_DEFAULT_DESTINATION,

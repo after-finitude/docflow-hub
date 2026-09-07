@@ -1,4 +1,5 @@
 import 'reflect-metadata'
+import { readFile } from 'node:fs/promises'
 import { uploadFile } from '../apps/web/lib/upload-file.ts'
 import { UPLOAD_MAX_BYTES } from '@docflow/shared'
 import assert from 'node:assert/strict'
@@ -297,22 +298,8 @@ test('inspection rejects empty, mismatched, broken, password-protected and later
   const corrupted = Buffer.from(await pdf.save({ useObjectStreams: false }))
   const result = await inspect(corrupted, 'application/pdf')
   assert.equal(result.ok, false, JSON.stringify(result))
-  assert.match(result.reason, /Page 2/)
-  const mupdf = await import('mupdf')
-  const valid = await PDFDocument.create()
-  valid.addPage([300, 400])
-  const document = mupdf.Document.openDocument(await valid.save(), 'application/pdf')
-  let encrypted
-  try {
-    const saved = document.saveToBuffer('encrypt=aes-256,user-password=secret,owner-password=owner')
-    try {
-      encrypted = Buffer.from(saved.asUint8Array())
-    } finally {
-      saved.destroy()
-    }
-  } finally {
-    document.destroy()
-  }
+  assert.equal(result.code, 'corrupted_pdf')
+  const encrypted = await readFile('scripts/fixtures/password-protected.pdf')
   assert.equal((await inspect(encrypted, 'application/pdf')).code, 'password_protected')
 })
 

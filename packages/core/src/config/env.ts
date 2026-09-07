@@ -1,10 +1,17 @@
 import { z } from 'zod'
+import { readIntegrationSecret } from './integration-secrets'
 
 /**
  * Fixed application database role, shared by the cluster init script and
  * migration 0001_audit_immutability.sql (spec §11).
  */
 export const APP_DB_ROLE = 'docflow_app'
+
+const postgresFields = {
+  POSTGRES_HOST: z.string().min(1),
+  POSTGRES_PORT: z.coerce.number().int().positive().default(5432),
+  POSTGRES_DB: z.string().min(1),
+}
 
 /**
  * Read configuration from the environment and validate at startup so missing
@@ -16,11 +23,7 @@ const envSchema = z.object({
 
   // loadEnv builds connection strings from these parts. Avoid duplicate URLs
   // that would eventually drift from the password.
-  POSTGRES_HOST: z.string().min(1),
-  POSTGRES_PORT: z.coerce.number().int().positive().default(5432),
-  POSTGRES_DB: z.string().min(1),
-  POSTGRES_USER: z.string().min(1),
-  POSTGRES_PASSWORD: z.string().min(1),
+  ...postgresFields,
   APP_DB_PASSWORD: z.string().min(1),
 
   REDIS_HOST: z.string().min(1),
@@ -39,12 +42,12 @@ const envSchema = z.object({
   MINIO_ROOT_USER: z.string().min(1),
   MINIO_ROOT_PASSWORD: z.string().min(1),
   MINIO_BUCKET: z.string().min(1),
-  SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  SIGNED_URL_TTL_SECONDS: z.coerce.number().int().min(1).max(604800).default(900),
   // Browser-visible storage URL. Signatures cover Host, so an internal
   // http://minio:9000 URL cannot be signed for browser use.
   MINIO_PUBLIC_URL: z.string().url().default('http://localhost:9000'),
 
-  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
+  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters').optional(),
   JWT_EXPIRES_IN: z.string().default('8h'),
   // Session-cookie Secure flag. Keep it independent from NODE_ENV because
   // browsers silently discard Secure cookies received over plain HTTP.
@@ -57,11 +60,12 @@ const envSchema = z.object({
   LOGIN_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
 
   // ─── OCR (spec 6.2) ───────────────────────────────────────────────────────
-  // mock is deterministic and uses the PDF text layer through mupdf;
+  // mock is deterministic and uses the PDF text layer through PDF.js;
   // google uses Google Cloud Vision.
   OCR_PROVIDER: z.enum(['mock', 'google']).default('mock'),
   // Service-account key path, required when OCR_PROVIDER=google.
   GOOGLE_VISION_KEY_FILE: z.string().optional(),
+  INTEGRATION_KEY_FILE: z.string().min(1).optional(),
   // PDF rasterization DPI before external OCR (GCV recommends 150–300).
   OCR_RENDER_DPI: z.coerce.number().int().min(72).max(600).default(200),
   OCR_LANGUAGE_HINTS: z.string().default('ru,en'),
@@ -71,7 +75,7 @@ const envSchema = z.object({
   // OpenAI-compatible endpoint.
   LLM_PROVIDER: z.enum(['mock', 'openai_compatible']).default('mock'),
   LLM_BASE_URL: z.string().optional(),
-  LLM_API_KEY: z.string().optional(),
+  LLM_API_KEY_FILE: z.string().min(1).optional(),
   LLM_MODEL: z.string().optional(),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
 
@@ -101,28 +105,31 @@ const envSchema = z.object({
   ORPHAN_TTL_HOURS: z.coerce.number().int().positive().default(24),
   RETENTION_INTERVAL_SECONDS: z.coerce.number().int().positive().default(3600),
 
-  SEED_OPERATOR_LOGIN: z.string().default('operator'),
-  SEED_OPERATOR_PASSWORD: z.string().default('operator_password'),
-  SEED_ADMIN_LOGIN: z.string().default('admin'),
-  SEED_ADMIN_PASSWORD: z.string().default('admin_password'),
-
   API_PORT: z.coerce.number().int().positive().default(3001),
 })
 
 export type Env = z.infer<typeof envSchema> & {
   /** Application connection using a role without UPDATE/DELETE on audit_events. */
   DATABASE_URL: string
-  /** Schema-owner connection for migrations and seeding. */
-  MIGRATION_DATABASE_URL: string
+  LLM_API_KEY?: string
 }
 
-function postgresUrl(user: string, password: string, env: z.infer<typeof envSchema>): string {
+function postgresUrl(
+  user: string,
+  password: string,
+  env: z.infer<z.ZodObject<typeof postgresFields>>,
+): string {
   const credentials = `${encodeURIComponent(user)}:${encodeURIComponent(password)}`
   return `postgres://${credentials}@${env.POSTGRES_HOST}:${env.POSTGRES_PORT}/${env.POSTGRES_DB}`
 }
 
-export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const parsed = envSchema.safeParse(source)
+export function loadEnv(
+  source: NodeJS.ProcessEnv = process.env,
+  service: 'api' | 'worker' = 'worker',
+): Env {
+  const parsed = envSchema.safeParse(
+    Object.fromEntries(Object.entries(source).filter(([, value]) => value !== '')),
+  )
   if (!parsed.success) {
     const details = parsed.error.issues
       .map((issue) => `  ${issue.path.join('.')}: ${issue.message}`)
@@ -131,15 +138,29 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
 
   const env = parsed.data
-  if (env.OCR_PROVIDER === 'google' && !env.GOOGLE_VISION_KEY_FILE) {
+  if (source.LLM_API_KEY)
+    throw new Error(
+      'Store LLM_API_KEY in an encrypted LLM_API_KEY_FILE; plaintext environment credentials are not supported',
+    )
+  if (
+    (env.LLM_API_KEY_FILE ||
+      env.GOOGLE_VISION_KEY_FILE ||
+      env.GOOGLE_SHEETS_KEY_FILE ||
+      env.GOOGLE_DRIVE_KEY_FILE) &&
+    !env.INTEGRATION_KEY_FILE
+  ) {
+    throw new Error('Encrypted integration credentials require a separate INTEGRATION_KEY_FILE')
+  }
+  if (service === 'worker' && env.OCR_PROVIDER === 'google' && !env.GOOGLE_VISION_KEY_FILE) {
     throw new Error('OCR_PROVIDER=google requires GOOGLE_VISION_KEY_FILE')
   }
   if (
+    service === 'worker' &&
     env.LLM_PROVIDER === 'openai_compatible' &&
-    (!env.LLM_BASE_URL || !env.LLM_API_KEY || !env.LLM_MODEL)
+    (!env.LLM_BASE_URL || !env.LLM_API_KEY_FILE || !env.LLM_MODEL)
   ) {
     throw new Error(
-      'LLM_PROVIDER=openai_compatible requires LLM_BASE_URL, LLM_API_KEY, and LLM_MODEL',
+      'LLM_PROVIDER=openai_compatible requires LLM_BASE_URL, LLM_API_KEY_FILE, and LLM_MODEL',
     )
   }
   if (
@@ -152,10 +173,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       'Google Sheets export requires GOOGLE_SHEETS_KEY_FILE and GOOGLE_SHEETS_SPREADSHEET_ID',
     )
   }
-  if (env.SOURCE_PROVIDER === 'local_folder' && !env.LOCAL_SOURCE_DIR) {
+  if (service === 'worker' && env.SOURCE_PROVIDER === 'local_folder' && !env.LOCAL_SOURCE_DIR) {
     throw new Error('SOURCE_PROVIDER=local_folder requires LOCAL_SOURCE_DIR')
   }
   if (
+    service === 'worker' &&
     env.SOURCE_PROVIDER === 'google_drive' &&
     (!env.GOOGLE_DRIVE_KEY_FILE || !env.GOOGLE_DRIVE_FOLDER_ID)
   ) {
@@ -166,6 +188,27 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   return {
     ...env,
     DATABASE_URL: postgresUrl(APP_DB_ROLE, env.APP_DB_PASSWORD, env),
+    LLM_API_KEY: env.LLM_API_KEY_FILE
+      ? readIntegrationSecret(env.LLM_API_KEY_FILE, env.INTEGRATION_KEY_FILE!).trim()
+      : undefined,
+  }
+}
+
+/** Only migration/seed entrypoints load owner and seed credentials. */
+export function loadMigrationEnv(source: NodeJS.ProcessEnv = process.env) {
+  const env = z
+    .object({
+      ...postgresFields,
+      POSTGRES_USER: z.string().min(1),
+      POSTGRES_PASSWORD: z.string().min(1),
+      SEED_OPERATOR_LOGIN: z.string().default('operator'),
+      SEED_OPERATOR_PASSWORD: z.string().default('operator_password'),
+      SEED_ADMIN_LOGIN: z.string().default('admin'),
+      SEED_ADMIN_PASSWORD: z.string().default('admin_password'),
+    })
+    .parse(source)
+  return {
+    ...env,
     MIGRATION_DATABASE_URL: postgresUrl(env.POSTGRES_USER, env.POSTGRES_PASSWORD, env),
   }
 }

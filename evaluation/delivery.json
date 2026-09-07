@@ -1,0 +1,17 @@
+{
+  "recordedAt": "2026-09-07T05:53:40.783Z",
+  "environment": "isolated phase7 mock stack; PDF.js; native M1; disposable PostgreSQL/Redis/MinIO",
+  "durationSeconds": 74,
+  "reviewDocumentId": "01a07a6c-ccaa-7034-a2fa-b2e63515ca8a",
+  "retryDocumentId": "01a07a6c-b1b8-76b5-8e67-ff5c488d56ac",
+  "checks": [
+    "blocking approval disabled",
+    "operator correction saved",
+    "approval succeeded",
+    "JSON export succeeded",
+    "actual failed stage visible",
+    "manual retry succeeded"
+  ],
+  "mockProviders": true,
+  "humanReviewTiming": false
+}

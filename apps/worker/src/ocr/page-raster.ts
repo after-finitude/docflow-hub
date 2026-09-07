@@ -1,4 +1,5 @@
 import sharp from 'sharp'
+import { openPdf, renderPdfPage } from '@docflow/core'
 
 export interface RasterPage {
   pageNumber: number
@@ -23,35 +24,21 @@ async function prepare(png: Buffer, pageNumber: number): Promise<RasterPage> {
 
 /** Rasterize one PDF page at a time; release native pixmaps before provider waits. */
 export async function* rasterizePdf(buffer: Buffer, dpi: number): AsyncGenerator<RasterPage> {
-  const mupdf = await import('mupdf')
-  const document = mupdf.Document.openDocument(buffer, 'application/pdf')
+  const document = await openPdf(buffer)
   try {
-    for (let index = 0; index < document.countPages(); index++) {
-      const page = document.loadPage(index)
+    for (let index = 0; index < document.numPages; index++) {
+      const page = await document.getPage(index + 1)
       let raster: RasterPage
       try {
-        const [x0, y0, x1, y1] = page.getBounds()
-        const scale = Math.min(dpi / 72, Math.sqrt(25_000_000 / ((x1 - x0) * (y1 - y0))))
-        const pixmap = page.toPixmap(
-          mupdf.Matrix.scale(scale, scale),
-          mupdf.ColorSpace.DeviceRGB,
-          false,
-          true,
-        )
-        let png: Buffer
-        try {
-          png = Buffer.from(pixmap.asPNG())
-        } finally {
-          pixmap.destroy()
-        }
+        const { png } = await renderPdfPage(page, dpi / 72)
         raster = await prepare(png, index + 1)
       } finally {
-        page.destroy()
+        page.cleanup()
       }
       yield raster
     }
   } finally {
-    document.destroy()
+    await document.loadingTask.destroy()
   }
 }
 

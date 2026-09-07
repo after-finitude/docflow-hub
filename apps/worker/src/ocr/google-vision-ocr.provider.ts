@@ -1,4 +1,9 @@
 import type { OcrBlock } from '@docflow/shared'
+import {
+  auditedExternalCall,
+  readGoogleCredentials,
+  type ExternalCallRecorder,
+} from '@docflow/core'
 import { Injectable, Logger } from '@nestjs/common'
 import { UnrecoverableError } from 'bullmq'
 import sharp from 'sharp'
@@ -15,6 +20,7 @@ const TRANSIENT_GRPC_CODES = new Set([2, 4, 8, 13, 14]) // UNKNOWN, DEADLINE_EXC
 
 export interface GoogleVisionOptions {
   keyFile: string
+  integrationKeyFile: string
   renderDpi: number
   languageHints: string[]
 }
@@ -34,7 +40,11 @@ export class GoogleVisionOcrProvider implements OcrProvider {
 
   constructor(private readonly options: GoogleVisionOptions) {}
 
-  async recognize(buffer: Buffer, mimeType: string): Promise<OcrResult> {
+  async recognize(
+    buffer: Buffer,
+    mimeType: string,
+    record?: ExternalCallRecorder,
+  ): Promise<OcrResult> {
     const rasterPages =
       mimeType === 'application/pdf'
         ? rasterizePdf(buffer, this.options.renderDpi)
@@ -42,13 +52,16 @@ export class GoogleVisionOcrProvider implements OcrProvider {
 
     const pages: OcrPageResult[] = []
     for await (const raster of rasterPages) {
-      pages.push(raster.blank ? this.emptyPage(raster) : await this.recognizePage(raster))
+      pages.push(raster.blank ? this.emptyPage(raster) : await this.recognizePage(raster, record))
     }
     return { pages }
   }
 
-  private async recognizePage(raster: RasterPage): Promise<OcrPageResult> {
-    let response = await this.detect(raster.png)
+  private async recognizePage(
+    raster: RasterPage,
+    record?: ExternalCallRecorder,
+  ): Promise<OcrPageResult> {
+    let response = await this.detect(raster.png, raster.pageNumber, 1, 0, record)
     const angle = this.textAngle(response)
     let width = raster.width
     let height = raster.height
@@ -59,7 +72,7 @@ export class GoogleVisionOcrProvider implements OcrProvider {
         .toBuffer({ resolveWithObject: true })
       width = corrected.info.width
       height = corrected.info.height
-      response = await this.detect(corrected.data)
+      response = await this.detect(corrected.data, raster.pageNumber, 2, -angle, record)
     }
 
     const annotation = response.fullTextAnnotation
@@ -84,19 +97,40 @@ export class GoogleVisionOcrProvider implements OcrProvider {
     }
   }
 
-  private async detect(png: Buffer): Promise<AnnotateResponse> {
+  private async detect(
+    png: Buffer,
+    page: number,
+    attempt: number,
+    rotationDegrees: number,
+    record?: ExternalCallRecorder,
+  ): Promise<AnnotateResponse> {
     const client = await this.getClient()
-    try {
-      const [response] = await client.documentTextDetection({
-        image: { content: png },
-        imageContext: { languageHints: this.options.languageHints },
-      })
-      if (response.error?.message)
-        throw Object.assign(new Error(response.error.message), { code: response.error.code })
-      return response
-    } catch (error) {
-      throw this.classify(error)
-    }
+    return auditedExternalCall(
+      record,
+      { purpose: 'ocr', pages: [page], fields: [], attempt, rotationDegrees },
+      async () => {
+        try {
+          // The SDK helper accepts CallOptions at runtime but its FeatureFunction type omits them.
+          const detect = client.documentTextDetection as (
+            request: protos.google.cloud.vision.v1.IAnnotateImageRequest,
+            options: { retry: null; timeout: number },
+          ) => Promise<[AnnotateResponse]>
+          const [response] = await detect.call(
+            client,
+            {
+              image: { content: png },
+              imageContext: { languageHints: this.options.languageHints },
+            },
+            { retry: null, timeout: 30000 },
+          )
+          if (response.error?.message)
+            throw Object.assign(new Error(response.error.message), { code: response.error.code })
+          return response
+        } catch (error) {
+          throw this.classify(error)
+        }
+      },
+    )
   }
 
   private textAngle(response: AnnotateResponse): number {
@@ -178,13 +212,14 @@ export class GoogleVisionOcrProvider implements OcrProvider {
    * stops attempts immediately.
    */
   private classify(error: unknown): Error {
-    const code = (error as { code?: number }).code
-    const message = error instanceof Error ? error.message : String(error)
+    const rawCode = (error as { code?: unknown })?.code
+    const code = typeof rawCode === 'number' && Number.isFinite(rawCode) ? rawCode : undefined
+    const message = `Vision API request failed (code ${code ?? 'unknown'})`
     if (code !== undefined && TRANSIENT_GRPC_CODES.has(code)) {
-      return error instanceof Error ? error : new Error(message)
+      return new Error(message)
     }
-    this.logger.error(`Permanent Vision API error (code ${code}): ${message}`)
-    return new UnrecoverableError(`Vision API: ${message}`)
+    this.logger.error(message)
+    return new UnrecoverableError(message)
   }
 
   private emptyPage(raster: RasterPage): OcrPageResult {
@@ -203,7 +238,9 @@ export class GoogleVisionOcrProvider implements OcrProvider {
   private async getClient(): Promise<ImageAnnotatorClient> {
     if (!this.client) {
       const vision = await import('@google-cloud/vision')
-      this.client = new vision.ImageAnnotatorClient({ keyFilename: this.options.keyFile })
+      this.client = new vision.ImageAnnotatorClient({
+        credentials: readGoogleCredentials(this.options.keyFile, this.options.integrationKeyFile),
+      })
     }
     return this.client
   }

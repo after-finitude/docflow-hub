@@ -32,5 +32,11 @@ Performance results are small localhost samples with warm processes and mock pro
 
 ## Delivery
 
-- A 60–90 second demonstration video is not stored in this repository.
+- `docs/demo.webm` and `docs/screenshots/` demonstrate the mock stack with real review, export and retry actions. The paced recording is not an operator-speed measurement.
 - Generated documents and fixtures are synthetic. They are suitable for a demo, not for measuring production document diversity.
+
+## Security and stack decisions
+
+- Accepted by the user on 2026-09-07: public status-only health and optional-auth logout are retained; see `docs/configuration.md`. PDF processing now uses PDF.js with native canvas; Sharp remains for image preprocessing (explicitly accepted), updated to 0.35.4. qpdf validates compressed streams that PDF.js can silently recover. It rejects damaged PDFs, including warnings; native worker execution needs the qpdf executable. No MuPDF runtime remains.
+- Encrypted envelopes use separate service keys and are decrypted in memory. Synthetic delivery is exercised with real SDK constructors and separate read-only Docker mounts; connectivity with real Google/LLM credentials is still deferred. Host/process compromise can expose in-memory credentials. Secrets and keys need independent backup controls.
+- The full npm audit on 2026-09-07 reports no high/critical issues and eight affected packages at moderate severity, from three transitive advisories: development-only esbuild via drizzle-kit, and decode-uri-component / stream-json via MinIO. npm's proposed fixes downgrade the parent libraries across major versions; those forced changes are not applied. `evaluation/dependencies.json` contains exact advisory URLs and ranges. Do not expose an esbuild development server; use trusted storage endpoints. Recheck and update when compatible upstream fixes are available.

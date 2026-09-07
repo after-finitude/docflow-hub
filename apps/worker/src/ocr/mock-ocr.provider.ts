@@ -1,21 +1,11 @@
 import type { OcrBlock } from '@docflow/shared'
+import { openPdf } from '@docflow/core'
 import { Injectable, Logger } from '@nestjs/common'
 import sharp from 'sharp'
 import type { OcrPageResult, OcrProvider, OcrResult } from './ocr-provider'
 
-interface StructuredLine {
-  text: string
-  bbox: { x: number; y: number; w: number; h: number }
-}
-
-interface StructuredBlock {
-  type: string
-  bbox: { x: number; y: number; w: number; h: number }
-  lines: StructuredLine[]
-}
-
 /**
- * Deterministic OCR without external calls, using the PDF text layer through mupdf.
+ * Deterministic OCR without external calls, using the PDF text layer through PDF.js.
  *
  * Generated demo documents have a complete text layer, so the mock returns real
  * blocks and coordinates used to test evidence→bbox. Images have no text layer,
@@ -50,59 +40,90 @@ export class MockOcrProvider implements OcrProvider {
       }
     }
 
-    const mupdf = await import('mupdf')
-    const document = mupdf.Document.openDocument(buffer, 'application/pdf')
-
+    const document = await openPdf(buffer)
     const pages: OcrPageResult[] = []
     try {
-      for (let index = 0; index < document.countPages(); index++) {
-        const page = document.loadPage(index)
+      for (let index = 0; index < document.numPages; index++) {
+        const page = await document.getPage(index + 1)
         try {
-          const [x0, y0, x1, y1] = page.getBounds()
-          const width = x1 - x0
-          const height = y1 - y0
-
-          const text = page.toStructuredText('preserve-whitespace')
-          let structured: { blocks: StructuredBlock[] }
-          try {
-            structured = JSON.parse(text.asJSON())
-          } finally {
-            text.destroy()
+          const viewport = page.getViewport({ scale: 1 })
+          const { width, height } = viewport
+          const content = await page.getTextContent({ disableNormalization: true })
+          const blocks: OcrBlock[] = []
+          let line = '',
+            bounds: number[] = []
+          const flush = () => {
+            if (line.trim() && bounds.length) {
+              const x = Math.max(0, bounds[0]),
+                y = Math.max(0, bounds[1])
+              const right = Math.min(width, bounds[2]),
+                bottom = Math.min(height, bounds[3])
+              if (right > x && bottom > y)
+                blocks.push({
+                  text: line,
+                  bbox: {
+                    x: x / width,
+                    y: y / height,
+                    width: (right - x) / width,
+                    height: (bottom - y) / height,
+                  },
+                  confidence: 1,
+                })
+            }
+            line = ''
+            bounds = []
           }
-
-          // A mupdf block may span lines; evidence → bbox needs line granularity,
-          // so treat each line as a block.
-          const blocks: OcrBlock[] = structured.blocks
-            .filter((block) => block.type === 'text')
-            .flatMap((block) => block.lines)
-            .filter((line) => line.text.trim().length > 0)
-            .map((line) => ({
-              text: line.text,
-              bbox: {
-                x: (line.bbox.x - x0) / width,
-                y: (line.bbox.y - y0) / height,
-                width: line.bbox.w / width,
-                height: line.bbox.h / height,
-              },
-              // A PDF text layer is not recognition; its text is exact.
-              confidence: 1,
-            }))
-
+          for (const item of content.items) {
+            if (!('str' in item)) continue
+            if (item.str) {
+              const [a, b, c, d, e, f] = item.transform as number[]
+              const style = content.styles[item.fontName]
+              const ascent = style?.ascent ?? 0.8,
+                descent = style?.descent ?? -0.2
+              const length = Math.hypot(a, b) || 1
+              const dx = (a / length) * item.width,
+                dy = (b / length) * item.width
+              // Text transforms are in PDF coordinates; the viewport applies CropBox and rotation.
+              const corners = [
+                [e + c * ascent, f + d * ascent],
+                [e + c * ascent + dx, f + d * ascent + dy],
+                [e + c * descent, f + d * descent],
+                [e + c * descent + dx, f + d * descent + dy],
+              ].map(([x, y]) => viewport.convertToViewportPoint(x, y))
+              const box = [
+                Math.min(...corners.map((p) => p[0])),
+                Math.min(...corners.map((p) => p[1])),
+                Math.max(...corners.map((p) => p[0])),
+                Math.max(...corners.map((p) => p[1])),
+              ]
+              line += item.str
+              bounds = bounds.length
+                ? [
+                    Math.min(bounds[0], box[0]),
+                    Math.min(bounds[1], box[1]),
+                    Math.max(bounds[2], box[2]),
+                    Math.max(bounds[3], box[3]),
+                  ]
+                : box
+            }
+            if (item.hasEOL) flush()
+          }
+          flush()
           pages.push({
             pageNumber: index + 1,
             width,
             height,
             text: blocks.map((block) => block.text).join('\n'),
-            confidence: blocks.length > 0 ? 1 : null,
+            confidence: blocks.length ? 1 : null,
             blocks,
             sentToProvider: false,
           })
         } finally {
-          page.destroy()
+          page.cleanup()
         }
       }
     } finally {
-      document.destroy()
+      await document.loadingTask.destroy()
     }
 
     return { pages }

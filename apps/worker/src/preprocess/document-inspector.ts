@@ -1,4 +1,13 @@
 import sharp from 'sharp'
+import { openPdf, renderPdfPage } from '@docflow/core'
+import { execFile } from 'node:child_process'
+import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { promisify } from 'node:util'
+
+const execute = promisify(execFile)
+class PdfInspectionUnavailableError extends Error {}
 
 /**
  * File inspection and first-page thumbnail (spec 6.1).
@@ -42,72 +51,76 @@ export async function inspect(buffer: Buffer, mimeType: string): Promise<Inspect
 }
 
 async function inspectPdf(buffer: Buffer): Promise<InspectionResult> {
-  // mupdf is an ESM package with top-level await, so require fails with
-  // ERR_REQUIRE_ASYNC_MODULE; use a dynamic import.
-  const mupdf = await import('mupdf')
-
-  let document: ReturnType<typeof mupdf.Document.openDocument> | undefined
-  let renderError: string | undefined
-  // MuPDF can recover from broken streams without throwing. Inspection is synchronous
-  // while this callback is installed, so other jobs cannot interleave with it.
-  mupdf.setLog({
-    error: (message) => {
-      renderError ??= message
-    },
-    warning: (message) => console.warn(message),
-  })
+  let document: Awaited<ReturnType<typeof openPdf>> | undefined
+  let pageNumber = 0
   try {
-    document = mupdf.Document.openDocument(buffer, 'application/pdf')
-    if (document.needsPassword())
+    document = await openPdf(buffer)
+    if ((await document.getPermissions()) !== null)
       return {
         ok: false,
         code: 'password_protected',
         reason: 'PDF is password-protected. Upload an unprotected file',
       }
-    const pageCount = document.countPages()
+    // PDF.js recovers some invalid compressed streams even with stopAtErrors.
+    // qpdf checks those streams and xrefs; warnings also reject the file.
+    const temporary = await mkdtemp(join(tmpdir(), 'docflow-inspect-')).catch(() => {
+      throw new PdfInspectionUnavailableError('PDF inspection unavailable; check temporary storage')
+    })
+    try {
+      const file = join(temporary, 'input.pdf')
+      await writeFile(file, buffer, { mode: 0o600 })
+      try {
+        await execute('qpdf', ['--check', file], { timeout: 30000, maxBuffer: 1024 * 1024 })
+      } catch (error) {
+        if (![2, 3].includes((error as { code: number }).code))
+          throw new PdfInspectionUnavailableError(
+            'PDF inspection unavailable; check qpdf installation and resource limits',
+          )
+        return {
+          ok: false,
+          code: 'corrupted_pdf',
+          reason: 'PDF structure or a page stream is damaged; upload a valid replacement',
+        }
+      }
+    } catch (error) {
+      if (error instanceof PdfInspectionUnavailableError) throw error
+      throw new PdfInspectionUnavailableError('PDF inspection unavailable; check temporary storage')
+    } finally {
+      await rm(temporary, { recursive: true, force: true }).catch(() => {
+        throw new PdfInspectionUnavailableError(
+          'PDF inspection unavailable; temporary file cleanup failed',
+        )
+      })
+    }
+    const pageCount = document.numPages
     if (pageCount < 1) return { ok: false, code: 'no_pages', reason: 'Document has no pages' }
     let thumbnail: Buffer | undefined
-    for (let index = 0; index < pageCount; index++) {
-      const page = document.loadPage(index)
+    for (pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
+      const page = await document.getPage(pageNumber)
       try {
-        const [x0, y0, x1, y1] = page.getBounds()
-        const width = x1 - x0,
-          height = y1 - y0
-        if (!(width > 0 && height > 0 && Number.isFinite(width * height)))
-          return {
-            ok: false,
-            code: 'empty_page',
-            reason: `Page ${index + 1} has invalid dimensions`,
-          }
-        const scale = THUMBNAIL_WIDTH / Math.max(width, height)
-        const pixmap = page.toPixmap(
-          mupdf.Matrix.scale(scale, scale),
-          mupdf.ColorSpace.DeviceRGB,
-          false,
-          true,
-        )
-        try {
-          if (index === 0) thumbnail = Buffer.from(pixmap.asPNG())
-        } finally {
-          pixmap.destroy()
-        }
+        const { width, height } = page.getViewport({ scale: 1 })
+        const { png } = await renderPdfPage(page, THUMBNAIL_WIDTH / Math.max(width, height))
+        if (pageNumber === 1) thumbnail = png
       } finally {
-        page.destroy()
+        page.cleanup()
       }
-      if (renderError) throw new Error(`Page ${index + 1}: ${renderError}`)
     }
-    if (document instanceof mupdf.PDFDocument && document.wasRepaired())
-      throw new Error('PDF structure requires repair')
     return { ok: true, pageCount, thumbnail: thumbnail! }
   } catch (error) {
+    if (error instanceof PdfInspectionUnavailableError) throw error
+    if (error instanceof Error && error.name === 'PasswordException')
+      return {
+        ok: false,
+        code: 'password_protected',
+        reason: 'PDF is password-protected. Upload an unprotected file',
+      }
     return {
       ok: false,
       code: 'corrupted_pdf',
-      reason: `PDF is corrupted and cannot be read: ${describe(error)}`,
+      reason: `PDF is corrupted and cannot be read${pageNumber ? `: Page ${pageNumber}` : ''}`,
     }
   } finally {
-    document?.destroy()
-    mupdf.setLog(null)
+    await document?.loadingTask.destroy()
   }
 }
 
@@ -121,16 +134,11 @@ async function inspectImage(buffer: Buffer): Promise<InspectionResult> {
       .png()
       .toBuffer()
     return { ok: true, pageCount: 1, thumbnail }
-  } catch (error) {
+  } catch {
     return {
       ok: false,
       code: 'corrupted_image',
-      reason: `Image is corrupted and cannot be read: ${describe(error)}`,
+      reason: 'Image is corrupted and cannot be read',
     }
   }
-}
-
-function describe(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error)
-  return message.slice(0, 200)
 }

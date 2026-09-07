@@ -17,6 +17,7 @@ import {
   lockPipelineDocument,
   type PipelineJob,
   writeAudit,
+  externalCallRecorder,
   type Database,
   type Env,
 } from '@docflow/core'
@@ -100,11 +101,21 @@ export class ExtractProcessor extends WorkerHost implements OnModuleInit {
 
       let response: ExtractionResponse
       try {
-        response = await this.llm.extract({
-          documentType: document.documentType,
-          fields: schema.fields,
-          pagesText,
-        })
+        response = await this.llm.extract(
+          {
+            documentType: document.documentType,
+            fields: schema.fields,
+            pagesText,
+          },
+          this.llm.external
+            ? externalCallRecorder(this.db, {
+                documentId,
+                correlationId,
+                runId,
+                provider: this.llm.name,
+              })
+            : undefined,
+        )
       } catch (error) {
         if (!(error instanceof LlmInvalidResponseError)) throw error
 

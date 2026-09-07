@@ -8,6 +8,11 @@ import { Injectable, Logger } from '@nestjs/common'
 import { UnrecoverableError } from 'bullmq'
 import type { ZodType } from 'zod'
 import {
+  auditedExternalCall,
+  type ExternalCallRecorder,
+  type ExternalCallDetails,
+} from '@docflow/core'
+import {
   LlmInvalidResponseError,
   type ClassifyInput,
   type ExtractInput,
@@ -46,7 +51,10 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
     this.name = `openai-compatible:${options.model}`
   }
 
-  async classify(input: ClassifyInput): Promise<ClassificationResponse> {
+  async classify(
+    input: ClassifyInput,
+    record?: ExternalCallRecorder,
+  ): Promise<ClassificationResponse> {
     const system = [
       'You classify business documents. Allowed types: invoice, bank_statement, tax_letter, contract.',
       'Respond with JSON only: {"document_type": <type or null>, "confidence": 0..1,',
@@ -63,10 +71,12 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
         { role: 'user', content: renderPages(input.pagesText) },
       ],
       classificationResponseSchema,
+      { purpose: 'classification', pages: input.pagesText.map((p) => p.page), fields: [] },
+      record,
     )
   }
 
-  async extract(input: ExtractInput): Promise<ExtractionResponse> {
+  async extract(input: ExtractInput, record?: ExternalCallRecorder): Promise<ExtractionResponse> {
     const fieldLines = input.fields.map((field) => {
       const parts = [
         `- name: ${field.name}; type: ${field.type}; label: "${field.label}"`,
@@ -96,22 +106,35 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
         { role: 'user', content: renderPages(input.pagesText) },
       ],
       extractionResponseSchemaFor(input.fields),
+      {
+        purpose: 'extraction',
+        pages: input.pagesText.map((p) => p.page),
+        fields: input.fields.map((f) => f.name),
+      },
+      record,
     )
   }
 
   /** Request with response validation and a repair loop. */
-  private async complete<T>(messages: ChatMessage[], schema: ZodType<T>): Promise<T> {
+  private async complete<T>(
+    messages: ChatMessage[],
+    schema: ZodType<T>,
+    details: Omit<ExternalCallDetails, 'attempt'>,
+    record?: ExternalCallRecorder,
+  ): Promise<T> {
     const conversation = [...messages]
     let lastError = ''
 
     for (let attempt = 0; attempt <= MAX_REPAIRS; attempt++) {
-      const raw = await this.request(conversation)
+      const raw = await auditedExternalCall(record, { ...details, attempt: attempt + 1 }, () =>
+        this.request(conversation),
+      )
 
       let parsed: unknown
       try {
         parsed = JSON.parse(raw)
-      } catch (error) {
-        lastError = `not JSON: ${error instanceof Error ? error.message : String(error)}`
+      } catch {
+        lastError = 'response is not valid JSON'
         conversation.push(
           { role: 'assistant', content: raw },
           {
@@ -125,9 +148,8 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
       const result = schema.safeParse(parsed)
       if (result.success) return result.data
 
-      lastError = result.error.issues
-        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-        .join('; ')
+      // Provider-controlled values and property names must never enter logs/errors.
+      lastError = `response schema errors: ${[...new Set(result.error.issues.map((issue) => issue.code))].join(', ')}`
       conversation.push(
         { role: 'assistant', content: raw },
         {
@@ -160,24 +182,27 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
         }),
         signal: AbortSignal.timeout(this.options.timeoutMs),
       })
-    } catch (error) {
+    } catch {
       // Network failures and timeouts are transient; BullMQ retries them (spec 6.10).
-      throw error instanceof Error ? error : new Error(String(error))
+      throw new Error('LLM API network request failed')
     }
 
     if (!response.ok) {
-      const body = (await response.text()).slice(0, 300)
-      const message = `LLM API ${response.status}: ${body}`
+      await response.body?.cancel().catch(() => {})
+      const message = `LLM API returned HTTP ${response.status}`
       // Retry 429 and 5xx responses, but not other 4xx errors such as key or model failures.
       if (response.status === 429 || response.status >= 500) throw new Error(message)
       throw new UnrecoverableError(message)
     }
 
-    const payload = (await response.json()) as {
+    const payload = (await response.json().catch(() => {
+      throw new Error('LLM API returned malformed transport JSON')
+    })) as {
       choices?: Array<{ message?: { content?: string } }>
     }
     const content = payload.choices?.[0]?.message?.content
-    if (!content) throw new Error('LLM API returned an empty response')
+    if (typeof content !== 'string' || !content)
+      throw new Error('LLM API returned an empty or invalid response')
     return content
   }
 }

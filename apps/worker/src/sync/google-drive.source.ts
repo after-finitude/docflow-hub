@@ -1,10 +1,12 @@
 import { ACCEPTED_MIME_TYPES, UPLOAD_MAX_BYTES, type SourceFile } from '@docflow/shared'
+import { readGoogleCredentials } from '@docflow/core'
 import type { drive_v3 } from '@googleapis/drive'
 import { Logger } from '@nestjs/common'
 import type { SourceListing, SourceProvider } from './source-provider'
 
 export interface GoogleDriveOptions {
   keyFile: string
+  integrationKeyFile: string
   folderId: string
 }
 
@@ -34,6 +36,14 @@ export class GoogleDriveSource implements SourceProvider {
   constructor(private readonly options: GoogleDriveOptions) {}
 
   async list(cursor: string | null): Promise<SourceListing> {
+    try {
+      return await this.listFiles(cursor)
+    } catch {
+      throw new Error('Google Drive listing failed')
+    }
+  }
+
+  private async listFiles(cursor: string | null): Promise<SourceListing> {
     const drive = await this.client()
 
     if (!cursor) {
@@ -110,12 +120,16 @@ export class GoogleDriveSource implements SourceProvider {
   }
 
   async download(file: SourceFile): Promise<Buffer> {
-    const drive = await this.client()
-    const response = await drive.files.get(
-      { fileId: file.sourcePath, alt: 'media', supportsAllDrives: true },
-      { responseType: 'arraybuffer' },
-    )
-    return Buffer.from(response.data as ArrayBuffer)
+    try {
+      const drive = await this.client()
+      const response = await drive.files.get(
+        { fileId: file.sourcePath, alt: 'media', supportsAllDrives: true },
+        { responseType: 'arraybuffer' },
+      )
+      return Buffer.from(response.data as ArrayBuffer)
+    } catch {
+      throw new Error('Google Drive download failed')
+    }
   }
 
   /** Unsupported and oversized files do not enter the source snapshot. */
@@ -143,7 +157,7 @@ export class GoogleDriveSource implements SourceProvider {
   private async client(): Promise<drive_v3.Drive> {
     const { drive, auth } = await import('@googleapis/drive')
     const authClient = new auth.GoogleAuth({
-      keyFile: this.options.keyFile,
+      credentials: readGoogleCredentials(this.options.keyFile, this.options.integrationKeyFile),
       scopes: ['https://www.googleapis.com/auth/drive.readonly'],
     })
     return drive({ version: 'v3', auth: authClient })

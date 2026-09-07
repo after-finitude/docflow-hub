@@ -16,6 +16,7 @@ import {
   type PipelineJob,
   validationIssues,
   writeAudit,
+  externalCallRecorder,
   type Database,
   type Env,
 } from '@docflow/core'
@@ -66,7 +67,18 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
 
     try {
       const buffer = await this.storage.getBuffer(document.storageKey)
-      const result = await this.provider.recognize(buffer, document.mimeType)
+      const result = await this.provider.recognize(
+        buffer,
+        document.mimeType,
+        this.provider.external
+          ? externalCallRecorder(this.db, {
+              documentId,
+              correlationId,
+              runId,
+              provider: this.provider.name,
+            })
+          : undefined,
+      )
 
       await this.db.transaction(async (db) => {
         if (!(await lockPipelineDocument(db, job.data, 'ocr'))) return

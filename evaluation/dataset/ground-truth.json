@@ -1156,27 +1156,27 @@
       "file": "multi-document.pdf",
       "expectedType": "invoice",
       "criticalFields": {
-        "supplier_name": "Initech BV",
+        "supplier_name": "Hooli Inc",
         "invoice_number": "INV-2026-1901",
-        "invoice_date": "2026-06-25",
-        "currency": "EUR",
-        "subtotal": 703.96,
-        "grand_total": 844.75
+        "invoice_date": "2026-06-06",
+        "currency": "GBP",
+        "subtotal": 6893.08,
+        "grand_total": 6893.08
       },
       "expectedFields": {
-        "supplier_name": "Initech BV",
+        "supplier_name": "Hooli Inc",
         "invoice_number": "INV-2026-1901",
-        "invoice_date": "2026-06-25",
-        "currency": "EUR",
-        "subtotal": 703.96,
-        "grand_total": 844.75,
-        "due_date": "2026-07-25",
-        "tax_total": 140.79,
+        "invoice_date": "2026-06-06",
+        "currency": "GBP",
+        "subtotal": 6893.08,
+        "grand_total": 6893.08,
+        "due_date": "2026-06-20",
+        "tax_total": 0,
         "line_items": [
           {
             "description": "Position 1",
-            "quantity": 9,
-            "unit_price": 703.96,
+            "quantity": 3,
+            "unit_price": 6893.08,
             "amount": null
           }
         ]
@@ -1194,23 +1194,23 @@
         "invoice_number": "INV-2026-1953",
         "invoice_date": "2026-06-07",
         "currency": "USD",
-        "subtotal": 8754.35,
-        "grand_total": 9367.15
+        "subtotal": 621.27,
+        "grand_total": 739.31
       },
       "expectedFields": {
         "supplier_name": null,
         "invoice_number": "INV-2026-1953",
         "invoice_date": "2026-06-07",
         "currency": "USD",
-        "subtotal": 8754.35,
-        "grand_total": 9367.15,
+        "subtotal": 621.27,
+        "grand_total": 739.31,
         "due_date": "2026-07-22",
-        "tax_total": 612.8,
+        "tax_total": 118.04,
         "line_items": [
           {
             "description": "Position 1",
-            "quantity": 3,
-            "unit_price": 8754.35,
+            "quantity": 8,
+            "unit_price": 621.27,
             "amount": null
           }
         ]
@@ -1223,33 +1223,33 @@
       "file": "sum-mismatch.pdf",
       "expectedType": "invoice",
       "criticalFields": {
-        "supplier_name": "Hooli Inc",
+        "supplier_name": "Globex Ltd",
         "invoice_number": "INV-2026-1954",
-        "invoice_date": "2026-07-11",
-        "currency": "USD",
-        "subtotal": 3325.24,
-        "grand_total": 3335.24
+        "invoice_date": "2026-06-22",
+        "currency": "GBP",
+        "subtotal": 7663.86,
+        "grand_total": 9206.63
       },
       "expectedFields": {
-        "supplier_name": "Hooli Inc",
+        "supplier_name": "Globex Ltd",
         "invoice_number": "INV-2026-1954",
-        "invoice_date": "2026-07-11",
-        "currency": "USD",
-        "subtotal": 3325.24,
-        "grand_total": 3335.24,
-        "due_date": "2026-07-25",
-        "tax_total": 0,
+        "invoice_date": "2026-06-22",
+        "currency": "GBP",
+        "subtotal": 7663.86,
+        "grand_total": 9206.63,
+        "due_date": "2026-08-06",
+        "tax_total": 1532.77,
         "line_items": [
           {
             "description": "Position 1",
-            "quantity": 2,
-            "unit_price": 1662.62,
+            "quantity": 5,
+            "unit_price": 3831.93,
             "amount": null
           },
           {
             "description": "Position 2",
-            "quantity": 9,
-            "unit_price": 1662.62,
+            "quantity": 7,
+            "unit_price": 3831.93,
             "amount": null
           }
         ]
@@ -1262,33 +1262,33 @@
       "file": "optional-missing.pdf",
       "expectedType": "invoice",
       "criticalFields": {
-        "supplier_name": "Acme GmbH",
+        "supplier_name": "Umbrella SA",
         "invoice_number": "INV-2026-1955",
-        "invoice_date": "2026-06-30",
+        "invoice_date": "2026-06-08",
         "currency": "GBP",
-        "subtotal": 3984.97,
-        "grand_total": 4263.92
+        "subtotal": 407.89,
+        "grand_total": 485.39
       },
       "expectedFields": {
-        "supplier_name": "Acme GmbH",
+        "supplier_name": "Umbrella SA",
         "invoice_number": "INV-2026-1955",
-        "invoice_date": "2026-06-30",
+        "invoice_date": "2026-06-08",
         "currency": "GBP",
-        "subtotal": 3984.97,
-        "grand_total": 4263.92,
+        "subtotal": 407.89,
+        "grand_total": 485.39,
         "due_date": null,
-        "tax_total": 278.95,
+        "tax_total": 77.5,
         "line_items": [
           {
             "description": "Position 1",
-            "quantity": 3,
-            "unit_price": 1992.49,
+            "quantity": 9,
+            "unit_price": 203.95,
             "amount": null
           },
           {
             "description": "Position 2",
-            "quantity": 4,
-            "unit_price": 1992.49,
+            "quantity": 2,
+            "unit_price": 203.95,
             "amount": null
           }
         ]

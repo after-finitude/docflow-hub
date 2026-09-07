@@ -15,6 +15,7 @@ import { OcrProcessor } from './ocr.processor'
           ? new GoogleVisionOcrProvider({
               // loadEnv validates the key when OCR_PROVIDER=google.
               keyFile: env.GOOGLE_VISION_KEY_FILE!,
+              integrationKeyFile: env.INTEGRATION_KEY_FILE!,
               renderDpi: env.OCR_RENDER_DPI,
               languageHints: env.OCR_LANGUAGE_HINTS.split(',').map((hint) => hint.trim()),
             })

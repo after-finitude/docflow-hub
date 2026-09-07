@@ -24,6 +24,7 @@ import { SyncService } from './sync.service'
         if (env.SOURCE_PROVIDER === 'google_drive') {
           return new GoogleDriveSource({
             keyFile: env.GOOGLE_DRIVE_KEY_FILE!,
+            integrationKeyFile: env.INTEGRATION_KEY_FILE!,
             folderId: env.GOOGLE_DRIVE_FOLDER_ID!,
           })
         }

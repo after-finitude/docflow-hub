@@ -1,5 +1,30 @@
 name: docflow-hub
 
+# Deliberately exclude owner/seed credentials and service-specific integrations.
+x-runtime-environment: &runtime-environment
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: ${POSTGRES_DB}
+  APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  QUEUE_CONCURRENCY_DEFAULT: ${QUEUE_CONCURRENCY_DEFAULT:-4}
+  QUEUE_CONCURRENCY_OCR: ${QUEUE_CONCURRENCY_OCR:-2}
+  QUEUE_CONCURRENCY_EXTRACT: ${QUEUE_CONCURRENCY_EXTRACT:-2}
+  MINIO_ENDPOINT: minio
+  MINIO_PORT: 9000
+  MINIO_USE_SSL: false
+  MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+  MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+  MINIO_BUCKET: ${MINIO_BUCKET}
+  MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
+  SIGNED_URL_TTL_SECONDS: ${SIGNED_URL_TTL_SECONDS:-900}
+  # Provider identity is public configuration; credentials are scoped below.
+  OCR_PROVIDER: ${OCR_PROVIDER:-mock}
+  LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+  LLM_MODEL: ${LLM_MODEL:-}
+
 services:
   postgres:
     image: postgres:18-alpine
@@ -56,7 +81,16 @@ services:
       dockerfile: docker/node.Dockerfile
       args:
         APP: api
-    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SEED_OPERATOR_LOGIN: ${SEED_OPERATOR_LOGIN:-operator}
+      SEED_OPERATOR_PASSWORD: ${SEED_OPERATOR_PASSWORD}
+      SEED_ADMIN_LOGIN: ${SEED_ADMIN_LOGIN:-admin}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
     command: ['npm', 'run', 'db:deploy', '-w', '@docflow/core']
     depends_on:
       postgres:
@@ -68,9 +102,22 @@ services:
       dockerfile: docker/node.Dockerfile
       args:
         APP: api
-    env_file: .env
     environment:
+      <<: *runtime-environment
       API_PORT: 3001
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-10}
+      LOGIN_RATE_WINDOW_SECONDS: ${LOGIN_RATE_WINDOW_SECONDS:-60}
+      EXPORT_DEFAULT_DESTINATION: ${EXPORT_DEFAULT_DESTINATION:-file_json}
+      GOOGLE_SHEETS_KEY_FILE: ${GOOGLE_SHEETS_KEY_FILE:-}
+      GOOGLE_SHEETS_SPREADSHEET_ID: ${GOOGLE_SHEETS_SPREADSHEET_ID:-}
+      GOOGLE_SHEETS_SHEET_NAME: ${GOOGLE_SHEETS_SHEET_NAME:-Documents}
+      INTEGRATION_KEY_FILE: /run/keys/integration.key
+    volumes:
+      - ./secrets/api:/run/integrations:ro
+      - ${API_INTEGRATION_KEY_DIR:-./secrets/runtime-api}:/run/keys:ro
     ports:
       - '${API_HOST_PORT}:3001'
     depends_on:
@@ -100,9 +147,32 @@ services:
       dockerfile: docker/node.Dockerfile
       args:
         APP: worker
-    env_file: .env
+    environment:
+      <<: *runtime-environment
+      OCR_PROVIDER: ${OCR_PROVIDER:-mock}
+      GOOGLE_VISION_KEY_FILE: ${GOOGLE_VISION_KEY_FILE:-}
+      OCR_RENDER_DPI: ${OCR_RENDER_DPI:-200}
+      OCR_LANGUAGE_HINTS: ${OCR_LANGUAGE_HINTS:-ru,en}
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY_FILE: ${LLM_API_KEY_FILE:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-120000}
+      SOURCE_PROVIDER: ${SOURCE_PROVIDER:-none}
+      LOCAL_SOURCE_DIR: /data/source
+      GOOGLE_DRIVE_KEY_FILE: ${GOOGLE_DRIVE_KEY_FILE:-}
+      GOOGLE_DRIVE_FOLDER_ID: ${GOOGLE_DRIVE_FOLDER_ID:-}
+      SOURCE_SYNC_INTERVAL_SECONDS: ${SOURCE_SYNC_INTERVAL_SECONDS:-300}
+      RETENTION_DAYS: ${RETENTION_DAYS:-90}
+      ORPHAN_TTL_HOURS: ${ORPHAN_TTL_HOURS:-24}
+      RETENTION_INTERVAL_SECONDS: ${RETENTION_INTERVAL_SECONDS:-3600}
+      INTEGRATION_KEY_FILE: /run/keys/integration.key
+    tmpfs:
+      - /tmp:size=256m,mode=1777
     volumes:
       - ./docker/source-inbox:/data/source:ro
+      - ./secrets/worker:/run/integrations:ro
+      - ${WORKER_INTEGRATION_KEY_DIR:-./secrets/runtime-worker}:/run/keys:ro
     depends_on:
       postgres:
         condition: service_healthy

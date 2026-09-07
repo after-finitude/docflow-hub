@@ -1,4 +1,5 @@
 import type { OcrBlock } from '@docflow/shared'
+import type { ExternalCallRecorder } from '@docflow/core'
 
 /**
  * OCR stage contract (spec 6.2), shaped after Google Cloud Vision: polygon
@@ -31,7 +32,7 @@ export interface OcrProvider {
   readonly name: string
   /** true when the provider sends data outside the system. */
   readonly external: boolean
-  recognize(buffer: Buffer, mimeType: string): Promise<OcrResult>
+  recognize(buffer: Buffer, mimeType: string, record?: ExternalCallRecorder): Promise<OcrResult>
 }
 
 export const OCR_PROVIDER = Symbol('OCR_PROVIDER')

@@ -11,11 +11,14 @@ import { AuthService } from './auth.service'
     JwtModule.registerAsync({
       global: true,
       inject: [ENV],
-      useFactory: (env: Env) => ({
-        secret: env.JWT_SECRET,
-        // The ms library validates values such as '8h' at runtime.
-        signOptions: { expiresIn: env.JWT_EXPIRES_IN as JwtSignOptions['expiresIn'] },
-      }),
+      useFactory: (env: Env) => {
+        if (!env.JWT_SECRET) throw new Error('The API requires JWT_SECRET')
+        return {
+          secret: env.JWT_SECRET,
+          // The ms library validates values such as '8h' at runtime.
+          signOptions: { expiresIn: env.JWT_EXPIRES_IN as JwtSignOptions['expiresIn'] },
+        }
+      },
     }),
     ThrottlerModule.forRootAsync({
       inject: [ENV],

@@ -8,7 +8,9 @@ docker compose ps
 docker compose down
 ```
 
-Use `docker compose logs -f api worker web` for live logs. Run `npm run verify` after the stack is healthy.
+Use `docker compose logs -f api worker web` for live logs. The migrate service applies migrations and idempotent seeds before runtime startup. `npm run dataset` builds the backend and generates 46 synthetic documents, including 15 labeled cases. Native worker execution needs qpdf; Docker installs it automatically. Use `docker-compose` if your installation provides the standalone command.
+
+Run verification only on a separate disposable stack as described below; it is not a production health check.
 
 ## Common failures
 
@@ -16,7 +18,8 @@ Use `docker compose logs -f api worker web` for live logs. Run `npm run verify` 
 - API unavailable: inspect `api`, PostgreSQL, Redis, and migration-container logs.
 - Login returns 200 but no session: `COOKIE_SECURE=true` requires HTTPS.
 - Storage link fails: `MINIO_PUBLIC_URL` must be reachable from the browser and match the signed Host.
-- OCR/LLM configuration failure: confirm the selected provider's required key and endpoint variables.
+- OCR/LLM configuration failure: confirm encrypted key paths, separate runtime decryption key, file ownership and endpoint variables in `docs/configuration.md`.
+- PDF inspection unavailable: check qpdf installation and temporary-storage capacity. Infrastructure errors retry; damaged PDF structure or streams are permanently rejected.
 - Document remains processing: inspect the Execution Log and worker logs; exhausted transient errors appear in the dead-letter queue.
 - Source file not ingested: verify source configuration, mount permissions, size/type limits, and worker logs.
 
@@ -92,3 +95,21 @@ Use the actual reachable Redis address of this disposable stack. The benchmark u
 Opening a Needs review page sends `POST /documents/:id/review-opened` and appends `document.review_opened` once per user and processing revision. Approval appends server-side opening/approval timestamps and elapsed milliseconds to `document.approved`. No mouse, keyboard, focus or activity tracking is collected. `GET /documents/review-metrics?since=<ISO timestamp>` is administrator-only and returns manual-approval count, measured count, median milliseconds and missing-opening count. Reprocessing or changing type starts a new revision; another user's opening cannot be paired with approval. Time away is included; missing openings are excluded from the median and reported separately. The unattended benchmark does not supply a human review-time sample.
 
 `npm test` checks metric denominators and false approvals without a live stack. Set `TEST_DATABASE_URL` to a PostgreSQL role that can create databases for the review timing/permissions regression; it creates, migrates and drops its own random test database. Real-provider quality and a timed human review sample remain separate, unverified checks.
+
+## Security checks and delivery artifacts
+
+After the mock evaluation above, use the same isolated environment for live security checks. Native checks need the actual host-reachable PostgreSQL/Redis/MinIO variables from `example.env`, plus `APP_DB_PASSWORD`; omit owner credentials from API/worker. The test administrator connection must allow creating a separate database and `TEST_APP_DB_PASSWORD` must match the cluster's `docflow_app` login. Never source an untrusted env file as shell code; Node's `--env-file` reads data without executing it.
+
+```bash
+# local-test.env contains the disposable endpoints and EVAL_* credentials above,
+# TEST_DATABASE_URL, TEST_APP_DB_PASSWORD, EVAL_OPERATOR_PASSWORD,
+# EVAL_DISPOSABLE=1, and host-reachable runtime storage/database variables.
+node --env-file=/secure/local-test.env --run verify
+node --env-file=/secure/local-test.env --run screenshots
+```
+
+`verify` requires explicit disposable settings. It runs PostgreSQL regression/security tests, lint/format and web build, then `scripts/security-live.mjs` against the already-running mock stack. It neither starts nor resets a project. The live check expects an approved original from the preceding dataset evaluation, tests file authorization and real signed-link expiration, verifies the 24-hour orphan boundary on MinIO, and removes/restores only its own synthetic original to produce a real BullMQ failure/DLQ entry. It leaves that failed run ready for the demonstration's manual retry. PostgreSQL tests separately verify actual-role audit immutability and the exact 90-day retention boundary in a randomly named database that is dropped afterward.
+
+`screenshots` uses `EVAL_WEB_URL`, `EVAL_LOGIN`, `EVAL_PASSWORD` and the generated `evaluation/security.json`; no `.env` credentials are implicitly read. System Chrome is used (or `EVAL_CHROME_PATH`); Playwright's ffmpeg must be installed (`npx playwright-core install ffmpeg`). It uploads its own unique invoice with a blocking sum mismatch, captures the real Review Workspace, failed-stage details and committed evaluation report, then records correction, approval, JSON export and a successful manual retry in `docs/demo.webm`. The video uses synthetic data and is paced for demonstration; it is not a human review-speed measurement. Run it immediately after the security check on a fresh dataset if you need to regenerate the artifacts.
+
+The committed screenshots and video use mock providers with real API, worker, queues and storage. Real Google credential connectivity and quality remain explicitly deferred; encrypted-delivery tests use synthetic credentials through the real Google SDK constructors and controlled provider responses.

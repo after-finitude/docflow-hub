@@ -17,6 +17,7 @@ import {
   type PipelineJob,
   validationIssues,
   writeAudit,
+  externalCallRecorder,
   type Database,
   type Env,
 } from '@docflow/core'
@@ -94,7 +95,17 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
         return
       }
 
-      const result = await this.llm.classify({ pagesText })
+      const result = await this.llm.classify(
+        { pagesText },
+        this.llm.external
+          ? externalCallRecorder(this.db, {
+              documentId,
+              correlationId,
+              runId,
+              provider: this.llm.name,
+            })
+          : undefined,
+      )
 
       await this.db.transaction(async (db) => {
         const document = await lockPipelineDocument(db, job.data, 'classification')

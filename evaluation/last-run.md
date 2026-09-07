@@ -1,8 +1,8 @@
 # Quality Evaluation Report
 
-Run: 2026-09-07T04:10:41.945Z
+Run: 2026-09-07T05:32:42.144Z
 Dataset v2: 46 synthetic documents; 15 labeled across all four types and negative cases.
-Manifest SHA-256: `d1f94e3cee7e5550e1b488962235a1d882cf556b0a2b201206b4f9d4fbd7b6bf`
+Manifest SHA-256: `ff2b7909b449c0cc9451b02b488b9df1b62fc527325f9a90249a65f2a4f163f5`
 OCR: `mock`; LLM: `mock`; model: `deterministic mock`.
 Validation date: 2026-09-07. Rules and thresholds are those stored in each schema version.
 
@@ -12,10 +12,10 @@ The run uploads files through the real authenticated API and waits for productio
 
 ## Schema and rule versions
 
-- invoice: version 1, ID `01a07a0d-1308-72b7-908d-f78c820bbc60`, 7 rules; thresholds {"autoClassify":0.7,"criticalFieldConfidence":0.8,"fieldConfidence":0.6}.
-- bank_statement: version 1, ID `01a07a0d-130f-7d89-ab98-92f573ba7f33`, 2 rules; thresholds {"autoClassify":0.7,"criticalFieldConfidence":0.8,"fieldConfidence":0.6}.
-- tax_letter: version 1, ID `01a07a0d-1314-7f21-b147-6aef567e91fd`, 2 rules; thresholds {"autoClassify":0.7,"criticalFieldConfidence":0.8,"fieldConfidence":0.6}.
-- contract: version 1, ID `01a07a0d-131a-7a6b-8371-abe489e3a6a7`, 2 rules; thresholds {"autoClassify":0.7,"criticalFieldConfidence":0.8,"fieldConfidence":0.6}.
+- invoice: version 1, ID `01a07a59-d48c-7ec3-a690-fa28ac5efbe1`, 7 rules; thresholds {"autoClassify":0.7,"criticalFieldConfidence":0.8,"fieldConfidence":0.6}.
+- bank_statement: version 1, ID `01a07a59-d494-749e-8b44-92fe3e49bc8a`, 2 rules; thresholds {"autoClassify":0.7,"criticalFieldConfidence":0.8,"fieldConfidence":0.6}.
+- tax_letter: version 1, ID `01a07a59-d499-7438-83a9-148ba15d9858`, 2 rules; thresholds {"autoClassify":0.7,"criticalFieldConfidence":0.8,"fieldConfidence":0.6}.
+- contract: version 1, ID `01a07a59-d49e-76d7-8c14-5c884455c6d5`, 2 rules; thresholds {"autoClassify":0.7,"criticalFieldConfidence":0.8,"fieldConfidence":0.6}.
 
 ## Labeled set (15 documents)
 

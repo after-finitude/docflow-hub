@@ -4,14 +4,13 @@ An operator console for document ingest, OCR, classification, extraction, valida
 
 ## Quick start
 
-Requirements: Node.js 22+, Docker, and Docker Compose.
+Requirements: Node.js 24+, Docker, and Docker Compose v2+. Native worker execution also needs qpdf (`brew install qpdf` or `apt-get install qpdf`).
 
 ```bash
 cp example.env .env
 npm ci
-npm run fixtures
+npm run dataset
 docker compose up -d --build --wait
-npm run verify
 ```
 
 Open `http://localhost:3000` and sign in with the seeded credentials from `.env`.
@@ -27,15 +26,17 @@ Open `http://localhost:3000` and sign in with the seeded credentials from `.env`
 ## Commands
 
 ```bash
-npm run dev       # local development
+npm run dev:api   # local API; worker and web have separate dev:* commands
 npm run build     # build all workspaces
-npm test          # unit tests
+npm test          # unit tests; set TEST_DATABASE_URL for disposable DB tests
 npm run eval      # evaluate the labeled dataset
-npm run verify    # static checks and end-to-end verification
+npm run verify    # explicit disposable-stack checks; see runbook
 npm run screenshots
 ```
 
-`npm run verify` needs a running Docker daemon. On macOS with Colima, run `colima start` first.
+Compose migrates and seeds the database before starting API and worker. Set passwords, JWT_SECRET and browser ports in `.env` before startup. Use `docker-compose` if your installation provides the standalone command.
+
+Verification, evaluation, screenshots and video use an explicitly configured disposable stack; see the [runbook](docs/runbook.md).
 
 ## Documentation
 
@@ -45,5 +46,6 @@ npm run screenshots
 - [Known limitations](known-limitations.md)
 - [Design system](design.md)
 - [Evaluation report](evaluation/last-run.md)
+- [Demonstration video](docs/demo.webm)
 
 The external technical specification remains the requirements source. This repository is English-only; generated demo documents are synthetic and contain no real personal data.

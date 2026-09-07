@@ -1,4 +1,5 @@
 import type { ClassificationResponse, ExtractionResponse, FieldSpec } from '@docflow/shared'
+import type { ExternalCallRecorder } from '@docflow/core'
 
 /**
  * LLM stage contract (spec 6.3, 6.4). Provider responses must pass the contract's
@@ -26,8 +27,8 @@ export interface LlmProvider {
   readonly name: string
   /** true when the provider sends data outside the system. */
   readonly external: boolean
-  classify(input: ClassifyInput): Promise<ClassificationResponse>
-  extract(input: ExtractInput): Promise<ExtractionResponse>
+  classify(input: ClassifyInput, record?: ExternalCallRecorder): Promise<ClassificationResponse>
+  extract(input: ExtractInput, record?: ExternalCallRecorder): Promise<ExtractionResponse>
 }
 
 /**
