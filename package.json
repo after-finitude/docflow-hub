@@ -20,6 +20,7 @@
     "eval:performance": "node scripts/performance.mjs",
     "screenshots": "node scripts/screenshots.mjs",
     "test": "tsc -b && node --test 'packages/shared/dist/**/*.test.js' scripts/extraction.test.mjs scripts/ocr-preprocess.test.mjs scripts/openrouter.test.mjs scripts/eval-metrics.test.mjs scripts/export-download.test.mjs scripts/security.test.mjs scripts/validation-api.test.mjs",
+    "test:review": "tsc -b && node --test scripts/review-refresh.test.mjs",
     "test:integration": "tsc -b && node --test scripts/validation-api.test.mjs",
     "verify": "bash scripts/verify.sh",
     "format": "prettier --write .",

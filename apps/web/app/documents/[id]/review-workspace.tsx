@@ -11,6 +11,7 @@ import {
   FIELD_FILTERS,
   fieldConfidenceThreshold,
   FIELD_FILTER_LABELS,
+  WORKFLOW_STEP_LABELS,
   REJECT_REASONS,
   REJECT_REASON_LABELS,
   type ClassifiableDocumentType,
@@ -38,13 +39,47 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState(false)
+  const [refreshFailed, setRefreshFailed] = useState(false)
+  const processing = document.status === 'received' || document.status === 'processing'
 
   useEffect(() => {
     performance.clearMarks('docflow-review-ready')
-    if (initial.status === 'needs_review') {
-      void fetch(`/api/documents/${initial.id}/review-opened`, { method: 'POST' }).catch(() => {})
+  }, [document.id])
+
+  useEffect(() => {
+    if (document.status === 'needs_review') {
+      void fetch(`/api/documents/${document.id}/review-opened`, { method: 'POST' }).catch(() => {})
     }
-  }, [initial.id, initial.status])
+  }, [document.id, document.status])
+
+  useEffect(() => {
+    if (!processing) return
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout>
+    async function refresh() {
+      try {
+        const response = await fetch(`/api/documents/${document.id}`, {
+          cache: 'no-store',
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
+        })
+        if (!response.ok) throw new Error('Refresh failed')
+        const updated = (await response.json()) as DocumentDetail
+        if (!controller.signal.aborted) {
+          setDocument(updated)
+          setRefreshFailed(false)
+        }
+      } catch {
+        if (!controller.signal.aborted) setRefreshFailed(true)
+      } finally {
+        if (!controller.signal.aborted) timer = setTimeout(() => void refresh(), 2000)
+      }
+    }
+    void refresh()
+    return () => {
+      controller.abort()
+      clearTimeout(timer)
+    }
+  }, [document.id, processing])
 
   const exportReserved = document.exports.some(
     (item) => item.status === 'pending' || item.status === 'failed',
@@ -142,15 +177,10 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
   }
 
   async function changeType(type: ClassifiableDocumentType) {
-    if (
-      await call(`/api/documents/${document.id}/type`, {
-        method: 'POST',
-        body: JSON.stringify({ type }),
-      })
-    ) {
-      // Extraction restarts in the background; fields appear when it finishes.
-      router.refresh()
-    }
+    await call(`/api/documents/${document.id}/type`, {
+      method: 'POST',
+      body: JSON.stringify({ type }),
+    })
   }
 
   /**
@@ -298,6 +328,13 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
 
         <section className="flex min-w-0 basis-[45%] flex-col overflow-y-auto pr-1">
           <div className="panel mb-3 p-4">
+            {processing && (
+              <p role="status" className="mb-3 text-xs text-ink-2">
+                {refreshFailed
+                  ? 'Could not refresh processing status. Retrying automatically…'
+                  : `${document.currentStep ? WORKFLOW_STEP_LABELS[document.currentStep] : 'Processing'} in progress. Results will appear here automatically.`}
+              </p>
+            )}
             <label className="block">
               <span className="label mb-1">Document type</span>
               <select
@@ -381,9 +418,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                   ['received', 'processing', 'exported'].includes(document.status)
                 }
                 onClick={() =>
-                  void call(`/api/documents/${document.id}/reprocess`, { method: 'POST' }).then(
-                    () => router.refresh(),
-                  )
+                  void call(`/api/documents/${document.id}/reprocess`, { method: 'POST' })
                 }
                 className="btn btn--ghost"
               >

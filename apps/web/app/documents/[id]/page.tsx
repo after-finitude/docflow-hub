@@ -21,7 +21,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
     return <Unavailable />
   }
 
-  return <ReviewWorkspace initial={document} />
+  return <ReviewWorkspace key={document.id} initial={document} />
 }
 
 function Unavailable() {
