@@ -57,7 +57,13 @@ export function InboxClient({ initial }: { initial: DocumentListPage }) {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [live, setLive] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [timeZone, setTimeZone] = useState('UTC')
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    // The first browser render must match SSR; use local time after hydration.
+    setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone)
+  }, [])
 
   const buildQuery = useCallback((current: Filters, page: number) => {
     const params = new URLSearchParams()
@@ -178,7 +184,7 @@ export function InboxClient({ initial }: { initial: DocumentListPage }) {
               </tr>
             )}
             {data.items.map((item) => (
-              <Row key={item.id} item={item} onRetry={retry} />
+              <Row key={item.id} item={item} onRetry={retry} timeZone={timeZone} />
             ))}
           </tbody>
         </table>
@@ -191,7 +197,15 @@ export function InboxClient({ initial }: { initial: DocumentListPage }) {
   )
 }
 
-function Row({ item, onRetry }: { item: DocumentListItem; onRetry: (id: string) => void }) {
+function Row({
+  item,
+  onRetry,
+  timeZone,
+}: {
+  item: DocumentListItem
+  onRetry: (id: string) => void
+  timeZone: string
+}) {
   return (
     <tr className="align-middle">
       <td>
@@ -256,7 +270,9 @@ function Row({ item, onRetry }: { item: DocumentListItem; onRetry: (id: string) 
           </div>
         )}
       </td>
-      <td className="mono whitespace-nowrap text-2xs text-muted">{formatDate(item.receivedAt)}</td>
+      <td className="mono whitespace-nowrap text-2xs text-muted">
+        {formatDate(item.receivedAt, timeZone)}
+      </td>
       <td className="text-right">
         {item.status === 'failed' && (
           <button type="button" onClick={() => onRetry(item.id)} className="btn btn--ghost btn--sm">
@@ -456,7 +472,7 @@ function formatSize(bytes: number | null): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, timeZone: string): string {
   const date = new Date(iso)
-  return `${date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
+  return `${date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone })} ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone })}`
 }

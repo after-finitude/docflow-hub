@@ -94,6 +94,9 @@ test(
         response.end(JSON.stringify(data))
       }
       if (path === '/auth/me') return json({ id: 'test', login: 'operator', role: 'operator' })
+      if (request.method === 'GET' && path === '/documents')
+        return json({ items: [current], total: 1, page: 1, pageSize: 20 })
+      if (path === '/events/stream') return json({}, 503)
       if (path.endsWith('/pages/1/image')) {
         response.writeHead(200, { 'Content-Type': 'image/svg+xml' })
         return response.end(
@@ -158,6 +161,7 @@ test(
           ...process.env,
           API_INTERNAL_URL: `http://127.0.0.1:${apiPort}`,
           NEXT_TELEMETRY_DISABLED: '1',
+          TZ: 'UTC',
         },
       },
     )
@@ -189,12 +193,17 @@ test(
           ? { executablePath: process.env.EVAL_CHROME_PATH }
           : { channel: 'chrome' },
       )
-      const context = await browser.newContext()
+      const context = await browser.newContext({ timezoneId: 'Asia/Manila' })
       await context.addCookies([{ name: SESSION_COOKIE_NAME, value: 'isolated-test', url: base }])
       const page = await context.newPage()
       page.setDefaultTimeout(10000)
       const pageErrors = []
       page.on('pageerror', (error) => pageErrors.push(error.message))
+      // Server UTC and browser local dates must hydrate without replacing the tree.
+      current.receivedAt = '2026-09-10T03:00:00.000Z'
+      await page.goto(`${base}/inbox`, { timeout: 60000 })
+      await page.getByRole('cell', { name: '10.09.2026 11:00', exact: true }).waitFor()
+      assert.deepEqual(pageErrors, [])
       const hasValue = (value) =>
         page.waitForFunction(
           (expected) => document.querySelector('#field-grand_total')?.value === expected,
