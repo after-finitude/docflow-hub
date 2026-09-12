@@ -20,7 +20,13 @@ describe('scoreConfidence', () => {
     const clean = scoreConfidence({ extraction: 0.9, ocr: 0.95, sourceFound: true })
     const noisy = scoreConfidence({ extraction: 0.9, ocr: 0.4, sourceFound: true })
     assert.ok(noisy.confidence < clean.confidence)
-    assert.ok(noisy.reasons.some((reason) => reason.includes('OCR quality')))
+    assert.ok(noisy.reasons.includes('OCR accuracy in the source area requires review'))
+  })
+
+  it('keeps uncalibrated OCR conservative without claiming poor image quality', () => {
+    const score = scoreConfidence({ extraction: 0.9, ocr: 0, sourceFound: true })
+    assert.equal(score.confidence, 0.54)
+    assert.deepEqual(score.reasons, ['OCR accuracy in the source area requires review'])
   })
 
   it('reduces confidence for a page mismatch (spec 6.5.4)', () => {

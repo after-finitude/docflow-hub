@@ -54,7 +54,7 @@ export function scoreConfidence(signals: ConfidenceSignals): ConfidenceScore {
   // Source-area OCR confidence weights the base score but is not equivalent to
   // business confidence (spec 6.2), so include it only proportionally.
   let confidence = signals.extraction * (0.6 + 0.4 * (signals.ocr ?? 0))
-  if ((signals.ocr ?? 1) < 0.7) reasons.push('Low OCR quality in the source area')
+  if ((signals.ocr ?? 1) < 0.7) reasons.push('OCR accuracy in the source area requires review')
 
   if (signals.pageMismatch) {
     confidence *= 0.85

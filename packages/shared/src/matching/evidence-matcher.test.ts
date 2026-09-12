@@ -102,6 +102,28 @@ describe('split numbers', () => {
 })
 
 describe('punctuation', () => {
+  it('matches table evidence with pipe separators to adjacent OCR cells', () => {
+    const cells: OcrBlock[] = ['Archive digitisation', '7', '145.00', '1,015.00'].map(
+      (text, index) => ({
+        text,
+        bbox: { x: index * 0.2, y: 0.3, width: 0.1, height: 0.02 },
+        confidence: 0,
+      }),
+    )
+    for (const separator of [' | ', '|']) {
+      const match = matchEvidence(cells.map((cell) => cell.text).join(separator), 1, [
+        page(1, cells),
+      ])
+      expectFound(match)
+      assert.equal(match.method, 'fuzzy')
+      assert.equal(match.ocrConfidence, 0)
+      assert.ok(Math.abs(match.bbox.width - 0.7) < 1e-10)
+      assert.equal(match.bbox.x, 0)
+      assert.equal(match.bbox.y, 0.3)
+      assert.ok(Math.abs(match.bbox.height - 0.02) < 1e-10)
+    }
+  })
+
   it('finds an excerpt despite quote and comma differences', () => {
     const match = matchEvidence('Vector LLC', 1, [page(1, [block('“Vector LLC”,')])])
     expectFound(match)

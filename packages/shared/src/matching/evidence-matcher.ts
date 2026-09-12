@@ -124,13 +124,13 @@ function normalize(text: string): string {
 }
 
 /**
- * Fuzzy matching also removes punctuation and turns hyphens into spaces so
+ * Fuzzy matching removes punctuation and treats table pipes and hyphens as spaces so
  * “DF-1001-A” can match “DF 1001 A”.
  */
 function stripPunctuation(text: string): string {
   return text
     .replace(/[.,;:!?'"«»()[\]{}]/g, '')
-    .replace(/-/g, ' ')
+    .replace(/[-|]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
