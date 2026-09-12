@@ -34,10 +34,22 @@ export function DocumentViewer({
   const [zoomIndex, setZoomIndex] = useState(1)
   const [rotation, setRotation] = useState(0)
   const [loaded, setLoaded] = useState({ page: 0, ratio: 1 })
+  const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
   const stageRef = useRef<HTMLDivElement>(null)
+  const selectPage = useCallback(
+    (number: number) => {
+      if (number === page) return
+      setLoaded((current) => ({ ...current, page: 0 }))
+      setFailed(false)
+      setPage(number)
+      stageRef.current?.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+    },
+    [page],
+  )
   const measureImage = useCallback(
     (image: HTMLImageElement | null) => {
-      if (!image?.complete || !image.naturalWidth) return
+      if (!image?.isConnected || !image.complete || !image.naturalWidth) return
       const ratio = image.naturalWidth / image.naturalHeight
       setLoaded((current) =>
         current.page === page && current.ratio === ratio ? current : { page, ratio },
@@ -56,8 +68,8 @@ export function DocumentViewer({
   // scrolls the source area into view (spec 5.2).
   useEffect(() => {
     if (!active) return
-    setPage(active.page)
-  }, [active])
+    selectPage(active.page)
+  }, [active, selectPage])
 
   useEffect(() => {
     if (!active || loaded.page !== page) return
@@ -79,6 +91,7 @@ export function DocumentViewer({
 
   const zoom = ZOOM_STEPS[zoomIndex] ?? 1
   const onPage = highlights.filter((highlight) => highlight.page === page)
+  const ready = loaded.page === page && !failed
 
   return (
     <div className="flex h-full gap-3">
@@ -89,7 +102,7 @@ export function DocumentViewer({
               key={number}
               type="button"
               onClick={() => {
-                setPage(number)
+                selectPage(number)
                 onSelectField(null)
               }}
               aria-current={number === page ? 'true' : undefined}
@@ -144,13 +157,37 @@ export function DocumentViewer({
 
         <div
           ref={stageRef}
+          aria-busy={!ready && !failed}
           className="flex-1 overflow-auto rounded-[10px] border border-rule bg-paper-3 p-4"
         >
+          {!ready && (
+            <div className="py-6 text-center text-sm text-ink-2">
+              {failed ? (
+                <>
+                  <p role="alert">Could not load page {page}.</p>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm mt-3"
+                    onClick={() => {
+                      setLoaded((current) => ({ ...current, page: 0 }))
+                      setFailed(false)
+                      setAttempt((current) => current + 1)
+                    }}
+                  >
+                    Retry loading page
+                  </button>
+                </>
+              ) : (
+                <p role="status">Loading page {page}…</p>
+              )}
+            </div>
+          )}
           <div
             className="relative mx-auto"
             style={{
               width: `${(zoom * 100) / (sideways ? ratio : 1)}%`,
               aspectRatio: sideways ? 1 / ratio : ratio,
+              visibility: ready ? 'visible' : 'hidden',
             }}
           >
             <div
@@ -162,10 +199,14 @@ export function DocumentViewer({
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
+                key={`${documentId}:${page}:${attempt}`}
                 src={`/api/documents/${documentId}/pages/${page}/image?width=${RENDER_WIDTH}`}
                 alt={`Page ${page}`}
                 ref={measureImage}
                 onLoad={(event) => measureImage(event.currentTarget)}
+                onError={(event) => {
+                  if (event.currentTarget.isConnected) setFailed(true)
+                }}
                 className="block w-full shadow-sm"
               />
 

@@ -86,6 +86,7 @@ test(
       failSave = false
     const opened = [],
       requests = []
+    let holdPageTwo, releasePageTwo, failPageTwo = false
     const api = createServer(async (request, response) => {
       const path = new URL(request.url, 'http://test').pathname
       requests.push(`${request.method} ${path}`)
@@ -97,10 +98,15 @@ test(
       if (request.method === 'GET' && path === '/documents')
         return json({ items: [current], total: 1, page: 1, pageSize: 20 })
       if (path === '/events/stream') return json({}, 503)
-      if (path.endsWith('/pages/1/image')) {
+      const imagePage = path.match(/\/pages\/(\d+)\/image$/)?.[1]
+      if (imagePage) {
+        if (imagePage === '2' && new URL(request.url, 'http://test').searchParams.get('width') === '1400') {
+          if (holdPageTwo) await holdPageTwo
+          if (failPageTwo) return json({ message: 'Render unavailable' }, 503)
+        }
         response.writeHead(200, { 'Content-Type': 'image/svg+xml' })
         return response.end(
-          '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800"><rect width="600" height="800" fill="white"/><text x="60" y="100">Total</text></svg>',
+          `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800"><rect width="600" height="800" fill="white"/><text x="60" y="100">Page ${imagePage}</text></svg>`,
         )
       }
       if (path.endsWith('/review-opened')) {
@@ -269,6 +275,41 @@ test(
       assert.ok(requests.includes('POST /documents/first/reprocess'))
       assert.ok(requests.includes('POST /documents/first/type'))
       assert.ok(requests.includes('POST /documents/first/file'))
+
+      // A delayed/failed render must never display the previous page or new overlays.
+      current = fixture('paging', 'needs_review')
+      current.pageCount = 2
+      current.fields[0].sourcePage = 2
+      await page.goto(`${base}/documents/paging`)
+      const mainImage = page.locator('img[src$="width=1400"]')
+      await mainImage.waitFor({ state: 'visible' })
+      holdPageTwo = new Promise((resolve) => { releasePageTwo = resolve })
+      await page.getByRole('button', { name: 'Page 2 2', exact: true }).click()
+      await page.getByRole('status').filter({ hasText: 'Loading page 2' }).waitFor()
+      assert.equal(await mainImage.isVisible(), false)
+      assert.equal(await page.getByRole('button', { name: 'Source: grand_total' }).isVisible(), false)
+      assert.match(await mainImage.getAttribute('src'), /\/pages\/2\/image/)
+      // Switch back while page 2 is pending; its late completion must not replace page 1.
+      await page.getByRole('button', { name: 'Page 1 1', exact: true }).click()
+      await mainImage.waitFor({ state: 'visible' })
+      releasePageTwo()
+      holdPageTwo = undefined
+      await page.getByRole('button', { name: 'Show in document (page 2)', exact: true }).click()
+      await mainImage.waitFor({ state: 'visible' })
+      assert.match(await mainImage.getAttribute('src'), /\/pages\/2\/image/)
+      assert.equal(await page.getByRole('button', { name: 'Source: grand_total' }).isVisible(), true)
+
+      failPageTwo = true
+      current = { ...current, id: 'paging-error' }
+      await page.goto(`${base}/documents/paging-error`)
+      await mainImage.waitFor({ state: 'visible' })
+      await page.getByRole('button', { name: 'Page 2 2', exact: true }).click()
+      await page.getByRole('alert').filter({ hasText: 'Could not load page 2' }).waitFor()
+      assert.equal(await mainImage.isVisible(), false)
+      failPageTwo = false
+      await page.getByRole('button', { name: 'Retry loading page', exact: true }).click()
+      await mainImage.waitFor({ state: 'visible' })
+      assert.match(await mainImage.getAttribute('src'), /\/pages\/2\/image/)
 
       // Both table editors must protect unsaved values, including after a failed save.
       for (const name of ['transactions', 'line_items']) {
