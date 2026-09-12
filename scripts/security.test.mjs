@@ -307,6 +307,18 @@ test('paused Google integrations register no adapters and fall back to JSON with
   )
 })
 
+test('deployment rejects commands that are not a full commit SHA before touching the server', () => {
+  for (const revision of ['', 'main', 'a'.repeat(39), 'a'.repeat(40) + '; id'])
+    assert.throws(
+      () =>
+        execFileSync('sh', ['docker/deploy.sh'], {
+          env: { ...process.env, SSH_ORIGINAL_COMMAND: revision },
+          stdio: 'pipe',
+        }),
+      (error) => error.status === 1 && /Expected/.test(error.stderr.toString()),
+    )
+})
+
 test('deployment rsync replaces code but preserves server secrets, environment and incoming files', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'docflow-deploy-test-'))
   try {

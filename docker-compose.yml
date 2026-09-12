@@ -60,7 +60,7 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: ['server', '/data', '--console-address', ':9001']
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -159,6 +159,8 @@ services:
       LLM_API_KEY_FILE: ${LLM_API_KEY_FILE:-}
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-120000}
+      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-}
+      LLM_RESPONSE_FORMAT: ${LLM_RESPONSE_FORMAT:-json_object}
       SOURCE_PROVIDER: ${SOURCE_PROVIDER:-none}
       LOCAL_SOURCE_DIR: /data/source
       GOOGLE_DRIVE_KEY_FILE: ${GOOGLE_DRIVE_KEY_FILE:-}

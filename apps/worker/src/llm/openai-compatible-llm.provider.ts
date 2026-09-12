@@ -6,11 +6,12 @@ import {
 } from '@docflow/shared'
 import { Injectable, Logger } from '@nestjs/common'
 import { UnrecoverableError } from 'bullmq'
-import type { ZodType } from 'zod'
+import { toJSONSchema, type ZodType } from 'zod'
 import {
   auditedExternalCall,
   type ExternalCallRecorder,
   type ExternalCallDetails,
+  type Env,
 } from '@docflow/core'
 import {
   LlmInvalidResponseError,
@@ -29,6 +30,8 @@ export interface OpenAiCompatibleOptions {
   model: string
   timeoutMs: number
   maxTokens?: number
+  reasoningEffort?: Env['LLM_REASONING_EFFORT']
+  responseFormat?: Env['LLM_RESPONSE_FORMAT']
 }
 
 interface ChatMessage {
@@ -40,8 +43,9 @@ interface ChatMessage {
 
 /**
  * Any OpenAI-compatible chat-completions endpoint. Configuration selects the
- * model and URL without code changes. response_format json_object works across
- * providers, while Zod validation and repair cover inconsistent strict-schema support.
+ * model and URL without code changes. json_object preserves broad compatibility;
+ * opt-in json_schema sends the same contract to providers that support it.
+ * Zod validation and repair remain authoritative in either mode.
  */
 @Injectable()
 export class OpenAiCompatibleLlmProvider implements LlmProvider {
@@ -83,7 +87,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
   async extract(input: ExtractInput, record?: ExternalCallRecorder): Promise<ExtractionResponse> {
     const fieldLines = input.fields.map((field) => {
       const parts = [
-        `- name: ${field.name}; type: ${field.type}; label: "${field.label}"`,
+        `- name: ${field.name}; JSON value: ${field.type === 'array' ? 'array' : 'verbatim string'} or null; source format: ${field.type}; label: "${field.label}"`,
         field.enumValues?.length ? `allowed: ${field.enumValues.join(', ')}` : '',
         field.hint ? `hint: ${field.hint}` : '',
       ]
@@ -95,10 +99,13 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
       'Respond with JSON only: {"fields": [{"name", "value", "evidence": {"text", "page"} | null}]}.',
       'Rules:',
       '1. "value" is the VERBATIM string as written in the document. Do not normalize or translate.',
+      'For each NON-ARRAY field, its "value" MUST be a JSON string (for example "1023.45", never 1023.45), or null. This rule does NOT apply to cells inside table rows.',
       '2. For array fields other than transactions, "value" is an array of {"description", "quantity", "unit_price", "amount"}.',
       'Description is a string; quantity, unit_price, and amount are numbers or null when absent. No nested or extra properties.',
+      'Never calculate missing quantity, unit_price or amount. A printed line total is not a unit price; use null for an absent unit price.',
       'For transactions, each row has exactly: date, reference, payment_type, description, credit, debit, balance.',
       'date, reference, and payment_type are verbatim strings or null; description is a verbatim string; credit, debit, and balance are numbers or null.',
+      'Inside each transaction row, credit, debit and balance MUST be unquoted JSON numbers without thousands separators (5400.00, not "5,400.00"); an empty numeric cell is null.',
       'Credit / Paid In / deposits are money received; Debit / Paid Out / withdrawals are money spent. Credit and debit are nonnegative. Balance may be negative.',
       'Use the column headings and explicit debit/credit indicators; never decide direction from a merchant name. For signed amounts use the documented sign convention; if unclear leave credit and debit null.',
       'Read all transaction rows on all pages in printed order, joining wrapped descriptions. Do not merge identical real transactions or stop at a page break.',
@@ -139,7 +146,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
 
     for (let attempt = 0; attempt <= MAX_REPAIRS; attempt++) {
       const raw = await auditedExternalCall(record, { ...details, attempt: attempt + 1 }, () =>
-        this.request(conversation),
+        this.request(conversation, schema),
       )
 
       let parsed: unknown
@@ -166,7 +173,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
         { role: 'assistant', content: raw },
         {
           role: 'user',
-          content: `Your previous answer failed validation: ${lastError}. Return the corrected JSON only.`,
+          content: `Your previous answer failed validation: ${JSON.stringify(result.error.issues)}. Return the corrected JSON only.`,
         },
       )
       this.logger.warn(
@@ -177,7 +184,7 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
     throw new LlmInvalidResponseError(lastError)
   }
 
-  private async request(messages: ChatMessage[]): Promise<string> {
+  private async request(messages: ChatMessage[], schema: ZodType): Promise<string> {
     let response: Response
     try {
       response = await fetch(`${this.options.baseUrl.replace(/\/$/, '')}/chat/completions`, {
@@ -191,7 +198,24 @@ export class OpenAiCompatibleLlmProvider implements LlmProvider {
           messages,
           temperature: 0,
           max_tokens: this.options.maxTokens ?? 8192,
-          response_format: { type: 'json_object' },
+          response_format:
+            this.options.responseFormat === 'json_schema'
+              ? {
+                  type: 'json_schema',
+                  json_schema: {
+                    name: 'document_response',
+                    strict: true,
+                    schema: toJSONSchema(schema),
+                  },
+                }
+              : { type: 'json_object' },
+          ...(this.options.responseFormat === 'json_schema' &&
+          new URL(this.options.baseUrl).hostname === 'openrouter.ai'
+            ? { provider: { require_parameters: true } }
+            : {}),
+          ...(this.options.reasoningEffort
+            ? { reasoning: { effort: this.options.reasoningEffort } }
+            : {}),
         }),
         signal: AbortSignal.timeout(this.options.timeoutMs),
       })

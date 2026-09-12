@@ -28,7 +28,7 @@ const missingResponse = {
 }
 const invalidResponse = { fields: [] }
 
-function realProvider(t, replies) {
+function realProvider(t, replies, overrides = {}) {
   const requests = []
   t.mock.method(globalThis, 'fetch', async (_url, options) => {
     requests.push(JSON.parse(options.body))
@@ -44,6 +44,7 @@ function realProvider(t, replies) {
     apiKey: 'test',
     model: 'test',
     timeoutMs: 1000,
+    ...overrides,
   })
   return { provider, requests }
 }
@@ -64,6 +65,50 @@ test('real provider accepts line-item arrays without a repair', async (t) => {
   const { provider, requests } = realProvider(t, [response])
   assert.deepEqual(await provider.extract(input), response)
   assert.equal(requests.length, 1)
+  assert.equal(requests[0].response_format.type, 'json_object')
+  assert.equal('provider' in requests[0], false)
+})
+
+test('repair identifies invalid numeric transaction cells without weakening the response contract', async (t) => {
+  const bankInput = {
+    documentType: 'bank_statement',
+    fields: SEED_SCHEMAS.bank_statement,
+    pagesText: [],
+  }
+  const valid = {
+    fields: bankInput.fields.map(({ name }) => ({ name, value: null, evidence: null })),
+  }
+  valid.fields.at(-1).value = [
+    {
+      date: null,
+      reference: null,
+      payment_type: null,
+      description: 'Purchase',
+      credit: null,
+      debit: 20,
+      balance: 180,
+    },
+  ]
+  const invalid = structuredClone(valid)
+  invalid.fields.at(-1).value[0].balance = '180.00'
+  const { provider, requests } = realProvider(t, [invalid, valid], {
+    baseUrl: 'https://openrouter.ai/api/v1',
+    responseFormat: 'json_schema',
+  })
+  assert.deepEqual(await provider.extract(bankInput), valid)
+  assert.equal(requests.length, 2)
+  const format = requests[0].response_format
+  assert.equal(format.type, 'json_schema')
+  assert.equal(format.json_schema.strict, true)
+  assert.deepEqual(requests[0].provider, { require_parameters: true })
+  const valueSchema = format.json_schema.schema.properties.fields.items.properties.value
+  assert.equal(valueSchema.anyOf[0].type, 'string')
+  const balance = valueSchema.anyOf[1].anyOf[1].items.properties.balance
+  assert.deepEqual(balance.anyOf.map(({ type }) => type), ['number', 'null'])
+  const feedback = requests[1].messages.at(-1).content
+  assert.match(feedback, /"path":\["fields",11,"value"\]/)
+  assert.match(feedback, /"path":\[0,"balance"\]/)
+  assert.match(feedback, /"expected":"number"/)
 })
 
 test('real provider exhausts exactly two repairs for schema-invalid responses', async (t) => {

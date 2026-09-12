@@ -54,8 +54,14 @@ export function assessOcrQuality(
         : `uncalibrated OCR text and coordinates on pages: ${uncalibrated.map((p) => p.pageNumber).join(', ')}`
 
   return {
-    message: `Low OCR quality: ${details}. Review the values or replace the file`,
-    expected: `confidence at least ${minConfidence.toFixed(2)} and non-empty text`,
+    message:
+      empty.length > 0 || weak.length > 0
+        ? `Low OCR quality: ${details}. Review the values or replace the file`
+        : `OCR accuracy is not yet verified. Review the extracted values on ${affected.length === 1 ? 'page' : 'pages'} ${affected.join(', ')}`,
+    expected:
+      empty.length > 0 || weak.length > 0
+        ? `confidence at least ${minConfidence.toFixed(2)} and non-empty text`
+        : 'extracted values reviewed against the original document',
     actual: details,
     pages: affected,
   }

@@ -26,6 +26,18 @@ describe('assessOcrQuality', () => {
     assert.equal(assessOcrQuality([{ pageNumber: 1, confidence: null, textLength: 300 }]), null)
   })
 
+  it('asks for review without claiming poor quality when OCR accuracy is unverified', () => {
+    const issue = assessOcrQuality([
+      { pageNumber: 1, confidence: null, textLength: 300, requiresReview: true },
+    ])
+    assert.ok(issue)
+    assert.equal(
+      issue.message,
+      'OCR accuracy is not yet verified. Review the extracted values on page 1',
+    )
+    assert.equal(issue.expected, 'extracted values reviewed against the original document')
+  })
+
   it('lists pages in ascending order', () => {
     const issue = assessOcrQuality([
       { pageNumber: 3, confidence: 0.2, textLength: 10 },

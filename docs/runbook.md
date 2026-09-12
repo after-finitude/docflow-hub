@@ -14,7 +14,7 @@ Run verification only on a separate disposable stack as described below; it is n
 
 ## Production deployment script
 
-GitHub Actions sends a Git archive to the SSH forced command `/home/user1/apps/docflow-hub-deploy`. Its versioned source is `docker/deploy.sh`; script changes must also be installed at that server path (mode 0700, owner `user1`). Updating repository contents alone does not replace the forced command outside the checkout.
+GitHub Actions sends a Git archive and commit SHA to the SSH forced command `/usr/local/sbin/docflow-deploy` on `176.98.40.150`. Its versioned source is `docker/deploy.sh`; script changes must also be installed at that server path (mode 0700, owner `root`). Updating repository contents alone does not replace the forced command outside the checkout. See [VPS setup](vps.md#github-autodeploy) for the Actions secret and one-time installation.
 
 The script uses a deployment lock and `rsync --delete` to replace code, excluding server `.env`, `docker-compose.override.yml`, `docker/source-inbox/` and the entire `/secrets/` directory from transfer and deletion. Keep these exclusions when changing synchronization; do not relax secret permissions or delete credentials to make a deployment succeed. Docker named volumes are not touched. `scripts/security.test.mjs` exercises the script's actual rsync command with temporary data.
 

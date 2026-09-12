@@ -1,0 +1,18 @@
+{$DEMO_HOST} {
+	encode zstd gzip
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+	# Preserve the bucket path and Host: both are covered by S3 signatures.
+	@files {
+		path /docflow/*
+		method GET HEAD
+	}
+	handle @files {
+		reverse_proxy minio:9000
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+}

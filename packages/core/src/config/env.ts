@@ -79,6 +79,8 @@ const envSchema = z.object({
   LLM_API_KEY_FILE: z.string().min(1).optional(),
   LLM_MODEL: z.string().optional(),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+  LLM_REASONING_EFFORT: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']).optional(),
+  LLM_RESPONSE_FORMAT: z.enum(['json_object', 'json_schema']).default('json_object'),
 
   // ─── Export (spec 6.8) ────────────────────────────────────────────────────
   EXPORT_DEFAULT_DESTINATION: z.enum(['file_json', 'google_sheets']).default('file_json'),

@@ -5,12 +5,16 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: docflow-hub-production
   cancel-in-progress: false
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -23,7 +27,9 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/docflow_deploy
           chmod 600 ~/.ssh/docflow_deploy
-          printf '%s\n' '82.202.140.221 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGkwqU2EizlbjP6w//SJeK6c7ZqsEtHDqfznbhIc5Uk5' > ~/.ssh/known_hosts
+          printf '%s\n' '176.98.40.150 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF7+BXvgzkye7AuwZcI5Tbx0Uxi9CbE1uwDfERNQq6SU' > ~/.ssh/known_hosts
 
       - name: Deploy
-        run: git archive --format=tar.gz HEAD | ssh -i ~/.ssh/docflow_deploy -o IdentitiesOnly=yes user1@82.202.140.221
+        run: |
+          git archive --format=tar.gz --output=/tmp/docflow-release.tar.gz "$GITHUB_SHA"
+          ssh -i ~/.ssh/docflow_deploy -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 root@176.98.40.150 "$GITHUB_SHA" < /tmp/docflow-release.tar.gz

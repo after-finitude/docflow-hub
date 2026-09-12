@@ -19,6 +19,8 @@ Google Drive and Google Sheets are temporarily disabled by `GOOGLE_WORKSPACE_ENA
 
 - `OCR_PROVIDER=mock|google|openrouter`. Google requires `GOOGLE_VISION_KEY_FILE`. OpenRouter uses `OCR_MODEL` and the shared `LLM_BASE_URL` / encrypted `LLM_API_KEY_FILE`.
 - `LLM_PROVIDER=mock|openai_compatible`. A real provider requires `LLM_BASE_URL`, `LLM_API_KEY_FILE`, and `LLM_MODEL`.
+- Optional `LLM_REASONING_EFFORT=none|minimal|low|medium|high|xhigh|max` sends OpenRouter's reasoning setting for both OCR and LLM. Leave unset to preserve provider defaults; use only values supported by both selected models. `none` disables optional reasoning so it does not consume the document response budget.
+- `LLM_RESPONSE_FORMAT=json_object|json_schema` controls classification/extraction responses (default `json_object`). `json_schema` sends the existing Zod contract as a strict JSON Schema; OpenRouter routing requires parameter support. Use a compatible model. Local validation and repair still run because schema enforcement varies by provider and cannot express every business rule. OCR keeps its existing JSON mode.
 - `EXPORT_DEFAULT_DESTINATION=file_json|google_sheets` selects the initial export default. JSON is always available. Sheets is enabled when both `GOOGLE_SHEETS_KEY_FILE` and `GOOGLE_SHEETS_SPREADSHEET_ID` are set; partial configuration is rejected. `GOOGLE_SHEETS_SHEET_NAME` defaults to `Documents`. All integration key files are encrypted envelopes, mounted read-only inside the service that uses them.
 - `SOURCE_PROVIDER=none|local_folder|google_drive`. Local folder requires `LOCAL_SOURCE_DIR`; Drive requires its key file and folder ID.
 

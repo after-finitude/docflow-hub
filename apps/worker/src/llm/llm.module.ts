@@ -18,6 +18,8 @@ import { OpenAiCompatibleLlmProvider } from './openai-compatible-llm.provider'
               apiKey: env.LLM_API_KEY!,
               model: env.LLM_MODEL!,
               timeoutMs: env.LLM_TIMEOUT_MS,
+              reasoningEffort: env.LLM_REASONING_EFFORT,
+              responseFormat: env.LLM_RESPONSE_FORMAT,
             })
           : new MockLlmProvider(),
     },

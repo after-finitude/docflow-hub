@@ -18,6 +18,7 @@ import { OcrProcessor } from './ocr.processor'
               apiKey: env.LLM_API_KEY!,
               model: env.OCR_MODEL,
               timeoutMs: env.LLM_TIMEOUT_MS,
+              reasoningEffort: env.LLM_REASONING_EFFORT,
               renderDpi: env.OCR_RENDER_DPI,
             })
           : env.OCR_PROVIDER === 'google'

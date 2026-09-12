@@ -60,6 +60,7 @@ test('hybrid OCR keeps native text, scans partial text layers, skips blanks and 
   assert.equal(requests.length, 1)
   assert.equal(requests[0].model, options.model)
   assert.equal(requests[0].max_tokens, 16384)
+  assert.equal('reasoning' in requests[0], false)
   assert.match(requests[0].messages[1].content[1].image_url.url, /^data:image\/png;base64,/)
   assert.deepEqual(
     events.map(({ state, purpose, pages: sentPages }) => ({ state, purpose, pages: sentPages })),
@@ -178,4 +179,23 @@ test('Gemini classification uses the same OpenRouter endpoint and key with its o
     model: 'google/gemini-2.5-flash-lite',
   }).classify({ pagesText: [{ page: 1, text: 'Invoice 100' }] })
   assert.equal(result.document_type, 'invoice')
+})
+
+test('optional reasoning can be disabled for both vision OCR and text extraction', async (t) => {
+  const requests = []
+  t.mock.method(globalThis, 'fetch', async (_, init) => {
+    requests.push(JSON.parse(init.body))
+    return reply(requests.length === 1 ? blocks : { fields: [] })
+  })
+  const configured = { ...options, reasoningEffort: 'none' }
+  await new OpenRouterOcrProvider(configured).recognize(image, 'image/png')
+  await new OpenAiCompatibleLlmProvider(configured).extract({
+    documentType: 'invoice',
+    fields: [],
+    pagesText: [{ page: 1, text: 'Invoice 100' }],
+  })
+  assert.deepEqual(requests.map(({ reasoning }) => reasoning), [
+    { effort: 'none' },
+    { effort: 'none' },
+  ])
 })
