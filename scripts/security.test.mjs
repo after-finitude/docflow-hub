@@ -319,36 +319,36 @@ test('deployment rejects commands that are not a full commit SHA before touching
     )
 })
 
-test('deployment rsync replaces code but preserves server secrets, environment and incoming files', async () => {
+test('deployment copies only source and preserves privileged configuration and secrets', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'docflow-deploy-test-'))
   try {
-    const staging = join(dir, 'staging'),
-      app = join(dir, 'app')
-    await mkdir(staging)
-    await mkdir(join(app, 'secrets', 'worker'), { recursive: true })
-    await mkdir(join(app, 'docker', 'source-inbox'), { recursive: true })
-    const retained = [
-      '.env',
-      'docker-compose.override.yml',
-      'docker/source-inbox/invoice.pdf',
-      'secrets/worker/llm.enc',
-    ]
-    for (const file of retained) await writeFile(join(app, file), 'retained', { mode: 0o600 })
-    await writeFile(join(app, 'obsolete.ts'), 'old')
-    await writeFile(join(app, 'current.ts'), 'old')
-    await writeFile(join(staging, 'current.ts'), 'new version')
+    const staging = join(dir, 'staging'), app = join(dir, 'app')
+    for (const base of [staging, app]) {
+      for (const directory of ['apps', 'packages', 'docker', 'secrets'])
+        await mkdir(join(base, directory), { recursive: true })
+    }
+    const retained = ['.env', 'docker-compose.yml', 'docker/compose.vps.yml', 'docker/Caddyfile',
+      'docker/node.Dockerfile', 'docker/source-inbox', 'secrets/key']
+    for (const file of retained) {
+      await writeFile(join(app, file), 'retained', { mode: 0o600 })
+      await writeFile(join(staging, file), 'untrusted')
+    }
+    await writeFile(join(app, 'apps', 'obsolete.ts'), 'old')
+    await writeFile(join(app, 'apps', 'current.ts'), 'old')
+    await writeFile(join(staging, 'apps', 'current.ts'), 'new version')
+    for (const file of ['package.json', 'package-lock.json', 'tsconfig.json', 'tsconfig.base.json'])
+      await writeFile(join(staging, file), '{}')
     const script = await readFile('docker/deploy.sh', 'utf8')
-    const command = script.slice(script.indexOf('rsync -a --delete'), script.indexOf('\n\ncd '))
-    assert.match(command, /^rsync /)
-    execFileSync('sh', ['-c', command], {
+    const command = script.split('# Synchronize approved source only.\n')[1].split('# End source synchronization.')[0]
+    execFileSync('sh', ['-eu', '-c', command], {
       env: { ...process.env, staging_dir: staging, app_dir: app },
     })
     for (const file of retained) {
       assert.equal(await readFile(join(app, file), 'utf8'), 'retained')
       assert.equal((await stat(join(app, file))).mode & 0o777, 0o600)
     }
-    assert.equal(await readFile(join(app, 'current.ts'), 'utf8'), 'new version')
-    await assert.rejects(stat(join(app, 'obsolete.ts')), { code: 'ENOENT' })
+    assert.equal(await readFile(join(app, 'apps', 'current.ts'), 'utf8'), 'new version')
+    await assert.rejects(stat(join(app, 'apps', 'obsolete.ts')), { code: 'ENOENT' })
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

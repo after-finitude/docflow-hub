@@ -52,13 +52,12 @@ do not receive the OpenRouter credential. See `configuration.md` for rotation.
 
 `.github/workflows/deploy.yml` deploys pushes to `main` in
 `after-finitude/docflow-hub`. Manual runs are also limited to `main`.
-The job sends the committed source archive over SSH; the VPS builds
+The job sends only approved committed application source over SSH; the VPS builds
 backend and web sequentially, tags both images with the commit SHA, applies
-migrations and starts the services. Concurrent deploys are serialized. The server
+migrations and starts the services. Concurrent deploys across Docflow and Leadloom are serialized by a shared server lock. The server
 keeps `.env`, `secrets/`, the source inbox and named volumes.
 
-One-time setup requires GitHub Actions, `rsync` on the VPS, and a
-dedicated SSH key for this project. Install `docker/deploy.sh` as
+One-time setup requires GitHub Actions, Python 3, `rsync`, `runuser`, `prlimit`, `timeout` and `flock` on the VPS, and a dedicated SSH key for this project. Create a system user/group `docflow-unpack` with `/usr/sbin/nologin`, no home and no supplementary groups; create root-owned `/var/lib/app-deploy` with mode 0711. Install `scripts/extract-release.py` as `/usr/local/lib/docflow-deploy/extract-release.py` (root-owned directory 0755, file 0644). Keep the app directory and its Compose, Dockerfiles, Caddy and initialization files root-owned and not writable by other users. Install `docker/deploy.sh` as
 `/usr/local/sbin/docflow-deploy` (root-owned, mode 0700) and add the public key to
 `/root/.ssh/authorized_keys` with this prefix:
 
@@ -74,6 +73,8 @@ the server `.env` records `IMAGE_TAG=<commit SHA>`. A failed build exits before
 container replacement. A migration/startup failure needs investigation in the
 job log; automatic database rollback is not provided. Builds briefly share the
 small VPS with the app.
+
+Changes to Compose, Dockerfiles, Caddy, the receiver or the forced command require an administrator to review and install them separately; pushing their repository sources cannot change privileged server configuration. Keep the server Caddyfile's Leadloom site block. The receiver's source allowlist and limits are described in [the runbook](runbook.md#production-deployment-script).
 
 The workflow replaces the previous server target. Only the dedicated deploy key
 belongs in Actions; the owner's personal SSH key is not copied there.

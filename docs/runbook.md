@@ -16,7 +16,13 @@ Run verification only on a separate disposable stack as described below; it is n
 
 GitHub Actions sends a Git archive and commit SHA to the SSH forced command `/usr/local/sbin/docflow-deploy` on `176.98.40.150`. Its versioned source is `docker/deploy.sh`; script changes must also be installed at that server path (mode 0700, owner `root`). Updating repository contents alone does not replace the forced command outside the checkout. See [VPS setup](vps.md#github-autodeploy) for the Actions secret and one-time installation.
 
-The script uses a deployment lock and `rsync --delete` to replace code, excluding server `.env`, `docker-compose.override.yml`, `docker/source-inbox/` and the entire `/secrets/` directory from transfer and deletion. Keep these exclusions when changing synchronization; do not relax secret permissions or delete credentials to make a deployment succeed. Docker named volumes are not touched. `scripts/security.test.mjs` exercises the script's actual rsync command with temporary data.
+The receiver accepts only `apps/`, `packages/`, `package.json`, `package-lock.json`, `tsconfig.json` and `tsconfig.base.json`. A dedicated `docflow-unpack` account (no login or Docker access) validates and extracts the archive before privileged deployment begins. Links, special files, unsafe paths, duplicate entries, embedded `.env`/`.git` paths and excessive sizes are rejected. Extraction is limited to 120 seconds, 256 MiB address space, 16 MiB per file, 128 MiB total and 10,000 entries.
+
+Compose files, Dockerfiles, Caddy, PostgreSQL initialization, `.env`, `secrets/` and `docker/source-inbox/` stay under administrator control on the server. They cannot be replaced by an automated release. Docker builds use only the validated staging directory as context and server-owned Dockerfiles; server credentials never enter the build context. Deploy updates the migration job, API, worker and web; it does not recreate Caddy or storage services.
+
+Both projects hold `/var/lib/app-deploy/deploy.lock` through extraction, build and startup. A second deploy waits up to 15 minutes, then fails safely. `scripts/test_deploy_archive.py` tests malicious and valid archives without Docker; the deployment cases in `scripts/security.test.mjs` test command validation and source copying with temporary data. Run these only with explicit authorization.
+
+Repository access still permits changing application behavior and reading that application's runtime secrets. This is not full isolation between applications on the shared VPS. GitHub currently rejects branch protection for these private repositories without a Pro upgrade; `main` is therefore still unprotected.
 
 ## Review refresh regression
 

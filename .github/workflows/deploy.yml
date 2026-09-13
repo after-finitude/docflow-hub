@@ -16,14 +16,15 @@ jobs:
   deploy:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Configure SSH
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
+          test -n "$DEPLOY_SSH_KEY"
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/docflow_deploy
           chmod 600 ~/.ssh/docflow_deploy
@@ -31,5 +32,5 @@ jobs:
 
       - name: Deploy
         run: |
-          git archive --format=tar.gz --output=/tmp/docflow-release.tar.gz "$GITHUB_SHA"
+          git archive --format=tar.gz --output=/tmp/docflow-release.tar.gz "$GITHUB_SHA" apps packages package.json package-lock.json tsconfig.json tsconfig.base.json
           ssh -i ~/.ssh/docflow_deploy -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 root@176.98.40.150 "$GITHUB_SHA" < /tmp/docflow-release.tar.gz
