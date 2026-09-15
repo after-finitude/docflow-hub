@@ -1,0 +1,1177 @@
+{
+  "startedAt": "2026-09-12T14:55:40.159Z",
+  "providers": {
+    "ocr": "openrouter",
+    "ocrModel": "dots-studio/dots-3-note-preview:free",
+    "llm": "openai_compatible",
+    "model": "dots-studio/dots-3-note-preview:free"
+  },
+  "documents": [
+    {
+      "name": "01-invoice-mistral-paperworks.pdf",
+      "id": "01a0961d-f7fe-74ea-8431-3677d5ce446d",
+      "url": "https://docflow.176.98.40.150.sslip.io/documents/01a0961d-f7fe-74ea-8431-3677d5ce446d",
+      "expectedType": "invoice",
+      "checksum": "0ed12d4daba83c12cec561b0778a5817d6cf061b1546d5202654931f7877a253",
+      "reused": false,
+      "progress": "approved:validation:succeeded",
+      "status": "approved",
+      "statusReason": null,
+      "actualType": "invoice",
+      "finished": true,
+      "finishedAt": "2026-09-12T14:55:52.539Z",
+      "pages": 1,
+      "values": {
+        "currency": "GBP",
+        "due_date": "2026-09-26",
+        "grand_total": 1620,
+        "invoice_date": "2026-09-12",
+        "invoice_number": "MP-26-0912-A",
+        "line_items": [
+          {
+            "amount": 1015,
+            "quantity": 7,
+            "unit_price": 145,
+            "description": "Archive digitisation"
+          },
+          {
+            "amount": 240,
+            "quantity": 3,
+            "unit_price": 80,
+            "description": "Index correction"
+          },
+          {
+            "amount": 95,
+            "quantity": 1,
+            "unit_price": 95,
+            "description": "Secure transfer package"
+          }
+        ],
+        "subtotal": 1350,
+        "supplier_name": "Mistral Paperworks Ltd",
+        "tax_total": 270
+      },
+      "mismatches": [],
+      "expectedFields": 9,
+      "matchingFields": 9,
+      "sources": [
+        {
+          "name": "currency",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.695476179436886,
+            "y": 0.269550471080063,
+            "width": 0.039023908253588736,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "due_date",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.37461639617011006,
+            "y": 0.269550471080063,
+            "width": 0.09452356857899101,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "grand_total",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.5493253881059462,
+            "y": 0.6033233710486812,
+            "width": 0.35996025336835574,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "invoice_date",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.269550471080063,
+            "width": 0.09452356857899095,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "invoice_number",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.6366798840738642,
+            "y": 0.08781647216476554,
+            "width": 0.12016656385714451,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "line_items",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.09071428427437643,
+            "y": 0.38335461370656826,
+            "width": 0.8185714317872258,
+            "height": 0.011942997171363757
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "subtotal",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.5493253881059462,
+            "y": 0.5237405087785836,
+            "width": 0.35996025336835574,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "supplier_name",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.17096274617830032,
+            "width": 0.18792830833314858,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "tax_total",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.5493253881059462,
+            "y": 0.5534356066405604,
+            "width": 0.3599603754966607,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        }
+      ],
+      "issues": [],
+      "canApprove": false,
+      "runs": [
+        {
+          "step": "validation",
+          "state": "succeeded",
+          "durationMs": 75,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "extraction",
+          "state": "succeeded",
+          "durationMs": 6464,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "classification",
+          "state": "succeeded",
+          "durationMs": 1884,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "ocr",
+          "state": "succeeded",
+          "durationMs": 90,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "preprocess",
+          "state": "succeeded",
+          "durationMs": 148,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "ingestion",
+          "state": "succeeded",
+          "durationMs": 3,
+          "errorCode": null,
+          "errorDetail": null
+        }
+      ],
+      "originalMatches": true,
+      "renderedPages": [
+        1
+      ]
+    },
+    {
+      "name": "02-bank-statement-lantern-quay.pdf",
+      "id": "01a0961d-fe58-723b-acb0-b193c40ddab3",
+      "url": "https://docflow.176.98.40.150.sslip.io/documents/01a0961d-fe58-723b-acb0-b193c40ddab3",
+      "expectedType": "bank_statement",
+      "checksum": "6a8ed108e90ec90eebfc7d35bbb5a77661b5becf78f870e769e5084dc7c3f9c3",
+      "reused": false,
+      "progress": "approved:validation:succeeded",
+      "status": "approved",
+      "statusReason": null,
+      "actualType": "bank_statement",
+      "finished": true,
+      "finishedAt": "2026-09-12T14:56:06.016Z",
+      "pages": 1,
+      "values": {
+        "account_holder": "Alder Vale Design Ltd",
+        "account_number": "000742-19-5831",
+        "bank_name": "LANTERN QUAY BANK",
+        "closing_balance": 11458.45,
+        "currency": "EUR",
+        "opening_balance": 8500,
+        "period_end": "2026-08-31",
+        "period_start": "2026-08-01",
+        "statement_date": "2026-09-01",
+        "total_credit": 7130.75,
+        "total_debit": 4172.3,
+        "transactions": [
+          {
+            "date": "2026-08-03",
+            "debit": null,
+            "credit": 2380,
+            "balance": 10880,
+            "reference": "000041",
+            "description": "Client settlement",
+            "payment_type": "Transfer"
+          },
+          {
+            "date": "2026-08-05",
+            "debit": 1540,
+            "credit": null,
+            "balance": 9340,
+            "reference": "000042",
+            "description": "Studio rent",
+            "payment_type": "Transfer"
+          },
+          {
+            "date": "2026-08-08",
+            "debit": 86.4,
+            "credit": null,
+            "balance": 9253.6,
+            "reference": "000043",
+            "description": "Office supplies",
+            "payment_type": "Card"
+          },
+          {
+            "date": "2026-08-12",
+            "debit": null,
+            "credit": 4125.75,
+            "balance": 13379.35,
+            "reference": "000044",
+            "description": "Project milestone",
+            "payment_type": "Transfer"
+          },
+          {
+            "date": "2026-08-17",
+            "debit": 327.9,
+            "credit": null,
+            "balance": 13051.45,
+            "reference": "000045",
+            "description": "Equipment repair",
+            "payment_type": "Card"
+          },
+          {
+            "date": "2026-08-21",
+            "debit": null,
+            "credit": 625,
+            "balance": 13676.45,
+            "reference": "000046",
+            "description": "Client deposit",
+            "payment_type": "Transfer"
+          },
+          {
+            "date": "2026-08-25",
+            "debit": 18,
+            "credit": null,
+            "balance": 13658.45,
+            "reference": "000047",
+            "description": "Account service fee",
+            "payment_type": "Fee"
+          },
+          {
+            "date": "2026-08-28",
+            "debit": 2200,
+            "credit": null,
+            "balance": 11458.45,
+            "reference": "000048",
+            "description": "Contractor payment",
+            "payment_type": "Transfer"
+          }
+        ]
+      },
+      "mismatches": [],
+      "expectedFields": 12,
+      "matchingFields": 12,
+      "sources": [
+        {
+          "name": "account_holder",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.17096274617830032,
+            "width": 0.1787340047198306,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "account_number",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.547645493952717,
+            "y": 0.17096274617830032,
+            "width": 0.13563175645028952,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "bank_name",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.046293213642688194,
+            "width": 0.4106307733762311,
+            "height": 0.029193993085555852
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "closing_balance",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.5123677167349039,
+            "y": 0.7933719973653321,
+            "width": 0.39691805123542784,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "currency",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.547645493952717,
+            "y": 0.23272854973121188,
+            "width": 0.14894049109353716,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "opening_balance",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.2778650984814165,
+            "width": 0.8454497681410089,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "period_end",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.23272854973121188,
+            "width": 0.21472621975434572,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "period_start",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.23272854973121188,
+            "width": 0.21472621975434572,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "statement_date",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.547645493952717,
+            "y": 0.23272854973121188,
+            "width": 0.14894049109353716,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "total_credit",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.5123677167349039,
+            "y": 0.7339818016413787,
+            "width": 0.396917924739398,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "total_debit",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.5123677167349039,
+            "y": 0.7636768995033555,
+            "width": 0.396917924739398,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "transactions",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.09071428427437643,
+            "y": 0.35722292758802876,
+            "width": 0.8185713825663272,
+            "height": 0.02619664414511258
+          },
+          "confidence": 0.9,
+          "edited": false
+        }
+      ],
+      "issues": [],
+      "canApprove": false,
+      "runs": [
+        {
+          "step": "validation",
+          "state": "succeeded",
+          "durationMs": 41,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "extraction",
+          "state": "succeeded",
+          "durationMs": 13392,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "classification",
+          "state": "succeeded",
+          "durationMs": 1572,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "ocr",
+          "state": "succeeded",
+          "durationMs": 92,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "preprocess",
+          "state": "succeeded",
+          "durationMs": 111,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "ingestion",
+          "state": "succeeded",
+          "durationMs": 2,
+          "errorCode": null,
+          "errorDetail": null
+        }
+      ],
+      "originalMatches": true,
+      "renderedPages": [
+        1
+      ]
+    },
+    {
+      "name": "03-contract-orbit-archive.pdf",
+      "id": "01a0961e-08c0-7fb0-9513-ee91756d0ecf",
+      "url": "https://docflow.176.98.40.150.sslip.io/documents/01a0961e-08c0-7fb0-9513-ee91756d0ecf",
+      "expectedType": "contract",
+      "checksum": "079c03506ac575514081f6b37b6d5c715cb1ec9a443d6cb076b96badd444003b",
+      "reused": false,
+      "progress": "approved:validation:succeeded",
+      "status": "approved",
+      "statusReason": null,
+      "actualType": "contract",
+      "finished": true,
+      "finishedAt": "2026-09-12T14:56:12.819Z",
+      "pages": 2,
+      "values": {
+        "contract_date": "2026-09-10",
+        "contract_number": "OA-2026-014",
+        "contract_value": 12000,
+        "currency": "EUR",
+        "end_date": "2027-03-31",
+        "party_a": "Orbit Archive Ltd",
+        "party_b": "Alder Vale Design Ltd",
+        "start_date": "2026-10-01",
+        "subject": "Document archive migration and workflow automation"
+      },
+      "mismatches": [],
+      "expectedFields": 9,
+      "matchingFields": 9,
+      "sources": [
+        {
+          "name": "contract_date",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.5358862348801127,
+            "y": 0.21576174518327698,
+            "width": 0.115715834480701,
+            "height": 0.03512721283415002
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "contract_number",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.21576174518327698,
+            "width": 0.1381122370881655,
+            "height": 0.03512721283415002
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "contract_value",
+          "page": 2,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.18844225515025842,
+            "width": 0.17319971052063948,
+            "height": 0.035127212834150046
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "currency",
+          "page": 2,
+          "found": true,
+          "bbox": {
+            "x": 0.547645493952717,
+            "y": 0.18844225515025842,
+            "width": 0.07615957919323413,
+            "height": 0.035127212834150046
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "end_date",
+          "page": 2,
+          "found": true,
+          "bbox": {
+            "x": 0.547645493952717,
+            "y": 0.25495927436108623,
+            "width": 0.09452356857899102,
+            "height": 0.035127212834150046
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "party_a",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.3325040785474536,
+            "width": 0.260878198434473,
+            "height": 0.03478966308892206
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "party_b",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.3930820781858861,
+            "width": 0.24959059198798,
+            "height": 0.03478966308892212
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "start_date",
+          "page": 2,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.25495927436108623,
+            "width": 0.09452356857899097,
+            "height": 0.035127212834150046
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "subject",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.5347450944589185,
+            "width": 0.47538379197803504,
+            "height": 0.015784800457256994
+          },
+          "confidence": 0.9,
+          "edited": false
+        }
+      ],
+      "issues": [],
+      "canApprove": false,
+      "runs": [
+        {
+          "step": "validation",
+          "state": "succeeded",
+          "durationMs": 46,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "extraction",
+          "state": "succeeded",
+          "durationMs": 5231,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "classification",
+          "state": "succeeded",
+          "durationMs": 1643,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "ocr",
+          "state": "succeeded",
+          "durationMs": 73,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "preprocess",
+          "state": "succeeded",
+          "durationMs": 146,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "ingestion",
+          "state": "succeeded",
+          "durationMs": 5,
+          "errorCode": null,
+          "errorDetail": null
+        }
+      ],
+      "originalMatches": true,
+      "renderedPages": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "04-tax-letter-northbridge.pdf",
+      "id": "01a0961e-1947-7119-a9e4-d18c2c1bc59c",
+      "url": "https://docflow.176.98.40.150.sslip.io/documents/01a0961e-1947-7119-a9e4-d18c2c1bc59c",
+      "expectedType": "tax_letter",
+      "checksum": "1576bf3596528b9401cbeb7a728d2929da6bfbfaf8aef055c6c4536cd1047472",
+      "reused": false,
+      "progress": "approved:validation:succeeded",
+      "status": "approved",
+      "statusReason": null,
+      "actualType": "tax_letter",
+      "finished": true,
+      "finishedAt": "2026-09-12T14:56:18.963Z",
+      "pages": 1,
+      "values": {
+        "amount_due": 312.45,
+        "authority_name": "NORTHBRIDGE REVENUE OFFICE",
+        "due_date": "2026-10-10",
+        "letter_date": "2026-09-10",
+        "letter_number": "NRO-TAX-2026-0087",
+        "subject": "Quarterly business levy adjustment - Q2 2026",
+        "taxpayer_id": "DEMO-TX-008731",
+        "taxpayer_name": "Alder Vale Design Ltd"
+      },
+      "mismatches": [],
+      "expectedFields": 8,
+      "matchingFields": 8,
+      "sources": [
+        {
+          "name": "amount_due",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.09071428427437643,
+            "y": 0.6710281941739881,
+            "width": 0.8185714793282305,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "authority_name",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.05404525813532844,
+            "width": 0.47123819991949945,
+            "height": 0.02255899465702043
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "due_date",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.728155298650726,
+            "width": 0.2879509013976047,
+            "height": 0.01592399622848501
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "letter_date",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.5711640120979257,
+            "y": 0.15043252988692823,
+            "width": 0.09452356857899102,
+            "height": 0.03512721283415002
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "letter_number",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.7790058338098407,
+            "width": 0.8067838863208913,
+            "height": 0.013269996857070842
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "subject",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.35032113726463965,
+            "width": 0.44679440363421574,
+            "height": 0.014596996542777926
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "taxpayer_id",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.5711640120979257,
+            "y": 0.22407637258463048,
+            "width": 0.15301882926160593,
+            "height": 0.03512721283414999
+          },
+          "confidence": 0.9,
+          "edited": false
+        },
+        {
+          "name": "taxpayer_name",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.07727513104854289,
+            "y": 0.22407637258463048,
+            "width": 0.17873400471983059,
+            "height": 0.03512721283414999
+          },
+          "confidence": 0.9,
+          "edited": false
+        }
+      ],
+      "issues": [],
+      "canApprove": false,
+      "runs": [
+        {
+          "step": "validation",
+          "state": "succeeded",
+          "durationMs": 38,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "extraction",
+          "state": "succeeded",
+          "durationMs": 5453,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "classification",
+          "state": "succeeded",
+          "durationMs": 1464,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "ocr",
+          "state": "succeeded",
+          "durationMs": 100,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "preprocess",
+          "state": "succeeded",
+          "durationMs": 154,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "ingestion",
+          "state": "succeeded",
+          "durationMs": 2,
+          "errorCode": null,
+          "errorDetail": null
+        }
+      ],
+      "originalMatches": true,
+      "renderedPages": [
+        1
+      ]
+    },
+    {
+      "name": "05-invoice-mistral-paperworks-scan.png",
+      "id": "01a0961e-2131-72d8-ae11-6f90c1356147",
+      "url": "https://docflow.176.98.40.150.sslip.io/documents/01a0961e-2131-72d8-ae11-6f90c1356147",
+      "expectedType": "invoice",
+      "checksum": "a17581956a4ceb034bd6ea2dd48c1aae87d095260b5fd53ebb6f4d629568d13a",
+      "reused": false,
+      "progress": "needs_review:validation:succeeded",
+      "status": "needs_review",
+      "statusReason": "Blocking issues: 1; Document requires manual review; Critical fields below 0.8: Supplier, Invoice number, Invoice date, Currency, Subtotal, Grand total",
+      "actualType": "invoice",
+      "finished": true,
+      "finishedAt": "2026-09-12T14:56:24.843Z",
+      "pages": 1,
+      "values": {
+        "currency": "GBP",
+        "due_date": "2026-09-26",
+        "grand_total": 1620,
+        "invoice_date": "2026-09-12",
+        "invoice_number": "MP-26-0912-A",
+        "line_items": [
+          {
+            "amount": 1015,
+            "quantity": 7,
+            "unit_price": 145,
+            "description": "Archive digitisation"
+          },
+          {
+            "amount": 240,
+            "quantity": 3,
+            "unit_price": 80,
+            "description": "Index correction"
+          },
+          {
+            "amount": 95,
+            "quantity": 1,
+            "unit_price": 95,
+            "description": "Secure transfer package"
+          }
+        ],
+        "subtotal": 1350,
+        "supplier_name": "Mistral Paperworks Ltd",
+        "tax_total": 270
+      },
+      "mismatches": [],
+      "expectedFields": 9,
+      "matchingFields": 9,
+      "sources": [
+        {
+          "name": "currency",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.692,
+            "y": 0.269,
+            "width": 0.046,
+            "height": 0.015
+          },
+          "confidence": 0.54,
+          "edited": false
+        },
+        {
+          "name": "due_date",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.371,
+            "y": 0.269,
+            "width": 0.089,
+            "height": 0.015
+          },
+          "confidence": 0.54,
+          "edited": false
+        },
+        {
+          "name": "grand_total",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.833,
+            "y": 0.602,
+            "width": 0.074,
+            "height": 0.014
+          },
+          "confidence": 0.54,
+          "edited": false
+        },
+        {
+          "name": "invoice_date",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.076,
+            "y": 0.269,
+            "width": 0.098,
+            "height": 0.015
+          },
+          "confidence": 0.54,
+          "edited": false
+        },
+        {
+          "name": "invoice_number",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.633,
+            "y": 0.087,
+            "width": 0.128,
+            "height": 0.015
+          },
+          "confidence": 0.38,
+          "edited": false
+        },
+        {
+          "name": "line_items",
+          "page": null,
+          "found": false,
+          "bbox": null,
+          "confidence": 0.6,
+          "edited": false
+        },
+        {
+          "name": "subtotal",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.833,
+            "y": 0.524,
+            "width": 0.074,
+            "height": 0.014
+          },
+          "confidence": 0.54,
+          "edited": false
+        },
+        {
+          "name": "supplier_name",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.076,
+            "y": 0.171,
+            "width": 0.165,
+            "height": 0.015
+          },
+          "confidence": 0.54,
+          "edited": false
+        },
+        {
+          "name": "tax_total",
+          "page": 1,
+          "found": true,
+          "bbox": {
+            "x": 0.849,
+            "y": 0.552,
+            "width": 0.058,
+            "height": 0.014
+          },
+          "confidence": 0.54,
+          "edited": false
+        }
+      ],
+      "issues": [
+        {
+          "id": "01a0961e-8cd1-778a-969c-7283c02d5587",
+          "fieldName": "invoice_number",
+          "ruleId": "invoice_number_unique",
+          "severity": "blocking",
+          "message": "Invoice MP-26-0912-A from supplier “Mistral Paperworks Ltd” already exists: 01-invoice-mistral-paperworks.pdf",
+          "expected": "a unique number for this supplier",
+          "actual": "MP-26-0912-A",
+          "resolvedAt": null
+        },
+        {
+          "id": "01a0961e-5152-73e9-9b28-6e036c47b14a",
+          "fieldName": null,
+          "ruleId": "ocr_quality_low",
+          "severity": "warning",
+          "message": "OCR accuracy is not yet verified. Review the extracted values on page 1",
+          "expected": "extracted values reviewed against the original document",
+          "actual": "uncalibrated OCR text and coordinates on pages: 1",
+          "resolvedAt": null
+        }
+      ],
+      "canApprove": false,
+      "runs": [
+        {
+          "step": "validation",
+          "state": "succeeded",
+          "durationMs": 28,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "extraction",
+          "state": "succeeded",
+          "durationMs": 5222,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "classification",
+          "state": "succeeded",
+          "durationMs": 1611,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "ocr",
+          "state": "succeeded",
+          "durationMs": 12223,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "preprocess",
+          "state": "succeeded",
+          "durationMs": 72,
+          "errorCode": null,
+          "errorDetail": null
+        },
+        {
+          "step": "ingestion",
+          "state": "succeeded",
+          "durationMs": 2,
+          "errorCode": null,
+          "errorDetail": null
+        }
+      ],
+      "originalMatches": true,
+      "renderedPages": [
+        1
+      ]
+    }
+  ],
+  "finishedAt": "2026-09-12T14:56:37.144Z",
+  "passed": true,
+  "uiChecks": {
+    "invoiceFieldsVisible": true,
+    "contractValueSourceOpensPage2": true,
+    "scanValuesAndDuplicateWarningVisible": true
+  },
+  "findings": [
+    {
+      "document": "01a0961e-2131-72d8-ae11-6f90c1356147",
+      "kind": "source_binding",
+      "field": "line_items",
+      "detail": "All line-item values match; sourceFound is false and there is no source bounding box."
+    },
+    {
+      "document": "01a0961e-2131-72d8-ae11-6f90c1356147",
+      "kind": "copy",
+      "detail": "Per-field confidence reasons still say Low OCR quality in the source area for uncalibrated vision OCR; the document-level warning uses the corrected text."
+    }
+  ]
+}

@@ -1,0 +1,185 @@
+{
+  "01-invoice-mistral-paperworks.pdf": {
+    "document_type": "invoice",
+    "fields": {
+      "supplier_name": "Mistral Paperworks Ltd",
+      "invoice_number": "MP-26-0912-A",
+      "invoice_date": "2026-09-12",
+      "due_date": "2026-09-26",
+      "currency": "GBP",
+      "subtotal": 1350,
+      "tax_total": 270,
+      "grand_total": 1620,
+      "line_items": [
+        {
+          "description": "Archive digitisation",
+          "quantity": 7,
+          "unit_price": 145,
+          "amount": 1015
+        },
+        {
+          "description": "Index correction",
+          "quantity": 3,
+          "unit_price": 80,
+          "amount": 240
+        },
+        {
+          "description": "Secure transfer package",
+          "quantity": 1,
+          "unit_price": 95,
+          "amount": 95
+        }
+      ]
+    }
+  },
+  "02-bank-statement-lantern-quay.pdf": {
+    "document_type": "bank_statement",
+    "fields": {
+      "bank_name": "Lantern Quay Bank",
+      "account_holder": "Alder Vale Design Ltd",
+      "account_number": "000742-19-5831",
+      "period_start": "2026-08-01",
+      "period_end": "2026-08-31",
+      "statement_date": "2026-09-01",
+      "opening_balance": 8500,
+      "closing_balance": 11458.45,
+      "total_credit": 7130.75,
+      "total_debit": 4172.3,
+      "currency": "EUR",
+      "transactions": [
+        {
+          "date": "2026-08-03",
+          "reference": "000041",
+          "payment_type": "Transfer",
+          "description": "Client settlement",
+          "credit": 2380.0,
+          "debit": null,
+          "balance": 10880.0
+        },
+        {
+          "date": "2026-08-05",
+          "reference": "000042",
+          "payment_type": "Transfer",
+          "description": "Studio rent",
+          "credit": null,
+          "debit": 1540.0,
+          "balance": 9340.0
+        },
+        {
+          "date": "2026-08-08",
+          "reference": "000043",
+          "payment_type": "Card",
+          "description": "Office supplies",
+          "credit": null,
+          "debit": 86.4,
+          "balance": 9253.6
+        },
+        {
+          "date": "2026-08-12",
+          "reference": "000044",
+          "payment_type": "Transfer",
+          "description": "Project milestone",
+          "credit": 4125.75,
+          "debit": null,
+          "balance": 13379.35
+        },
+        {
+          "date": "2026-08-17",
+          "reference": "000045",
+          "payment_type": "Card",
+          "description": "Equipment repair",
+          "credit": null,
+          "debit": 327.9,
+          "balance": 13051.45
+        },
+        {
+          "date": "2026-08-21",
+          "reference": "000046",
+          "payment_type": "Transfer",
+          "description": "Client deposit",
+          "credit": 625.0,
+          "debit": null,
+          "balance": 13676.45
+        },
+        {
+          "date": "2026-08-25",
+          "reference": "000047",
+          "payment_type": "Fee",
+          "description": "Account service fee",
+          "credit": null,
+          "debit": 18.0,
+          "balance": 13658.45
+        },
+        {
+          "date": "2026-08-28",
+          "reference": "000048",
+          "payment_type": "Transfer",
+          "description": "Contractor payment",
+          "credit": null,
+          "debit": 2200.0,
+          "balance": 11458.45
+        }
+      ]
+    }
+  },
+  "03-contract-orbit-archive.pdf": {
+    "document_type": "contract",
+    "fields": {
+      "contract_number": "OA-2026-014",
+      "contract_date": "2026-09-10",
+      "party_a": "Orbit Archive Ltd",
+      "party_b": "Alder Vale Design Ltd",
+      "subject": "Document archive migration and workflow automation",
+      "contract_value": 12000,
+      "currency": "EUR",
+      "start_date": "2026-10-01",
+      "end_date": "2027-03-31"
+    }
+  },
+  "04-tax-letter-northbridge.pdf": {
+    "document_type": "tax_letter",
+    "fields": {
+      "authority_name": "Northbridge Revenue Office",
+      "letter_number": "NRO-TAX-2026-0087",
+      "letter_date": "2026-09-10",
+      "taxpayer_name": "Alder Vale Design Ltd",
+      "taxpayer_id": "DEMO-TX-008731",
+      "subject": "Quarterly business levy adjustment - Q2 2026",
+      "amount_due": 312.45,
+      "due_date": "2026-10-10"
+    }
+  },
+  "05-invoice-mistral-paperworks-scan.png": {
+    "document_type": "invoice",
+    "fields": {
+      "supplier_name": "Mistral Paperworks Ltd",
+      "invoice_number": "MP-26-0912-A",
+      "invoice_date": "2026-09-12",
+      "due_date": "2026-09-26",
+      "currency": "GBP",
+      "subtotal": 1350,
+      "tax_total": 270,
+      "grand_total": 1620,
+      "line_items": [
+        {
+          "description": "Archive digitisation",
+          "quantity": 7,
+          "unit_price": 145,
+          "amount": 1015
+        },
+        {
+          "description": "Index correction",
+          "quantity": 3,
+          "unit_price": 80,
+          "amount": 240
+        },
+        {
+          "description": "Secure transfer package",
+          "quantity": 1,
+          "unit_price": 95,
+          "amount": 95
+        }
+      ]
+    }
+  }
+}
