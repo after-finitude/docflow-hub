@@ -13,13 +13,14 @@ if ((await client.json('/documents?pageSize=1')).total !== 0)
 const manifestBytes = await readFile(join(dataset, 'ground-truth.json'))
 const manifest = JSON.parse(manifestBytes)
 if (
+  manifest.version !== 3 ||
   manifest.documents.filter((doc) => doc.eval).length !== 15 ||
   manifest.documents.some(
     (doc) => !doc.expectedFields || typeof doc.expectedAutoAllowed !== 'boolean',
   )
 )
   throw new Error(
-    'Regenerate the version 2 dataset: exactly 15 labeled documents and complete expected values are required',
+    'Regenerate the version 3 dataset: statement transactions, exactly 15 labeled documents and complete expected values are required',
   )
 const runtime = await client.json('/documents/review-metrics')
 const schemas = await client.json('/schemas')

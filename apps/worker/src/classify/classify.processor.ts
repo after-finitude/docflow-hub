@@ -25,7 +25,7 @@ import type { DocumentStatus, WorkflowState } from '@docflow/shared'
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq'
 import { Inject, Logger, type OnModuleInit } from '@nestjs/common'
 import { Queue, UnrecoverableError, type Job } from 'bullmq'
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import { LLM_PROVIDER, LlmInvalidResponseError, type LlmProvider } from '../llm/llm-provider'
 
 export type ClassifyJob = PipelineJob
@@ -33,7 +33,7 @@ export type ClassifyJob = PipelineJob
 const MULTI_DOCUMENT_RULE = 'multi_document_suspected'
 
 /**
- * Classify from OCR text on the first two pages (spec 6.3). Use the predicted
+ * Classify from OCR text on the first two nonempty pages (spec 6.2, 6.3). Use the predicted
  * type's active-schema threshold; below it, mark the document unknown and send
  * it for manual type selection.
  */
@@ -67,7 +67,13 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
       const firstPages = await this.db
         .select({ page: pages.pageNumber, text: pages.ocrText })
         .from(pages)
-        .where(eq(pages.documentId, documentId))
+        .where(
+          and(
+            eq(pages.documentId, documentId),
+            // Keep original page numbers for evidence and the viewer; skip empty OCR text.
+            sql`coalesce(${pages.ocrText}, '') ~ '[^[:space:]]'`,
+          ),
+        )
         .orderBy(asc(pages.pageNumber))
         .limit(2)
 

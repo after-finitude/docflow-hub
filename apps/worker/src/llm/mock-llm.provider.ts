@@ -3,6 +3,7 @@ import {
   type ClassificationResponse,
   type ExtractionResponse,
   type LineItem,
+  type BankTransaction,
 } from '@docflow/shared'
 import { Injectable } from '@nestjs/common'
 import type { ClassifyInput, ExtractInput, LlmProvider } from './llm-provider'
@@ -82,6 +83,46 @@ export class MockLlmProvider implements LlmProvider {
 
     return extractionResponseSchemaFor(input.fields).parse({
       fields: input.fields.map((field) => {
+        if (input.documentType === 'bank_statement' && field.name === 'transactions') {
+          // ponytail: only the synthetic pipe-delimited table; real bank layouts need a real LLM.
+          const rows: BankTransaction[] = []
+          let evidence: { text: string; page: number } | null = null
+          let inTable = false
+          let noActivity = false
+          for (const page of input.pagesText) {
+            for (const text of page.text.split('\n').map((line) => line.trim())) {
+              if (text === 'Date | Reference | Type | Description | Credit | Debit | Balance') {
+                inTable = true
+                continue
+              }
+              if (text === 'End of transactions') inTable = false
+              if (text === 'No transactions in this period') {
+                noActivity = true
+                evidence ??= { text, page: page.page }
+              }
+              if (!inTable) continue
+              const cells = text.split('|').map((cell) => cell.trim())
+              if (cells.length !== 7) continue
+              const [date, reference, paymentType, description, credit, debit, balance] = cells
+              if (!date && !reference && !paymentType && !credit && !debit && !balance) {
+                const previous = rows.at(-1)
+                if (previous && description) previous.description += ` ${description}`
+                continue
+              }
+              rows.push({
+                date: date || null,
+                reference: reference || null,
+                payment_type: paymentType || null,
+                description: description!,
+                credit: credit ? Number(credit) : null,
+                debit: debit ? Number(debit) : null,
+                balance: balance ? Number(balance) : null,
+              })
+              evidence ??= { text, page: page.page }
+            }
+          }
+          return { name: field.name, value: rows.length || noActivity ? rows : null, evidence }
+        }
         if (input.documentType === 'invoice' && field.name === 'line_items') {
           const items: LineItem[] = []
           let evidence: { text: string; page: number } | null = null
@@ -141,6 +182,8 @@ const PATTERNS_BY_TYPE: Record<string, Record<string, RegExp>> = {
     period_end: /^Period To:\s*([\d./-]+)$/m,
     opening_balance: /^Opening Balance:\s*([\d.,\s-]+)$/m,
     closing_balance: /^Closing Balance:\s*([\d.,\s-]+)$/m,
+    total_credit: /^Total Credit:\s*([\d.,\s-]+)$/m,
+    total_debit: /^Total Debit:\s*([\d.,\s-]+)$/m,
     currency: /^Currency:\s*([A-Za-z]{3})$/m,
   },
   tax_letter: {

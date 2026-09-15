@@ -562,7 +562,7 @@ test(
       },
     )
     await t.test(
-      'blank pages preserve positions and correction audit; multi-document suspicion forces manual review',
+      'classification skips leading and middle blank pages, preserves sources, and still limits input to two pages',
       async () => {
         for (const suspected of [false, true]) {
           const id = await doc('processing', {}, 'ocr')
@@ -576,56 +576,40 @@ test(
             name: 'controlled-ocr',
             async recognize() {
               return {
-                pages: [
-                  {
-                    pageNumber: 1,
+                pages: [1, 2, 3, 4, 5, 6].map((pageNumber) => {
+                  const blank = [1, 2, 4].includes(pageNumber)
+                  return {
+                    pageNumber,
                     width: 300,
                     height: 400,
-                    text: block.text,
-                    confidence: 1,
-                    blocks: [block],
-                    sentToProvider: true,
-                    rotationDegrees: -7,
-                    providerCalls: 2,
-                  },
-                  {
-                    pageNumber: 2,
-                    width: 300,
-                    height: 400,
-                    text: '',
-                    confidence: null,
-                    blocks: [],
-                    sentToProvider: false,
-                    blank: true,
-                  },
-                  {
-                    pageNumber: 3,
-                    width: 300,
-                    height: 400,
-                    text: block.text,
-                    confidence: 1,
-                    blocks: [block],
-                    sentToProvider: true,
-                    providerCalls: 1,
-                  },
-                ],
+                    text: blank ? (pageNumber === 1 ? '\t \r\n' : '') : block.text,
+                    confidence: blank ? null : 1,
+                    blocks: blank ? [] : [block],
+                    sentToProvider: !blank,
+                    blank,
+                    rotationDegrees: pageNumber === 3 ? -7 : 0,
+                    providerCalls: blank ? 0 : pageNumber === 3 ? 2 : 1,
+                  }
+                }),
               }
             },
           }
           const llm = {
             external: false,
-            async classify() {
+            async classify({ pagesText }) {
+              assert.deepEqual(pagesText.map((page) => page.page), [3, 5])
               return {
                 document_type: 'contract',
                 confidence: 1,
                 multi_document_suspected: suspected,
               }
             },
-            async extract() {
+            async extract({ pagesText }) {
+              assert.deepEqual(pagesText.map((page) => page.page), [3, 5, 6])
               return {
                 fields: [
-                  { name: 'name', value: 'Original', evidence: { page: 1, text: 'Original' } },
-                  { name: 'total', value: '10', evidence: { page: 1, text: '10' } },
+                  { name: 'name', value: 'Original', evidence: { page: 5, text: 'Original' } },
+                  { name: 'total', value: '10', evidence: { page: 5, text: '10' } },
                 ],
               }
             },
@@ -665,12 +649,13 @@ test(
           const storedPages = await service.pages(id)
           assert.deepEqual(
             storedPages.map((page) => page.pageNumber),
-            [1, 2, 3],
+            [1, 2, 3, 4, 5, 6],
           )
+          assert.ok(detail.fields.every((field) => field.sourceFound && field.sourcePage === 5))
           const audit = (
             await db.select().from(auditEvents).where(eq(auditEvents.objectId, id))
           ).find((entry) => entry.action === 'document.ocr_external')
-          assert.deepEqual(audit.after.pages, [1, 3])
+          assert.deepEqual(audit.after.pages, [3, 5, 6])
           assert.equal(audit.after.corrections[0].providerCalls, 2)
           if (suspected) {
             await request(id, 'fields/total', { value: '10' }, 'PATCH')
@@ -683,6 +668,31 @@ test(
         }
       },
     )
+
+    await t.test('classification of only empty OCR pages needs review without an LLM call', async () => {
+      const id = await doc('processing', {}, 'classification')
+      await db.insert(pages).values(
+        [null, '', '\t \r\n'].map((ocrText, index) => ({
+          documentId: id,
+          pageNumber: index + 1,
+          ocrText,
+          width: 300,
+          height: 400,
+          blocks: [],
+        })),
+      )
+      const before = jobs.length
+      const llm = { classify: async () => assert.fail('Empty pages must not reach the LLM') }
+      await new ClassifyProcessor(db, {}, llm, events, queue).process({
+        data: { documentId: id, correlationId: randomUUID() },
+        opts: { attempts: 1 },
+        attemptsMade: 0,
+      })
+      const detail = await read(id)
+      assert.equal(detail.status, 'needs_review')
+      assert.equal(detail.documentType, 'unknown')
+      assert.equal(jobs.length, before)
+    })
 
     await t.test(
       'empty extraction cannot approve; Missing fields and blocking issues persist',

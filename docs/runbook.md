@@ -8,7 +8,7 @@ docker compose ps
 docker compose down
 ```
 
-Use `docker compose logs -f api worker web` for live logs. The migrate service applies migrations and idempotent seeds before runtime startup. `npm run dataset` builds the backend and generates 46 synthetic documents, including 15 labeled cases. Native worker execution needs qpdf; Docker installs it automatically. Use `docker-compose` if your installation provides the standalone command.
+Use `docker compose logs -f api worker web` for live logs. The migrate service applies migrations and idempotent seeds before runtime startup. `npm run dataset` builds the backend and generates 47 synthetic documents, including 15 labeled cases. Native worker execution needs qpdf; Docker installs it automatically. Use `docker-compose` if your installation provides the standalone command.
 
 Run verification only on a separate disposable stack as described below; it is not a production health check.
 
@@ -95,7 +95,9 @@ export EVAL_LOGIN=admin
 npm run eval
 ```
 
-Set the URL to the API's actual address, without a trailing slash, or the web proxy URL ending in `/api`. The harness uploads all 46 files and waits for production workers, writing `evaluation/last-run.json` and `evaluation/last-run.md`. It reports the 15 labeled cases separately, with expected values, schema/rule versions, thresholds, manifest hash, date, provider/model identity and each outcome. Ground truth comes from generator inputs and includes explicit Missing and invalid cases. Rejected valid files, failures and Unknown remain in applicable denominators. A missed target produces exit code 1 **after saving the report**; the current mock corpus run intentionally reports 97.6% coverage below 98%. `EVAL_TIMEOUT_MS` defaults to 180000 per document and counts unfinished work as a failure without cancelling it.
+Set the URL to the API's actual address, without a trailing slash, or the web proxy URL ending in `/api`. The harness requires dataset v3 and uploads all 47 generated files, waiting for production workers before writing `evaluation/last-run.json` and `evaluation/last-run.md`. It reports the 15 labeled cases separately, with expected values, schema/rule versions, thresholds, manifest hash, date, provider/model identity and each outcome. Ground truth comes from generator inputs and includes explicit Missing and invalid cases. Rejected valid files, failures and Unknown remain in applicable denominators. A missed target produces exit code 1 **after saving the report**. The committed September 7 report measures dataset v2 (46 documents), not the current generator or bank schema. `EVAL_TIMEOUT_MS` defaults to 180000 per document and counts unfinished work as a failure without cancelling it.
+
+Dataset v3 adds printed bank transactions with expected values for all twelve schema fields. The labeled bank cases include a four-page statement with blank page 2 and a description continued across pages 3-4, an absent transaction amount requiring review, and explicit no activity (`[]`, not Missing). Another statement has a Russian description. The corpus also includes an invoice after two leading blank pages; its sources must refer to page 3. Repeated table headings are not separate documents. The mock recognizes only the synthetic pipe-delimited table; it does not establish real bank extraction quality.
 
 For latency and load, keep that stack running and start a production web build with its `API_INTERNAL_URL` pointing at the same API (this value is needed during both build and runtime). Use the installed system Chrome; optionally set `EVAL_CHROME_PATH` to another Chromium executable. No browser download is required.
 

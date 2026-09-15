@@ -9,7 +9,7 @@
  */
 import fontkit from '@pdf-lib/fontkit'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PDFDocument, rgb } from 'pdf-lib'
 import sharp from 'sharp'
@@ -75,7 +75,7 @@ function addDays(date, days) {
 /** Fixed date baseline prevents ground truth from expiring over time. */
 const BASE_DATE = new Date(Date.UTC(2026, 5, 1))
 
-async function renderPdf(lines, layout) {
+export async function renderPdf(lines, layout) {
   const pdf = await PDFDocument.create()
   pdf.setCreationDate(BASE_DATE)
   pdf.setModificationDate(BASE_DATE)
@@ -83,11 +83,16 @@ async function renderPdf(lines, layout) {
   const regular = await pdf.embedFont(readFileSync(fontPath), { subset: true })
   const bold = await pdf.embedFont(readFileSync(fontBoldPath), { subset: true })
 
-  const page = pdf.addPage([595, 842])
+  let page = pdf.addPage([595, 842])
   const marginX = layout === 'compact' ? 40 : 60
   let y = layout === 'compact' ? 800 : 780
 
   for (const line of lines) {
+    if (line.pageBreak) {
+      page = pdf.addPage([595, 842])
+      y = layout === 'compact' ? 800 : 780
+      continue
+    }
     if (line.gap) {
       y -= line.gap
       continue
@@ -180,7 +185,7 @@ function invoice(index) {
   }
 }
 
-function bankStatement(index) {
+export function bankStatement(index) {
   const bank = pick(BANKS)
   const currency = pick(CURRENCIES)
   const account = `DE${between(10, 99)} ${between(1000, 9999)} ${between(1000, 9999)}`.replace(
@@ -190,11 +195,76 @@ function bankStatement(index) {
   const from = addDays(BASE_DATE, between(0, 20))
   const to = addDays(from, 30)
   const opening = between(100000, 900000) / 100
-  const closing = Math.round((opening + between(-50000, 50000) / 100) * 100) / 100
+  // Keep one RNG draw per statement so unrelated corpus documents stay unchanged.
+  const movementCents = between(-50000, 50000)
+  const noActivity = index === 2
+  const missingAmount = index === 1
+  const credit = noActivity ? 0 : (60000 + movementCents) / 100
+  const debit = noActivity ? 0 : 600
+  const credited = Math.round((opening + credit) * 100) / 100
+  const closing = Math.round((credited - debit) * 100) / 100
+  const transactions = noActivity
+    ? []
+    : [
+        {
+          date: formatDate(addDays(from, 1), 'eu'),
+          reference: `00${pad(index * 2 + 1)}`,
+          payment_type: 'Transfer',
+          description: 'Payment for June services',
+          credit,
+          debit: null,
+          balance: credited,
+        },
+        {
+          date: formatDate(addDays(from, 2), 'eu'),
+          reference: `00${pad(index * 2 + 2)}`,
+          payment_type: 'Card',
+          description: index === 3 ? 'Канцелярские товары' : 'Office supplies',
+          credit: null,
+          debit: missingAmount ? null : debit,
+          balance: closing,
+        },
+      ]
+  const header = {
+    text: 'Date | Reference | Type | Description | Credit | Debit | Balance',
+    size: 7,
+  }
+  const row = (item) => ({
+    text: Object.values(item)
+      .map((value) =>
+        value === null ? '' : typeof value === 'number' ? value.toFixed(2) : value,
+      )
+      .join(' | '),
+    size: 7,
+  })
+  const table = noActivity
+    ? [{ text: 'No transactions in this period', size: 9 }]
+    : index === 0
+      ? [
+          // A blank page and a wrapped description across two table pages.
+          { pageBreak: true },
+          { pageBreak: true },
+          header,
+          row({ ...transactions[0], description: 'Payment for June' }),
+          { pageBreak: true },
+          header,
+          { text: ' | | | services | | | ', size: 7 },
+          row(transactions[1]),
+        ]
+      : [header, ...transactions.map(row)]
 
   return {
-    layout: 'classic',
+    layout: 'compact',
     expectedType: 'bank_statement',
+    expectedAutoAllowed: !missingAmount,
+    note:
+      index === 0
+        ? 'Four pages: blank page 2, table on pages 3-4, wrapped description across pages'
+        : missingAmount
+          ? 'A printed transaction has neither credit nor debit; manual review required'
+          : noActivity
+            ? 'Explicit no activity: transactions is [], not Missing'
+            : 'Printed transaction table',
     lines: [
       { text: 'BANK STATEMENT', bold: true, size: 16 },
       { gap: 10 },
@@ -207,9 +277,18 @@ function bankStatement(index) {
       { text: `Opening Balance: ${opening.toFixed(2)}` },
       { text: `Closing Balance: ${closing.toFixed(2)}` },
       { gap: 10 },
-      { text: `Statement #${index + 1}`, size: 8 },
+      ...table,
+      { text: 'End of transactions', size: 8 },
+      { text: `Total Credit: ${credit.toFixed(2)}` },
+      { text: `Total Debit: ${debit.toFixed(2)}` },
     ],
-    extra: { currency },
+    extra: {
+      currency,
+      account_holder: null,
+      statement_date: null,
+      total_credit: credit,
+      total_debit: debit,
+    },
     critical: {
       bank_name: bank,
       account_number: account,
@@ -217,6 +296,7 @@ function bankStatement(index) {
       period_end: formatDate(to, 'iso'),
       opening_balance: opening,
       closing_balance: closing,
+      transactions,
     },
   }
 }
@@ -367,7 +447,8 @@ async function main() {
         expectedType: spec.expectedType,
         criticalFields: spec.critical,
         expectedFields: { ...spec.critical, ...spec.extra },
-        expectedAutoAllowed: true,
+        expectedAutoAllowed: spec.expectedAutoAllowed ?? true,
+        ...(spec.note ? { note: spec.note } : {}),
         // The labeled evaluation set contains 15 documents (spec §12).
         eval: index < (type === 'invoice' ? 2 : 3),
       })
@@ -462,9 +543,28 @@ async function main() {
     })
   }
 
+  const leadingBlank = invoice(899)
+  const leadingBlankFile = 'invoice-leading-blank-pages.pdf'
+  writeFileSync(
+    join(outDir, leadingBlankFile),
+    await renderPdf(
+      [{ pageBreak: true }, { pageBreak: true }, ...leadingBlank.lines],
+      leadingBlank.layout,
+    ),
+  )
+  manifest.push({
+    file: leadingBlankFile,
+    expectedType: 'invoice',
+    criticalFields: leadingBlank.critical,
+    expectedFields: { ...leadingBlank.critical, ...leadingBlank.extra },
+    expectedAutoAllowed: true,
+    eval: false,
+    note: 'Two leading blank pages; classification and all evidence must use original page 3',
+  })
+
   writeFileSync(
     join(outDir, 'ground-truth.json'),
-    `${JSON.stringify({ version: 2, labelSource: 'synthetic generator inputs; null means visibly absent', baseDate: formatDate(BASE_DATE, 'iso'), documents: manifest }, null, 2)}\n`,
+    `${JSON.stringify({ version: 3, labelSource: 'synthetic generator inputs; null means visibly absent', baseDate: formatDate(BASE_DATE, 'iso'), documents: manifest }, null, 2)}\n`,
   )
 
   const evalCount = manifest.filter((item) => item.eval).length
@@ -472,7 +572,9 @@ async function main() {
   console.log(`Directory: ${outDir}`)
 }
 
-main().catch((error) => {
-  console.error('Generation failed:', error)
-  process.exit(1)
-})
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error('Generation failed:', error)
+    process.exit(1)
+  })
+}

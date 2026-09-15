@@ -15,7 +15,8 @@ import {
   validationIssues,
   ValidationRunnerService,
 } from '@docflow/core'
-import { buildCanonicalDocument, buildExtractedField } from '@docflow/shared'
+import { buildCanonicalDocument, buildExtractedField, validateDocument } from '@docflow/shared'
+import { bankStatement, renderPdf } from './generate-dataset.mjs'
 import { MockLlmProvider } from '../apps/worker/dist/llm/mock-llm.provider.js'
 import { OpenAiCompatibleLlmProvider } from '../apps/worker/dist/llm/openai-compatible-llm.provider.js'
 import { LlmInvalidResponseError } from '../apps/worker/dist/llm/llm-provider.js'
@@ -179,6 +180,50 @@ test('mock collects rows across pages and only uses printed numeric cells', asyn
     { description: 'Service', quantity: 2, unit_price: 10, amount: 20 },
     { description: 'Position 2', quantity: 3, unit_price: 15, amount: null },
   ])
+})
+
+test('statement dataset preserves all printed transactions, wrapped descriptions, Missing and no activity', async () => {
+  const specs = SEED_SCHEMAS.bank_statement
+  for (const index of [0, 1, 2, 3]) {
+    const fixture = bankStatement(index)
+    const result = await new MockOcrProvider().recognize(
+      await renderPdf(fixture.lines, fixture.layout),
+      'application/pdf',
+    )
+    const response = await new MockLlmProvider().extract({
+      documentType: 'bank_statement',
+      fields: specs,
+      pagesText: result.pages.map((page) => ({ page: page.pageNumber, text: page.text })),
+    })
+    const byName = new Map(response.fields.map((field) => [field.name, field]))
+    const rows = specs.map((spec) => ({
+      ...buildExtractedField(spec, byName.get(spec.name), result.pages),
+      label: spec.label,
+      isRequired: spec.required,
+    }))
+    assert.deepEqual(
+      Object.fromEntries(rows.map((row) => [row.name, row.normalizedValue])),
+      { ...fixture.critical, ...fixture.extra },
+    )
+    const table = rows.find((row) => row.name === 'transactions')
+    assert.equal(table.sourceFound, true)
+    assert.equal(table.sourcePage, index === 0 ? 3 : 1)
+    if (index === 0) {
+      assert.equal(result.pages.length, 4)
+      assert.equal(result.pages[1].text, '')
+      assert.equal(table.normalizedValue[0].description, 'Payment for June services')
+    }
+    const issues = validateDocument(rows, SEED_RULES.bank_statement, { today: '2026-09-15' })
+    assert.equal(issues.some((issue) => issue.severity === 'blocking'), !fixture.expectedAutoAllowed)
+  }
+  const missing = await new MockLlmProvider().extract({
+    documentType: 'bank_statement',
+    fields: specs,
+    pagesText: [{ page: 1, text: 'BANK STATEMENT\nOpening Balance: 100.00\nClosing Balance: 100.00' }],
+  })
+  assert.deepEqual(missing.fields.find((field) => field.name === 'transactions'), {
+    name: 'transactions', value: null, evidence: null,
+  })
 })
 
 function pending(run) {

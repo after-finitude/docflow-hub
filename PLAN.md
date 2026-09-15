@@ -177,3 +177,11 @@ Run against a separate test Compose project and disposable volumes; do not reset
 - [ ] Attach real-provider evaluation and performance results; update this plan and known limitations to reflect actual evidence.
 
 **Release condition:** all 13 acceptance criteria have passing evidence, required delivery items are present, and remaining specification deviations are explicitly accepted. Do not mark completion from unit tests or mock evaluation alone.
+
+## September 15 follow-up: blank pages and statement dataset
+
+Classification now skips empty/whitespace OCR text before selecting two pages, retaining original numbering and OCR-quality warnings. Regression cases cover leading and middle blanks, the two-page limit, all-empty input, original source pages and multi-document review routing.
+
+The v3 generator defines 47 documents with 15 labeled cases, updates all nine bank statements with transactions and adds an invoice after two blank pages. Bank cases cover a wrapped description across pages, a missing amount, explicit no activity and Russian text. The deterministic mock supports the synthetic table; a PDF → OCR → extraction → validation regression compares results with generator input values. Evaluation refuses the obsolete v2 dataset.
+
+Backend build and dataset generation completed after the user authorized deployment and browser verification on the public demo. The generator produced 47 documents, 15 labeled. Regression tests and evaluation have not been run; the September 7 reports remain historical evidence for v2. Deployment and browser outcomes will be recorded separately.

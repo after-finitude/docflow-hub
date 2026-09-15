@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "labelSource": "synthetic generator inputs; null means visibly absent",
   "baseDate": "2026-06-01",
   "documents": [
@@ -456,7 +456,27 @@
         "period_start": "2026-06-15",
         "period_end": "2026-07-15",
         "opening_balance": 5192.26,
-        "closing_balance": 4989.5
+        "closing_balance": 4989.5,
+        "transactions": [
+          {
+            "date": "16.06.2026",
+            "reference": "000001",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 397.24,
+            "debit": null,
+            "balance": 5589.5
+          },
+          {
+            "date": "17.06.2026",
+            "reference": "000002",
+            "payment_type": "Card",
+            "description": "Office supplies",
+            "credit": null,
+            "debit": 600,
+            "balance": 4989.5
+          }
+        ]
       },
       "expectedFields": {
         "bank_name": "Alpha Banking",
@@ -465,9 +485,34 @@
         "period_end": "2026-07-15",
         "opening_balance": 5192.26,
         "closing_balance": 4989.5,
-        "currency": "EUR"
+        "transactions": [
+          {
+            "date": "16.06.2026",
+            "reference": "000001",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 397.24,
+            "debit": null,
+            "balance": 5589.5
+          },
+          {
+            "date": "17.06.2026",
+            "reference": "000002",
+            "payment_type": "Card",
+            "description": "Office supplies",
+            "credit": null,
+            "debit": 600,
+            "balance": 4989.5
+          }
+        ],
+        "currency": "EUR",
+        "account_holder": null,
+        "statement_date": null,
+        "total_credit": 397.24,
+        "total_debit": 600
       },
       "expectedAutoAllowed": true,
+      "note": "Four pages: blank page 2, table on pages 3-4, wrapped description across pages",
       "eval": true
     },
     {
@@ -479,7 +524,27 @@
         "period_start": "2026-06-13",
         "period_end": "2026-07-13",
         "opening_balance": 6738.72,
-        "closing_balance": 6943.94
+        "closing_balance": 6943.94,
+        "transactions": [
+          {
+            "date": "14.06.2026",
+            "reference": "000003",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 805.22,
+            "debit": null,
+            "balance": 7543.94
+          },
+          {
+            "date": "15.06.2026",
+            "reference": "000004",
+            "payment_type": "Card",
+            "description": "Office supplies",
+            "credit": null,
+            "debit": null,
+            "balance": 6943.94
+          }
+        ]
       },
       "expectedFields": {
         "bank_name": "Meridian Trust",
@@ -488,9 +553,34 @@
         "period_end": "2026-07-13",
         "opening_balance": 6738.72,
         "closing_balance": 6943.94,
-        "currency": "USD"
+        "transactions": [
+          {
+            "date": "14.06.2026",
+            "reference": "000003",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 805.22,
+            "debit": null,
+            "balance": 7543.94
+          },
+          {
+            "date": "15.06.2026",
+            "reference": "000004",
+            "payment_type": "Card",
+            "description": "Office supplies",
+            "credit": null,
+            "debit": null,
+            "balance": 6943.94
+          }
+        ],
+        "currency": "USD",
+        "account_holder": null,
+        "statement_date": null,
+        "total_credit": 805.22,
+        "total_debit": 600
       },
-      "expectedAutoAllowed": true,
+      "expectedAutoAllowed": false,
+      "note": "A printed transaction has neither credit nor debit; manual review required",
       "eval": true
     },
     {
@@ -502,7 +592,8 @@
         "period_start": "2026-06-21",
         "period_end": "2026-07-21",
         "opening_balance": 2134.08,
-        "closing_balance": 1855.94
+        "closing_balance": 2134.08,
+        "transactions": []
       },
       "expectedFields": {
         "bank_name": "Nordbank AG",
@@ -510,10 +601,16 @@
         "period_start": "2026-06-21",
         "period_end": "2026-07-21",
         "opening_balance": 2134.08,
-        "closing_balance": 1855.94,
-        "currency": "EUR"
+        "closing_balance": 2134.08,
+        "transactions": [],
+        "currency": "EUR",
+        "account_holder": null,
+        "statement_date": null,
+        "total_credit": 0,
+        "total_debit": 0
       },
       "expectedAutoAllowed": true,
+      "note": "Explicit no activity: transactions is [], not Missing",
       "eval": true
     },
     {
@@ -525,7 +622,27 @@
         "period_start": "2026-06-10",
         "period_end": "2026-07-10",
         "opening_balance": 5875.99,
-        "closing_balance": 5559.11
+        "closing_balance": 5559.11,
+        "transactions": [
+          {
+            "date": "11.06.2026",
+            "reference": "000007",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 283.12,
+            "debit": null,
+            "balance": 6159.11
+          },
+          {
+            "date": "12.06.2026",
+            "reference": "000008",
+            "payment_type": "Card",
+            "description": "Канцелярские товары",
+            "credit": null,
+            "debit": 600,
+            "balance": 5559.11
+          }
+        ]
       },
       "expectedFields": {
         "bank_name": "Alpha Banking",
@@ -534,9 +651,34 @@
         "period_end": "2026-07-10",
         "opening_balance": 5875.99,
         "closing_balance": 5559.11,
-        "currency": "GBP"
+        "transactions": [
+          {
+            "date": "11.06.2026",
+            "reference": "000007",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 283.12,
+            "debit": null,
+            "balance": 6159.11
+          },
+          {
+            "date": "12.06.2026",
+            "reference": "000008",
+            "payment_type": "Card",
+            "description": "Канцелярские товары",
+            "credit": null,
+            "debit": 600,
+            "balance": 5559.11
+          }
+        ],
+        "currency": "GBP",
+        "account_holder": null,
+        "statement_date": null,
+        "total_credit": 283.12,
+        "total_debit": 600
       },
       "expectedAutoAllowed": true,
+      "note": "Printed transaction table",
       "eval": false
     },
     {
@@ -548,7 +690,27 @@
         "period_start": "2026-06-07",
         "period_end": "2026-07-07",
         "opening_balance": 4356.68,
-        "closing_balance": 4833.09
+        "closing_balance": 4833.09,
+        "transactions": [
+          {
+            "date": "08.06.2026",
+            "reference": "000009",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 1076.41,
+            "debit": null,
+            "balance": 5433.09
+          },
+          {
+            "date": "09.06.2026",
+            "reference": "000010",
+            "payment_type": "Card",
+            "description": "Office supplies",
+            "credit": null,
+            "debit": 600,
+            "balance": 4833.09
+          }
+        ]
       },
       "expectedFields": {
         "bank_name": "Nordbank AG",
@@ -557,9 +719,34 @@
         "period_end": "2026-07-07",
         "opening_balance": 4356.68,
         "closing_balance": 4833.09,
-        "currency": "EUR"
+        "transactions": [
+          {
+            "date": "08.06.2026",
+            "reference": "000009",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 1076.41,
+            "debit": null,
+            "balance": 5433.09
+          },
+          {
+            "date": "09.06.2026",
+            "reference": "000010",
+            "payment_type": "Card",
+            "description": "Office supplies",
+            "credit": null,
+            "debit": 600,
+            "balance": 4833.09
+          }
+        ],
+        "currency": "EUR",
+        "account_holder": null,
+        "statement_date": null,
+        "total_credit": 1076.41,
+        "total_debit": 600
       },
       "expectedAutoAllowed": true,
+      "note": "Printed transaction table",
       "eval": false
     },
     {
@@ -571,7 +758,27 @@
         "period_start": "2026-06-04",
         "period_end": "2026-07-04",
         "opening_balance": 5115.3,
-        "closing_balance": 5346.26
+        "closing_balance": 5346.26,
+        "transactions": [
+          {
+            "date": "05.06.2026",
+            "reference": "000011",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 830.96,
+            "debit": null,
+            "balance": 5946.26
+          },
+          {
+            "date": "06.06.2026",
+            "reference": "000012",
+            "payment_type": "Card",
+            "description": "Office supplies",
+            "credit": null,
+            "debit": 600,
+            "balance": 5346.26
+          }
+        ]
       },
       "expectedFields": {
         "bank_name": "First Bank PLC",
@@ -580,9 +787,34 @@
         "period_end": "2026-07-04",
         "opening_balance": 5115.3,
         "closing_balance": 5346.26,
-        "currency": "USD"
+        "transactions": [
+          {
+            "date": "05.06.2026",
+            "reference": "000011",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 830.96,
+            "debit": null,
+            "balance": 5946.26
+          },
+          {
+            "date": "06.06.2026",
+            "reference": "000012",
+            "payment_type": "Card",
+            "description": "Office supplies",
+            "credit": null,
+            "debit": 600,
+            "balance": 5346.26
+          }
+        ],
+        "currency": "USD",
+        "account_holder": null,
+        "statement_date": null,
+        "total_credit": 830.96,
+        "total_debit": 600
       },
       "expectedAutoAllowed": true,
+      "note": "Printed transaction table",
       "eval": false
     },
     {
@@ -594,7 +826,27 @@
         "period_start": "2026-06-04",
         "period_end": "2026-07-04",
         "opening_balance": 5361.15,
-        "closing_balance": 5740.11
+        "closing_balance": 5740.11,
+        "transactions": [
+          {
+            "date": "05.06.2026",
+            "reference": "000013",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 978.96,
+            "debit": null,
+            "balance": 6340.11
+          },
+          {
+            "date": "06.06.2026",
+            "reference": "000014",
+            "payment_type": "Card",
+            "description": "Office supplies",
+            "credit": null,
+            "debit": 600,
+            "balance": 5740.11
+          }
+        ]
       },
       "expectedFields": {
         "bank_name": "Nordbank AG",
@@ -603,9 +855,34 @@
         "period_end": "2026-07-04",
         "opening_balance": 5361.15,
         "closing_balance": 5740.11,
-        "currency": "USD"
+        "transactions": [
+          {
+            "date": "05.06.2026",
+            "reference": "000013",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 978.96,
+            "debit": null,
+            "balance": 6340.11
+          },
+          {
+            "date": "06.06.2026",
+            "reference": "000014",
+            "payment_type": "Card",
+            "description": "Office supplies",
+            "credit": null,
+            "debit": 600,
+            "balance": 5740.11
+          }
+        ],
+        "currency": "USD",
+        "account_holder": null,
+        "statement_date": null,
+        "total_credit": 978.96,
+        "total_debit": 600
       },
       "expectedAutoAllowed": true,
+      "note": "Printed transaction table",
       "eval": false
     },
     {
@@ -617,7 +894,27 @@
         "period_start": "2026-06-16",
         "period_end": "2026-07-16",
         "opening_balance": 8309.13,
-        "closing_balance": 8464.11
+        "closing_balance": 8464.11,
+        "transactions": [
+          {
+            "date": "17.06.2026",
+            "reference": "000015",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 754.98,
+            "debit": null,
+            "balance": 9064.11
+          },
+          {
+            "date": "18.06.2026",
+            "reference": "000016",
+            "payment_type": "Card",
+            "description": "Office supplies",
+            "credit": null,
+            "debit": 600,
+            "balance": 8464.11
+          }
+        ]
       },
       "expectedFields": {
         "bank_name": "First Bank PLC",
@@ -626,9 +923,34 @@
         "period_end": "2026-07-16",
         "opening_balance": 8309.13,
         "closing_balance": 8464.11,
-        "currency": "GBP"
+        "transactions": [
+          {
+            "date": "17.06.2026",
+            "reference": "000015",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 754.98,
+            "debit": null,
+            "balance": 9064.11
+          },
+          {
+            "date": "18.06.2026",
+            "reference": "000016",
+            "payment_type": "Card",
+            "description": "Office supplies",
+            "credit": null,
+            "debit": 600,
+            "balance": 8464.11
+          }
+        ],
+        "currency": "GBP",
+        "account_holder": null,
+        "statement_date": null,
+        "total_credit": 754.98,
+        "total_debit": 600
       },
       "expectedAutoAllowed": true,
+      "note": "Printed transaction table",
       "eval": false
     },
     {
@@ -640,7 +962,27 @@
         "period_start": "2026-06-08",
         "period_end": "2026-07-08",
         "opening_balance": 6122.72,
-        "closing_balance": 6133.73
+        "closing_balance": 6133.73,
+        "transactions": [
+          {
+            "date": "09.06.2026",
+            "reference": "000017",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 611.01,
+            "debit": null,
+            "balance": 6733.73
+          },
+          {
+            "date": "10.06.2026",
+            "reference": "000018",
+            "payment_type": "Card",
+            "description": "Office supplies",
+            "credit": null,
+            "debit": 600,
+            "balance": 6133.73
+          }
+        ]
       },
       "expectedFields": {
         "bank_name": "Alpha Banking",
@@ -649,9 +991,34 @@
         "period_end": "2026-07-08",
         "opening_balance": 6122.72,
         "closing_balance": 6133.73,
-        "currency": "EUR"
+        "transactions": [
+          {
+            "date": "09.06.2026",
+            "reference": "000017",
+            "payment_type": "Transfer",
+            "description": "Payment for June services",
+            "credit": 611.01,
+            "debit": null,
+            "balance": 6733.73
+          },
+          {
+            "date": "10.06.2026",
+            "reference": "000018",
+            "payment_type": "Card",
+            "description": "Office supplies",
+            "credit": null,
+            "debit": 600,
+            "balance": 6133.73
+          }
+        ],
+        "currency": "EUR",
+        "account_holder": null,
+        "statement_date": null,
+        "total_credit": 611.01,
+        "total_debit": 600
       },
       "expectedAutoAllowed": true,
+      "note": "Printed transaction table",
       "eval": false
     },
     {
@@ -1296,6 +1663,51 @@
       "expectedAutoAllowed": true,
       "eval": false,
       "note": "optional-missing"
+    },
+    {
+      "file": "invoice-leading-blank-pages.pdf",
+      "expectedType": "invoice",
+      "criticalFields": {
+        "supplier_name": "Megabuild LLC",
+        "invoice_number": "INV-2026-1899",
+        "invoice_date": "2026-06-30",
+        "currency": "EUR",
+        "subtotal": 4021.09,
+        "grand_total": 4785.1
+      },
+      "expectedFields": {
+        "supplier_name": "Megabuild LLC",
+        "invoice_number": "INV-2026-1899",
+        "invoice_date": "2026-06-30",
+        "currency": "EUR",
+        "subtotal": 4021.09,
+        "grand_total": 4785.1,
+        "due_date": "2026-08-14",
+        "tax_total": 764.01,
+        "line_items": [
+          {
+            "description": "Position 1",
+            "quantity": 2,
+            "unit_price": 1340.36,
+            "amount": null
+          },
+          {
+            "description": "Position 2",
+            "quantity": 1,
+            "unit_price": 1340.36,
+            "amount": null
+          },
+          {
+            "description": "Position 3",
+            "quantity": 2,
+            "unit_price": 1340.36,
+            "amount": null
+          }
+        ]
+      },
+      "expectedAutoAllowed": true,
+      "eval": false,
+      "note": "Two leading blank pages; classification and all evidence must use original page 3"
     }
   ]
 }
