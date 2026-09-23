@@ -347,7 +347,7 @@ the web Docker image built on deploy, so the `exports` map resolves there too.
 **Done when:** the measurement is recorded here, and — if the change was made —
 `next build` succeeds and the client bundle is measurably smaller.
 
-## 9. `noUncheckedIndexedAccess` — implemented, verification pending
+## 9. `noUncheckedIndexedAccess` — done
 
 Primary files: `tsconfig.base.json`, every package.
 
@@ -376,6 +376,9 @@ a clear error.
       its spec instead of indexing `specs[0]`.
 
 No non-null assertion was added.
+
+**Verified:** commit `8b0e640` passed CI (192 tests, `next build`, browser test)
+and deployed.
 
 **Done when:** `npm run build` and `next build` pass with the flag on, and empty
 single-row results raise explicit errors.

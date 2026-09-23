@@ -11,6 +11,16 @@ import { normalizeAmount } from '../normalize/values'
 import { validateDocument, type ValidationField } from './engine'
 import type { ValidationRule } from './rules'
 
+const money = (name: string, value: number): ValidationField => ({
+  name,
+  label: name,
+  valueType: 'number',
+  rawValue: String(value),
+  normalizedValue: value,
+  isRequired: false,
+  isCritical: false,
+})
+
 it('preserves statement rows and blocks incomplete or unreconciled statements', () => {
   const rows: BankTransaction[] = [
     {
@@ -41,15 +51,6 @@ it('preserves statement rows and blocks incomplete or unreconciled statements', 
     isRequired: true,
     isCritical: true,
   }
-  const money = (name: string, value: number): ValidationField => ({
-    name,
-    label: name,
-    valueType: 'number',
-    rawValue: String(value),
-    normalizedValue: value,
-    isRequired: false,
-    isCritical: false,
-  })
   const rule: ValidationRule = {
     id: 'statement_balances_match',
     type: 'statement_balance',

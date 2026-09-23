@@ -24,6 +24,8 @@ const EMPTY_ROW = {
 }
 type DraftRow = typeof EMPTY_ROW
 
+const number = (text: string) => (text.trim() === '' ? null : Number(text))
+
 export function TransactionsEditor({
   field,
   issues,
@@ -60,7 +62,6 @@ export function TransactionsEditor({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const number = (text: string) => (text.trim() === '' ? null : Number(text))
     setSaving(true)
     try {
       await onSave(

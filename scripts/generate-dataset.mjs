@@ -185,6 +185,13 @@ function invoice(index) {
   }
 }
 
+const statementRow = (item) => ({
+  text: Object.values(item)
+    .map((value) => (value === null ? '' : typeof value === 'number' ? value.toFixed(2) : value))
+    .join(' | '),
+  size: 7,
+})
+
 export function bankStatement(index) {
   const bank = pick(BANKS)
   const currency = pick(CURRENCIES)
@@ -229,12 +236,6 @@ export function bankStatement(index) {
     text: 'Date | Reference | Type | Description | Credit | Debit | Balance',
     size: 7,
   }
-  const row = (item) => ({
-    text: Object.values(item)
-      .map((value) => (value === null ? '' : typeof value === 'number' ? value.toFixed(2) : value))
-      .join(' | '),
-    size: 7,
-  })
   const table = noActivity
     ? [{ text: 'No transactions in this period', size: 9 }]
     : index === 0
@@ -243,13 +244,13 @@ export function bankStatement(index) {
           { pageBreak: true },
           { pageBreak: true },
           header,
-          row({ ...transactions[0], description: 'Payment for June' }),
+          statementRow({ ...transactions[0], description: 'Payment for June' }),
           { pageBreak: true },
           header,
           { text: ' | | | services | | | ', size: 7 },
-          row(transactions[1]),
+          statementRow(transactions[1]),
         ]
-      : [header, ...transactions.map(row)]
+      : [header, ...transactions.map(statementRow)]
 
   return {
     layout: 'compact',
