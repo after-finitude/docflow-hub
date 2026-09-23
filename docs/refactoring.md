@@ -245,7 +245,7 @@ new failure-rule check.
 **Done when:** `extraction.test.mjs` and the five-stage pipeline check pass without
 changes to the tests, and the dead-letter rule exists in one place.
 
-## 7. Web data layer and live updates — implemented, verification pending
+## 7. Web data layer and live updates — done 2026-09-23
 
 Primary files: `apps/web/lib`, `apps/web/app/inbox/inbox-client.tsx`,
 `apps/web/app/runs/runs-client.tsx`, `apps/web/app/documents/[id]/review-workspace.tsx`.
@@ -277,8 +277,9 @@ engages there is no path back to SSE.
       `FieldsPanel` and `DocumentActions` were not extracted; they share most of
       the page state and would only move it into props.
 
-`review-refresh.test.mjs` is not part of `npm test` or CI — it starts `next dev`
-and a local Chrome — so it has to be run by hand (`npm run test:review`). Its fake
+`review-refresh.test.mjs` was not part of `npm test` or CI — it starts `next dev`
+and Chrome — and had to be run by hand (`npm run test:review`). CI now runs it as
+its last step, with the runner's preinstalled Chrome. Its fake
 API refused the stream, so it covered only the polling path; it now also serves a
 live stream and checks that the review page makes no reads for 2.5 s while live,
 updates on an emitted event, and that inbox filter changes keep one connection.
@@ -289,6 +290,9 @@ viewer's page-switch effect ran, and after saving a table it sampled Approve one
 render before the dirty flag cleared. Both now wait for the expected state rather
 than sampling it. The fake stream also had to send Nest's SSE headers
 (`no-transform`); without them the Next dev proxy did not deliver events.
+
+**Verified:** commit `eb36d12` passed CI with 192 tests and `next build`; the
+browser test passed twice locally before it, and runs in CI from the next commit.
 
 **Done when:** `review-refresh.test.mjs` passes; changing an inbox filter does not
 drop the event stream; document status updates without polling.

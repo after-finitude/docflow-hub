@@ -80,3 +80,8 @@ jobs:
       # next build is the only type check for apps/web (TypeScript 7 constraint).
       - name: Build web
         run: npm run build -w @docflow/web
+
+      # Real Next dev server and the runner's preinstalled Chrome against a fake
+      # API: review refresh, polling fallback and the live event stream.
+      - name: Review page browser test
+        run: node --test scripts/review-refresh.test.mjs
