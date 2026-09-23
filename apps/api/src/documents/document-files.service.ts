@@ -1,10 +1,18 @@
 import { DB, IngestService, StorageService, documents, type Database } from '@docflow/core'
 import {
+  canPerform,
+  isInFlight,
   type OversizedUploadRequest,
   type DocumentListItem,
   type SessionUser,
 } from '@docflow/shared'
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { eq } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import type { Readable } from 'node:stream'
@@ -78,6 +86,7 @@ export class DocumentFilesService {
       .select({
         id: documents.id,
         status: documents.status,
+        processingStep: documents.processingStep,
         sourceType: documents.sourceType,
         versionNumber: documents.versionNumber,
         isActive: documents.isActive,
@@ -98,11 +107,15 @@ export class DocumentFilesService {
     if (!document.isActive) {
       throw new BadRequestException('Document is inactive; only the latest version can be replaced')
     }
-    if (document.status === 'exported') {
-      throw new BadRequestException('An exported document cannot be replaced')
+    if (!canPerform('replaceFile', document.status)) {
+      throw new BadRequestException(
+        isInFlight(document.status)
+          ? 'Document is still processing'
+          : `A document with status ${document.status} cannot be replaced`,
+      )
     }
-    if (document.status === 'processing') {
-      throw new BadRequestException('Document is still processing')
+    if (document.processingStep === 'export') {
+      throw new ConflictException('Retry the saved export before changing this document')
     }
 
     const result = await this.ingest.ingest({

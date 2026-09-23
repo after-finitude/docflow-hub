@@ -191,10 +191,13 @@ the UI now follows the server, whose behaviour is unchanged:
 - Retry and "Send to manual review" on the Execution Log ignored document status
   and relied on a 400 from the server. They are now disabled when the server would
   refuse.
-- Still open: original replacement. The UI allows it in the `editField` statuses;
-  the server refuses only `exported` and `processing`, so it also accepts
-  `received` and `rejected`. It is not in the table because which side is right is
-  a product decision, not a refactor.
+- Original replacement: the UI allowed it in the `editField` statuses; the server
+  refused only `exported` and `processing`, so it also accepted `received` and
+  `rejected`. Decided on 2026-09-23 and added to the table as `replaceFile`:
+  `received` is in flight and is now refused by the server too; `rejected` is
+  allowed in the UI as well, because a new version is how a broken or wrong file
+  is fixed while keeping the version history. The server now also refuses a
+  replacement while an export is reserved (409), which the UI already did.
 
 Status is not the whole condition. The client also disables actions while an export
 is reserved; the server enforces the same rule through `processingStep === 'export'`

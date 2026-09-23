@@ -491,6 +491,34 @@ test(
         assert.equal(jobs.length, beforeJobs + 1)
       },
     )
+    await t.test(
+      'original replacement follows the action table and waits for a reserved export',
+      async () => {
+        const replace = async (id) => {
+          const body = new FormData()
+          body.append(
+            'file',
+            new Blob([`%PDF-${randomUUID()}`], { type: 'application/pdf' }),
+            'replacement.pdf',
+          )
+          const response = await fetch(`${base}/documents/${id}/file`, { method: 'POST', body })
+          return { status: response.status, body: await response.json() }
+        }
+        for (const status of ['received', 'processing', 'exported']) {
+          const id = await doc(status)
+          assert.equal((await replace(id)).status, 400, status)
+          assert.equal((await row(id)).isActive, true, status)
+        }
+        const reserved = await doc('approved', undefined, 'export')
+        assert.equal((await replace(reserved)).status, 409)
+        assert.equal((await row(reserved)).isActive, true)
+        const rejected = await doc('rejected')
+        const reply = await replace(rejected)
+        assert.equal(reply.status, 201)
+        assert.equal((await row(rejected)).isActive, false)
+        assert.equal((await row(reply.body.id)).previousVersionId, rejected)
+      },
+    )
     await t.test('retention of metadata-only refusals never removes a storage prefix', async () => {
       const reply = await request('oversized', '', {
         filename: 'expired.pdf',

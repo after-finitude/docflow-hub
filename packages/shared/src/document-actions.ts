@@ -15,6 +15,8 @@ export const DOCUMENT_ACTIONS = {
   export: ['approved', 'exported'],
   retryRun: ['needs_review', 'approved', 'failed', 'rejected'],
   sendToManual: ['received', 'processing', 'needs_review', 'failed'],
+  // A new version fixes a wrong or broken file, so rejected documents qualify.
+  replaceFile: ['needs_review', 'approved', 'failed', 'rejected'],
 } as const satisfies Record<string, readonly DocumentStatus[]>
 
 export type DocumentAction = keyof typeof DOCUMENT_ACTIONS

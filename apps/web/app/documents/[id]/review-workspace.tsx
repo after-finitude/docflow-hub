@@ -440,7 +440,9 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                   at the source, so they do not have this button. */}
               {document.sourceType === 'upload' && document.isActive && (
                 <ReplaceFileButton
-                  disabled={actionsDisabled || readOnly}
+                  disabled={
+                    actionsDisabled || exportReserved || !canPerform('replaceFile', document.status)
+                  }
                   onSelect={async (file) => {
                     setBusy(true)
                     setError(null)

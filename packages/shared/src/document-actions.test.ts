@@ -22,11 +22,20 @@ const ALLOWED: Record<DocumentStatus, DocumentAction[]> = {
     'reprocess',
     'retryRun',
     'sendToManual',
+    'replaceFile',
   ],
-  approved: ['editField', 'reject', 'changeType', 'reprocess', 'export', 'retryRun'],
+  approved: ['editField', 'reject', 'changeType', 'reprocess', 'export', 'retryRun', 'replaceFile'],
   exported: ['export'],
-  failed: ['editField', 'reject', 'changeType', 'reprocess', 'retryRun', 'sendToManual'],
-  rejected: ['changeType', 'reprocess', 'retryRun'],
+  failed: [
+    'editField',
+    'reject',
+    'changeType',
+    'reprocess',
+    'retryRun',
+    'sendToManual',
+    'replaceFile',
+  ],
+  rejected: ['changeType', 'reprocess', 'retryRun', 'replaceFile'],
 }
 
 describe('document actions', () => {
