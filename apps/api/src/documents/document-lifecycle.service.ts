@@ -40,6 +40,7 @@ import { Queue } from 'bullmq'
 import { and, eq, sql } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import type { RequestContext } from '../auth/decorators'
+import { commitBeforeThrowing } from '../common/commit-before-throwing'
 import { DocumentQueryService } from './document-query.service'
 
 /** Operator decisions and edits; every method holds the document lock. */
@@ -188,7 +189,7 @@ export class DocumentLifecycleService {
 
   /** Operator approval (spec 5.2). Blocking issues are checked on the server. */
   async approve(id: string, user: SessionUser, origin: RequestContext): Promise<DocumentDetail> {
-    const result = await this.db.transaction(async (db) => {
+    return commitBeforeThrowing(this.db, async (db) => {
       const document = await lockDocumentForEdit(db, id)
       if (!document) throw new NotFoundException('Document not found')
       if (!canPerform('approve', document.status)) {
@@ -246,8 +247,6 @@ export class DocumentLifecycleService {
       await this.publishStatus(id, 'approved')
       return this.query.readDetail(db, id, { locked: true })
     })
-    if (result instanceof ConflictException) throw result
-    return result
   }
 
   /** Reject with a listed reason and comment (spec 5.2). */

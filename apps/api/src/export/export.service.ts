@@ -45,6 +45,7 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import { randomUUID } from 'node:crypto'
 import type { RequestContext } from '../auth/decorators'
+import { commitBeforeThrowing } from '../common/commit-before-throwing'
 import { DestinationUnavailableError, type ExportAdapter } from './export-adapter'
 import { EXPORT_ADAPTERS } from './export-adapter'
 
@@ -191,7 +192,7 @@ export class ExportService {
     const exportKey = request.exportKey ?? `${documentId}:${destination}`
     const adapter = this.adapters.find((candidate) => candidate.destination === destination)
 
-    const prepared = await db.transaction(async (tx) => {
+    const prepared = await commitBeforeThrowing(db, async (tx) => {
       const document = await lockDocument(tx, documentId)
       if (!document) throw new NotFoundException('Document not found')
       // Different documents can race for the same user-supplied key. Check its
@@ -281,7 +282,6 @@ export class ExportService {
         .where(eq(documents.id, documentId))
       return { record, runId, status: document.status }
     })
-    if (prepared instanceof ConflictException) throw prepared
     const { record, runId } = prepared
     if (runId === null) return this.toDto(record)
 

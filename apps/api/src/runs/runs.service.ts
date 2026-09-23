@@ -120,6 +120,8 @@ export class RunsService {
       if (!document) throw new NotFoundException('Document not found')
       if (!document.storageKey)
         throw new BadRequestException('The original was not stored. Upload a smaller file')
+      // Re-read under the lock: a worker's failure handler changes the run state
+      // while holding it, and the state check below must see that change.
       const run = await this.findRun(runId, db)
       const queueName = QUEUE_BY_STEP[run.step]
       if (!queueName) {
@@ -194,12 +196,13 @@ export class RunsService {
    */
   async toManual(runId: string, user: SessionUser, origin: RequestContext): Promise<RunListItem> {
     return this.db.transaction(async (db) => {
-      const initial = await this.findRun(runId, db)
-      const document = await lockDocumentForEdit(db, initial.documentId)
+      // Only the run's document and step are used; neither changes, so one read
+      // before the lock is enough. The status comes from the locked row.
+      const run = await this.findRun(runId, db)
+      const document = await lockDocumentForEdit(db, run.documentId)
       if (!document) throw new NotFoundException('Document not found')
       if (!document.storageKey)
         throw new BadRequestException('The original was not stored. Upload a smaller file')
-      const run = await this.findRun(runId, db)
       if (!canPerform('sendToManual', document.status)) {
         throw new BadRequestException('A decided document cannot be sent to manual review')
       }
@@ -233,7 +236,7 @@ export class RunsService {
         action: 'document.manual_handling',
         objectType: 'document',
         objectId: run.documentId,
-        before: { status: run.documentStatus, step: run.step },
+        before: { status: document.status, step: run.step },
         result: 'success',
         ip: origin.ip,
         userAgent: origin.userAgent,
@@ -272,13 +275,11 @@ export class RunsService {
       .select({
         id: workflowRuns.id,
         documentId: workflowRuns.documentId,
-        documentStatus: documents.status,
         step: workflowRuns.step,
         state: workflowRuns.state,
         errorCode: workflowRuns.errorCode,
       })
       .from(workflowRuns)
-      .innerJoin(documents, eq(documents.id, workflowRuns.documentId))
       .where(eq(workflowRuns.id, runId))
       .limit(1)
 

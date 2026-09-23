@@ -387,12 +387,23 @@ single-row results raise explicit errors.
 
 Small enough to fold into whichever stage touches the same file.
 
-- `RunsService.retry` and `toManual` each call `findRun(runId, db)` twice in a row.
-- The worker has no healthcheck in `docker-compose.yml`; postgres, redis, minio and
-  the api do.
-- Both `DocumentsService.approve` and `ExportService.exportLocked` return a
-  `ConflictException` as a value so refreshed state commits before the API throws.
-  The technique is correct but deserves a named helper rather than two copies.
+- [x] `RunsService.retry` and `toManual` each call `findRun(runId, db)` twice in a
+      row. Only half redundant: the first read finds the document to lock, the
+      second re-reads the run under that lock, because a worker's failure handler
+      changes the run state while holding it. `retry` checks that state, so it
+      keeps both reads (now commented). `toManual` uses only the run's document and
+      step, which never change, so it reads once; the audit status comes from the
+      locked document. `findRun` no longer joins `documents`.
+- [x] The worker has no healthcheck in `docker-compose.yml`; postgres, redis, minio
+      and the api do. The worker has no HTTP server by design, so after bootstrap
+      it touches `/tmp/docflow-worker-heartbeat` every 10 s and the healthcheck
+      requires the file to be under 30 s old. This mainly matters for deploy:
+      `docker compose up --wait` now waits until the processors are registered
+      instead of until the process starts. It proves the event loop runs, not
+      that Redis is reachable; BullMQ reconnects on its own.
+- [x] Both `DocumentsService.approve` and `ExportService.exportLocked` return a
+      `ConflictException` as a value so refreshed state commits before the API
+      throws. Now one helper, `commitBeforeThrowing` in `apps/api/src/common`.
 - `ExportService.exportLocked` is about 180 lines covering key binding, validation,
   payload snapshot, run start, reserve, send, commit and the failure path.
 - The `documents` list builds five correlated subqueries per row plus a separate
