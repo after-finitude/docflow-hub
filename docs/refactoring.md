@@ -297,7 +297,7 @@ browser test passed twice locally before it, and runs in CI from the next commit
 **Done when:** `review-refresh.test.mjs` passes; changing an inbox filter does not
 drop the event stream; document status updates without polling.
 
-## 8. Shared package bundle (optional)
+## 8. Shared package bundle — implemented, verification pending
 
 Primary files: `packages/shared/package.json`, `packages/shared/src/index.ts`.
 
@@ -307,11 +307,35 @@ browser bundle may receive the validation engine, the evidence matcher, the
 canonical export builder and every zod schema, when the UI mostly needs types,
 labels and thresholds.
 
-- [ ] Measure first: the share of `@docflow/shared` in the client bundle from
-      `next build`. If the UI needs zod for forms anyway, the win may be small, and
-      the stage stops here.
-- [ ] Only if the measurement justifies it: subpath exports
-      (`@docflow/shared/contracts`, `/validation`, `/export`) or an ESM build.
+- [x] Measure first (2026-09-23, `next build`, gzip -9 over `.next/static/chunks`):
+
+      | | raw | gzip |
+      | --- | --- | --- |
+      | All client JS | 1 027 KB | 271 KB |
+      | Chunk holding shared and zod | 394 KB | 78 KB |
+      | Whole shared barrel, bundled alone (esbuild) | 440 KB | 83 KB |
+      | The 24 names the UI imports, tree-shaken from source | 332 KB | 66 KB |
+      | Of those, names living in zod-free modules | 1 KB | 0.5 KB |
+
+      The UI needs no zod: every value it imports is an enum, a constant, a label
+      or a pure predicate. But 14 of the 24 names were defined in `contracts/*`
+      next to top-level zod schemas, so even an ESM, tree-shaken build would have
+      kept zod. Subpath exports alone would not have helped.
+- [x] Moved those constants out of the contracts: `UPLOAD_MAX_BYTES` and
+      `ACCEPTED_MIME_TYPES` to `constants.ts`; `EXPORT_DESTINATIONS`,
+      `REJECT_REASONS` and `FIELD_FILTERS` to `enums.ts`; all display labels and UI
+      step lists to a new `labels.ts`. The contracts import them; the root barrel
+      still exports everything, so the API and worker are unaffected.
+- [x] Subpath export `@docflow/shared/browser` (`src/browser.ts`): enums,
+      constants, labels, `document-actions` and `fieldConfidenceThreshold` — no
+      module in its graph requires zod. apps/web imports values from it and types
+      from the root.
+- [x] Guard: an oxlint override for `apps/web/**` forbids value imports from
+      `@docflow/shared` (`no-restricted-imports` with `allowTypeImports`), so a
+      stray import cannot silently bring the 80 KB back.
+
+Result: all client JS 1 027 → 677 KB raw (−34 %), 271 → 209 KB gzip (−23 %); no
+client chunk contains zod any more.
 
 **Done when:** the measurement is recorded here, and — if the change was made —
 `next build` succeeds and the client bundle is measurably smaller.

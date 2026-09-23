@@ -75,3 +75,22 @@ export type ExportStatus = (typeof EXPORT_STATUSES)[number]
 
 export const ACTOR_TYPES = ['user', 'system'] as const
 export type ActorType = (typeof ACTOR_TYPES)[number]
+
+/** Required destination adapters (spec 6.8). */
+export const EXPORT_DESTINATIONS = ['file_json', 'google_sheets'] as const
+export type ExportDestination = (typeof EXPORT_DESTINATIONS)[number]
+
+/** Listed rejection reasons; the request adds a free-form comment (spec 5.2). */
+export const REJECT_REASONS = [
+  'poor_scan_quality',
+  'wrong_document_type',
+  'duplicate',
+  'incomplete_document',
+  'not_our_document',
+  'other',
+] as const
+export type RejectReason = (typeof REJECT_REASONS)[number]
+
+/** Field-list filters in the right column (spec 5.2). */
+export const FIELD_FILTERS = ['all', 'missing', 'low_confidence', 'invalid'] as const
+export type FieldFilter = (typeof FIELD_FILTERS)[number]

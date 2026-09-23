@@ -23,3 +23,8 @@ export const SESSION_COOKIE_NAME = 'docflow_session'
 
 /** Temporarily paused at the user's request; enable after live Drive/Sheets acceptance. */
 export const GOOGLE_WORKSPACE_ENABLED = false
+
+/** File ingest limits, spec 6.1. */
+export const UPLOAD_MAX_BYTES = 25 * 1024 * 1024
+export const ACCEPTED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const
+export type AcceptedMimeType = (typeof ACCEPTED_MIME_TYPES)[number]

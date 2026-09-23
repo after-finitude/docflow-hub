@@ -1,6 +1,7 @@
 'use client'
 
-import { REJECT_REASONS, REJECT_REASON_LABELS, type RejectReason } from '@docflow/shared'
+import { REJECT_REASONS, REJECT_REASON_LABELS } from '@docflow/shared/browser'
+import type { RejectReason } from '@docflow/shared'
 import { useState } from 'react'
 
 export function RejectForm({

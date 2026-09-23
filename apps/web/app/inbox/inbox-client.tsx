@@ -10,11 +10,13 @@ import {
   SOURCE_TYPE_LABELS,
   WORKFLOW_STEP_LABELS,
   isInFlight,
-  type DocumentListItem,
-  type DocumentListPage,
-  type DocumentStatus,
-  type DocumentType,
-  type SourceType,
+} from '@docflow/shared/browser'
+import type {
+  DocumentListItem,
+  DocumentListPage,
+  DocumentStatus,
+  DocumentType,
+  SourceType,
 } from '@docflow/shared'
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'

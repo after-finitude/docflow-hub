@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { REJECT_REASONS } from '../enums'
 
 /**
  * Review Workspace contracts (spec 5.2).
@@ -47,39 +48,8 @@ export const updateFieldRequestSchema = z.object({
 })
 export type UpdateFieldRequest = z.infer<typeof updateFieldRequestSchema>
 
-/** Listed rejection reason plus free-form comment (spec 5.2). */
-export const REJECT_REASONS = [
-  'poor_scan_quality',
-  'wrong_document_type',
-  'duplicate',
-  'incomplete_document',
-  'not_our_document',
-  'other',
-] as const
-export type RejectReason = (typeof REJECT_REASONS)[number]
-
-export const REJECT_REASON_LABELS: Record<RejectReason, string> = {
-  poor_scan_quality: 'Poor scan quality',
-  wrong_document_type: 'Wrong document type',
-  duplicate: 'Duplicate',
-  incomplete_document: 'Incomplete document',
-  not_our_document: 'Not our document',
-  other: 'Other',
-}
-
 export const rejectRequestSchema = z.object({
   reason: z.enum(REJECT_REASONS),
   comment: z.string().max(1000).optional(),
 })
 export type RejectRequest = z.infer<typeof rejectRequestSchema>
-
-/** Field-list filters in the right column (spec 5.2). */
-export const FIELD_FILTERS = ['all', 'missing', 'low_confidence', 'invalid'] as const
-export type FieldFilter = (typeof FIELD_FILTERS)[number]
-
-export const FIELD_FILTER_LABELS: Record<FieldFilter, string> = {
-  all: 'All',
-  missing: 'Missing',
-  low_confidence: 'Low confidence',
-  invalid: 'Validation errors',
-}

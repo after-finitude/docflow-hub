@@ -1,6 +1,6 @@
 'use client'
 
-import { ACCEPTED_MIME_TYPES } from '@docflow/shared'
+import { ACCEPTED_MIME_TYPES } from '@docflow/shared/browser'
 import { useRef } from 'react'
 
 /**

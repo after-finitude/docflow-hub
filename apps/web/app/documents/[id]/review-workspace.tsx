@@ -10,15 +10,17 @@ import {
   fieldConfidenceThreshold,
   FIELD_FILTER_LABELS,
   WORKFLOW_STEP_LABELS,
-  type ClassifiableDocumentType,
-  type DocumentDetail,
-  type ExportDestination,
-  type ExportDto,
-  type FieldDto,
-  type FieldFilter,
-  type LineItem,
-  type TableValue,
-  type RejectReason,
+} from '@docflow/shared/browser'
+import type {
+  ClassifiableDocumentType,
+  DocumentDetail,
+  ExportDestination,
+  ExportDto,
+  FieldDto,
+  FieldFilter,
+  LineItem,
+  TableValue,
+  RejectReason,
 } from '@docflow/shared'
 import { apiCall } from '@/lib/client'
 import { useStreamEvents } from '@/lib/events'

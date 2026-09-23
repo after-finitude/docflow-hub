@@ -6,7 +6,36 @@
     "suspicious": "warn"
   },
   "rules": {
-    "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
-    "typescript/no-extraneous-class": ["warn", { "allowWithDecorator": true }]
-  }
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_"
+      }
+    ],
+    "typescript/no-extraneous-class": [
+      "warn",
+      {
+        "allowWithDecorator": true
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["apps/web/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@docflow/shared",
+                "allowTypeImports": true,
+                "message": "Import values from @docflow/shared/browser; the root entry ships zod and every contract to the browser."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

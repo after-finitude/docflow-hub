@@ -1,14 +1,5 @@
 import { z } from 'zod'
-import type { ExportStatus } from '../enums'
-
-/** Required destination adapters (spec 6.8). */
-export const EXPORT_DESTINATIONS = ['file_json', 'google_sheets'] as const
-export type ExportDestination = (typeof EXPORT_DESTINATIONS)[number]
-
-export const EXPORT_DESTINATION_LABELS: Record<ExportDestination, string> = {
-  file_json: 'JSON file',
-  google_sheets: 'Google Sheets',
-}
+import { EXPORT_DESTINATIONS, type ExportDestination, type ExportStatus } from '../enums'
 
 export const exportRequestSchema = z.object({
   destination: z.enum(EXPORT_DESTINATIONS).optional(),

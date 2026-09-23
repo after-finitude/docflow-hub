@@ -4,22 +4,16 @@ import {
   DOCUMENT_STATUSES,
   DOCUMENT_TYPES,
   SOURCE_TYPES,
-  WORKFLOW_STATES,
-  WORKFLOW_STEPS,
   type DocumentStatus,
   type DocumentType,
   type SourceType,
   type WorkflowState,
   type WorkflowStep,
 } from '../enums'
+import { ACCEPTED_MIME_TYPES, UPLOAD_MAX_BYTES } from '../constants'
 import type { ExportDto } from './export'
 import type { FieldDto, IssueDto } from './field'
 import type { SchemaThresholds } from './schema'
-
-/** File ingest limits, spec 6.1. */
-export const UPLOAD_MAX_BYTES = 25 * 1024 * 1024
-export const ACCEPTED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const
-export type AcceptedMimeType = (typeof ACCEPTED_MIME_TYPES)[number]
 
 export const oversizedUploadRequestSchema = z
   .object({
@@ -29,15 +23,6 @@ export const oversizedUploadRequestSchema = z
   })
   .strict()
 export type OversizedUploadRequest = z.infer<typeof oversizedUploadRequestSchema>
-
-/** Stages shown in processing progress (spec 5.1). */
-export const PIPELINE_UI_STEPS: WorkflowStep[] = [
-  'preprocess',
-  'ocr',
-  'classification',
-  'extraction',
-  'validation',
-]
 
 export interface DocumentListItem {
   id: string
@@ -152,50 +137,6 @@ export interface HeartbeatEvent {
 }
 
 export type StreamEvent = DocumentEvent | HeartbeatEvent
-
-export const WORKFLOW_STEP_LABELS: Record<WorkflowStep, string> = {
-  ingestion: 'Ingest',
-  preprocess: 'Preparation',
-  ocr: 'OCR',
-  classification: 'Classification',
-  extraction: 'Extraction',
-  validation: 'Validation',
-  export: 'Export',
-}
-
-export const DOCUMENT_STATUS_LABELS: Record<DocumentStatus, string> = {
-  received: 'Received',
-  processing: 'Processing',
-  needs_review: 'Needs review',
-  approved: 'Approved',
-  exported: 'Exported',
-  failed: 'Failed',
-  rejected: 'Rejected',
-}
-
-export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
-  invoice: 'Invoice',
-  bank_statement: 'Bank statement',
-  tax_letter: 'Tax letter',
-  contract: 'Contract',
-  unknown: 'Unknown',
-}
-
-export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
-  upload: 'Upload',
-  email: 'Email',
-  drive: 'Drive',
-}
-
-export const WORKFLOW_STATE_LABELS: Record<WorkflowState, string> = {
-  pending: 'pending',
-  running: 'running',
-  succeeded: 'succeeded',
-  failed: 'failed',
-}
-
-export const ALL_WORKFLOW_STEPS = WORKFLOW_STEPS
-export const ALL_WORKFLOW_STATES = WORKFLOW_STATES
 
 /** Filter review aggregates without recording operator activity. */
 export const reviewMetricsQuerySchema = z.object({

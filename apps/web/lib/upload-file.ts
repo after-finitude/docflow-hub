@@ -1,4 +1,4 @@
-import { UPLOAD_MAX_BYTES } from '@docflow/shared'
+import { UPLOAD_MAX_BYTES } from '@docflow/shared/browser'
 
 /** Large files send only metadata, preserving the server's bounded upload buffer. */
 export function uploadFile(file: File, replaces?: string): Promise<Response> {

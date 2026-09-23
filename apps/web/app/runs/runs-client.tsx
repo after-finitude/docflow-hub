@@ -6,11 +6,8 @@ import {
   canPerform,
   WORKFLOW_STATE_LABELS,
   WORKFLOW_STEP_LABELS,
-  type RunListItem,
-  type RunListPage,
-  type WorkflowState,
-  type WorkflowStep,
-} from '@docflow/shared'
+} from '@docflow/shared/browser'
+import type { RunListItem, RunListPage, WorkflowState, WorkflowStep } from '@docflow/shared'
 import { apiCall } from '@/lib/client'
 import Link from 'next/link'
 import { useCallback, useState } from 'react'

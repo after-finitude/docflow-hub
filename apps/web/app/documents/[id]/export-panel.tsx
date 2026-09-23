@@ -4,9 +4,8 @@ import {
   EXPORT_DESTINATIONS,
   GOOGLE_WORKSPACE_ENABLED,
   EXPORT_DESTINATION_LABELS,
-  type ExportDestination,
-  type ExportDto,
-} from '@docflow/shared'
+} from '@docflow/shared/browser'
+import type { ExportDestination, ExportDto } from '@docflow/shared'
 
 export function ExportPanel({
   exports,

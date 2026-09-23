@@ -1,4 +1,4 @@
-import { SESSION_COOKIE_NAME } from '@docflow/shared'
+import { SESSION_COOKIE_NAME } from '@docflow/shared/browser'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 

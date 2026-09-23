@@ -1,6 +1,6 @@
 'use client'
 
-import { ACCEPTED_MIME_TYPES } from '@docflow/shared'
+import { ACCEPTED_MIME_TYPES } from '@docflow/shared/browser'
 import { uploadFile } from '../../lib/upload-file'
 import { useRef, useState, type DragEvent } from 'react'
 
