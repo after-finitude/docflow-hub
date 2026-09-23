@@ -20,7 +20,13 @@ function parseNumber(text: string): number | null {
 }
 
 /** Line-items table with row addition and removal (spec 5.2). */
-export function LineItemsEditor({ value, disabled, dirty, onDirtyChange, onSave }: LineItemsEditorProps) {
+export function LineItemsEditor({
+  value,
+  disabled,
+  dirty,
+  onDirtyChange,
+  onSave,
+}: LineItemsEditorProps) {
   const [items, setItems] = useState<LineItem[]>(value)
   const [saving, setSaving] = useState(false)
 

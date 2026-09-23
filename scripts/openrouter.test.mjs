@@ -194,8 +194,8 @@ test('optional reasoning can be disabled for both vision OCR and text extraction
     fields: [],
     pagesText: [{ page: 1, text: 'Invoice 100' }],
   })
-  assert.deepEqual(requests.map(({ reasoning }) => reasoning), [
-    { effort: 'none' },
-    { effort: 'none' },
-  ])
+  assert.deepEqual(
+    requests.map(({ reasoning }) => reasoning),
+    [{ effort: 'none' }, { effort: 'none' }],
+  )
 })

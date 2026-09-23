@@ -105,7 +105,10 @@ test('repair identifies invalid numeric transaction cells without weakening the 
   const valueSchema = format.json_schema.schema.properties.fields.items.properties.value
   assert.equal(valueSchema.anyOf[0].type, 'string')
   const balance = valueSchema.anyOf[1].anyOf[1].items.properties.balance
-  assert.deepEqual(balance.anyOf.map(({ type }) => type), ['number', 'null'])
+  assert.deepEqual(
+    balance.anyOf.map(({ type }) => type),
+    ['number', 'null'],
+  )
   const feedback = requests[1].messages.at(-1).content
   assert.match(feedback, /"path":\["fields",11,"value"\]/)
   assert.match(feedback, /"path":\[0,"balance"\]/)
@@ -201,10 +204,10 @@ test('statement dataset preserves all printed transactions, wrapped descriptions
       label: spec.label,
       isRequired: spec.required,
     }))
-    assert.deepEqual(
-      Object.fromEntries(rows.map((row) => [row.name, row.normalizedValue])),
-      { ...fixture.critical, ...fixture.extra },
-    )
+    assert.deepEqual(Object.fromEntries(rows.map((row) => [row.name, row.normalizedValue])), {
+      ...fixture.critical,
+      ...fixture.extra,
+    })
     const table = rows.find((row) => row.name === 'transactions')
     assert.equal(table.sourceFound, true)
     assert.equal(table.sourcePage, index === 0 ? 3 : 1)
@@ -214,16 +217,26 @@ test('statement dataset preserves all printed transactions, wrapped descriptions
       assert.equal(table.normalizedValue[0].description, 'Payment for June services')
     }
     const issues = validateDocument(rows, SEED_RULES.bank_statement, { today: '2026-09-15' })
-    assert.equal(issues.some((issue) => issue.severity === 'blocking'), !fixture.expectedAutoAllowed)
+    assert.equal(
+      issues.some((issue) => issue.severity === 'blocking'),
+      !fixture.expectedAutoAllowed,
+    )
   }
   const missing = await new MockLlmProvider().extract({
     documentType: 'bank_statement',
     fields: specs,
-    pagesText: [{ page: 1, text: 'BANK STATEMENT\nOpening Balance: 100.00\nClosing Balance: 100.00' }],
+    pagesText: [
+      { page: 1, text: 'BANK STATEMENT\nOpening Balance: 100.00\nClosing Balance: 100.00' },
+    ],
   })
-  assert.deepEqual(missing.fields.find((field) => field.name === 'transactions'), {
-    name: 'transactions', value: null, evidence: null,
-  })
+  assert.deepEqual(
+    missing.fields.find((field) => field.name === 'transactions'),
+    {
+      name: 'transactions',
+      value: null,
+      evidence: null,
+    },
+  )
 })
 
 function pending(run) {

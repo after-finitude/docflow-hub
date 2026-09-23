@@ -86,7 +86,9 @@ test(
       failSave = false
     const opened = [],
       requests = []
-    let holdPageTwo, releasePageTwo, failPageTwo = false
+    let holdPageTwo,
+      releasePageTwo,
+      failPageTwo = false
     const api = createServer(async (request, response) => {
       const path = new URL(request.url, 'http://test').pathname
       requests.push(`${request.method} ${path}`)
@@ -100,7 +102,10 @@ test(
       if (path === '/events/stream') return json({}, 503)
       const imagePage = path.match(/\/pages\/(\d+)\/image$/)?.[1]
       if (imagePage) {
-        if (imagePage === '2' && new URL(request.url, 'http://test').searchParams.get('width') === '1400') {
+        if (
+          imagePage === '2' &&
+          new URL(request.url, 'http://test').searchParams.get('width') === '1400'
+        ) {
           if (holdPageTwo) await holdPageTwo
           if (failPageTwo) return json({ message: 'Render unavailable' }, 503)
         }
@@ -136,9 +141,16 @@ test(
           ...current,
           status: 'needs_review',
           canApprove: true,
-          fields: current.fields.map((field) => field.name === name
-            ? { ...field, rawValue: JSON.stringify(value), normalizedValue: value, isEdited: true }
-            : field),
+          fields: current.fields.map((field) =>
+            field.name === name
+              ? {
+                  ...field,
+                  rawValue: JSON.stringify(value),
+                  normalizedValue: value,
+                  isEdited: true,
+                }
+              : field,
+          ),
         }
         return json(current)
       }
@@ -283,11 +295,16 @@ test(
       await page.goto(`${base}/documents/paging`)
       const mainImage = page.locator('img[src$="width=1400"]')
       await mainImage.waitFor({ state: 'visible' })
-      holdPageTwo = new Promise((resolve) => { releasePageTwo = resolve })
+      holdPageTwo = new Promise((resolve) => {
+        releasePageTwo = resolve
+      })
       await page.getByRole('button', { name: 'Page 2 2', exact: true }).click()
       await page.getByRole('status').filter({ hasText: 'Loading page 2' }).waitFor()
       assert.equal(await mainImage.isVisible(), false)
-      assert.equal(await page.getByRole('button', { name: 'Source: grand_total' }).isVisible(), false)
+      assert.equal(
+        await page.getByRole('button', { name: 'Source: grand_total' }).isVisible(),
+        false,
+      )
       assert.match(await mainImage.getAttribute('src'), /\/pages\/2\/image/)
       // Switch back while page 2 is pending; its late completion must not replace page 1.
       await page.getByRole('button', { name: 'Page 1 1', exact: true }).click()
@@ -297,7 +314,10 @@ test(
       await page.getByRole('button', { name: 'Show in document (page 2)', exact: true }).click()
       await mainImage.waitFor({ state: 'visible' })
       assert.match(await mainImage.getAttribute('src'), /\/pages\/2\/image/)
-      assert.equal(await page.getByRole('button', { name: 'Source: grand_total' }).isVisible(), true)
+      assert.equal(
+        await page.getByRole('button', { name: 'Source: grand_total' }).isVisible(),
+        true,
+      )
 
       failPageTwo = true
       current = { ...current, id: 'paging-error' }
@@ -315,22 +335,46 @@ test(
       for (const name of ['transactions', 'line_items']) {
         const bank = name === 'transactions'
         const rows = bank
-          ? [{ date: '2026-09-07', reference: null, payment_type: null, description: 'Original', credit: 10, debit: null, balance: 10 }]
+          ? [
+              {
+                date: '2026-09-07',
+                reference: null,
+                payment_type: null,
+                description: 'Original',
+                credit: 10,
+                debit: null,
+                balance: 10,
+              },
+            ]
           : [{ description: 'Original', quantity: 1, unit_price: 10, amount: 10 }]
         current = fixture(name, 'needs_review')
         current.documentType = bank ? 'bank_statement' : 'invoice'
-        current.fields = [{
-          ...current.fields[0], name, label: bank ? 'Transactions' : 'Line items',
-          valueType: 'array', rawValue: JSON.stringify(rows), normalizedValue: rows,
-        }]
+        current.fields = [
+          {
+            ...current.fields[0],
+            name,
+            label: bank ? 'Transactions' : 'Line items',
+            valueType: 'array',
+            rawValue: JSON.stringify(rows),
+            normalizedValue: rows,
+          },
+        ]
         await page.goto(`${base}/documents/${name}`)
         const description = page.locator('tbody tr').first().getByRole('textbox').first()
-        const input = bank ? page.getByRole('textbox', { name: 'Description, transaction 1', exact: true }) : description
-        const save = page.getByRole('button', { name: bank ? 'Save transactions' : 'Save line items', exact: true })
+        const input = bank
+          ? page.getByRole('textbox', { name: 'Description, transaction 1', exact: true })
+          : description
+        const save = page.getByRole('button', {
+          name: bank ? 'Save transactions' : 'Save line items',
+          exact: true,
+        })
         const approve = page.getByRole('button', { name: 'Approve', exact: true })
         await input.fill('Corrected')
         assert.equal(await approve.isEnabled(), false)
-        assert.equal(await page.getByRole('button', { name: 'Reprocess', exact: true }).isEnabled(), false)
+        assert.equal(
+          await page.getByRole('button', { name: 'Reprocess', exact: true }).isEnabled(),
+          false,
+        )
         failSave = true
         await save.click()
         await page.getByRole('alert').filter({ hasText: 'Save unavailable' }).waitFor()
@@ -348,7 +392,10 @@ test(
         await input.fill('Pending export edit')
         assert.equal(await exportButton.isEnabled(), false)
         assert.equal(current.fields[0].normalizedValue[0].description, 'Corrected')
-        assert.equal(requests.some((request) => request === `POST /documents/${name}/export`), false)
+        assert.equal(
+          requests.some((request) => request === `POST /documents/${name}/export`),
+          false,
+        )
       }
       assert.deepEqual(pageErrors, [])
     } catch (error) {

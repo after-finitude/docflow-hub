@@ -10,7 +10,16 @@ services:
     ports: !reset []
     restart: unless-stopped
     mem_limit: 128m
-    command: ['redis-server', '--appendonly', 'yes', '--maxmemory', '64mb', '--maxmemory-policy', 'noeviction']
+    command:
+      [
+        'redis-server',
+        '--appendonly',
+        'yes',
+        '--maxmemory',
+        '64mb',
+        '--maxmemory-policy',
+        'noeviction',
+      ]
 
   minio:
     ports: !override ['127.0.0.1:9000:9000']
@@ -53,7 +62,13 @@ services:
       NODE_OPTIONS: --max-old-space-size=192
       HOSTNAME: 0.0.0.0
     healthcheck:
-      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 15s
       timeout: 5s
       retries: 5

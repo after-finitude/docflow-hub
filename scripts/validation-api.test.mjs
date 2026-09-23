@@ -597,7 +597,10 @@ test(
           const llm = {
             external: false,
             async classify({ pagesText }) {
-              assert.deepEqual(pagesText.map((page) => page.page), [3, 5])
+              assert.deepEqual(
+                pagesText.map((page) => page.page),
+                [3, 5],
+              )
               return {
                 document_type: 'contract',
                 confidence: 1,
@@ -605,7 +608,10 @@ test(
               }
             },
             async extract({ pagesText }) {
-              assert.deepEqual(pagesText.map((page) => page.page), [3, 5, 6])
+              assert.deepEqual(
+                pagesText.map((page) => page.page),
+                [3, 5, 6],
+              )
               return {
                 fields: [
                   { name: 'name', value: 'Original', evidence: { page: 5, text: 'Original' } },
@@ -669,30 +675,33 @@ test(
       },
     )
 
-    await t.test('classification of only empty OCR pages needs review without an LLM call', async () => {
-      const id = await doc('processing', {}, 'classification')
-      await db.insert(pages).values(
-        [null, '', '\t \r\n'].map((ocrText, index) => ({
-          documentId: id,
-          pageNumber: index + 1,
-          ocrText,
-          width: 300,
-          height: 400,
-          blocks: [],
-        })),
-      )
-      const before = jobs.length
-      const llm = { classify: async () => assert.fail('Empty pages must not reach the LLM') }
-      await new ClassifyProcessor(db, {}, llm, events, queue).process({
-        data: { documentId: id, correlationId: randomUUID() },
-        opts: { attempts: 1 },
-        attemptsMade: 0,
-      })
-      const detail = await read(id)
-      assert.equal(detail.status, 'needs_review')
-      assert.equal(detail.documentType, 'unknown')
-      assert.equal(jobs.length, before)
-    })
+    await t.test(
+      'classification of only empty OCR pages needs review without an LLM call',
+      async () => {
+        const id = await doc('processing', {}, 'classification')
+        await db.insert(pages).values(
+          [null, '', '\t \r\n'].map((ocrText, index) => ({
+            documentId: id,
+            pageNumber: index + 1,
+            ocrText,
+            width: 300,
+            height: 400,
+            blocks: [],
+          })),
+        )
+        const before = jobs.length
+        const llm = { classify: async () => assert.fail('Empty pages must not reach the LLM') }
+        await new ClassifyProcessor(db, {}, llm, events, queue).process({
+          data: { documentId: id, correlationId: randomUUID() },
+          opts: { attempts: 1 },
+          attemptsMade: 0,
+        })
+        const detail = await read(id)
+        assert.equal(detail.status, 'needs_review')
+        assert.equal(detail.documentType, 'unknown')
+        assert.equal(jobs.length, before)
+      },
+    )
 
     await t.test(
       'empty extraction cannot approve; Missing fields and blocking issues persist',

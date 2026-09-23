@@ -322,13 +322,21 @@ test('deployment rejects commands that are not a full commit SHA before touching
 test('deployment copies only source and preserves privileged configuration and secrets', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'docflow-deploy-test-'))
   try {
-    const staging = join(dir, 'staging'), app = join(dir, 'app')
+    const staging = join(dir, 'staging'),
+      app = join(dir, 'app')
     for (const base of [staging, app]) {
       for (const directory of ['apps', 'packages', 'docker', 'secrets'])
         await mkdir(join(base, directory), { recursive: true })
     }
-    const retained = ['.env', 'docker-compose.yml', 'docker/compose.vps.yml', 'docker/Caddyfile',
-      'docker/node.Dockerfile', 'docker/source-inbox', 'secrets/key']
+    const retained = [
+      '.env',
+      'docker-compose.yml',
+      'docker/compose.vps.yml',
+      'docker/Caddyfile',
+      'docker/node.Dockerfile',
+      'docker/source-inbox',
+      'secrets/key',
+    ]
     for (const file of retained) {
       await writeFile(join(app, file), 'retained', { mode: 0o600 })
       await writeFile(join(staging, file), 'untrusted')
@@ -339,7 +347,9 @@ test('deployment copies only source and preserves privileged configuration and s
     for (const file of ['package.json', 'package-lock.json', 'tsconfig.json', 'tsconfig.base.json'])
       await writeFile(join(staging, file), '{}')
     const script = await readFile('docker/deploy.sh', 'utf8')
-    const command = script.split('# Synchronize approved source only.\n')[1].split('# End source synchronization.')[0]
+    const command = script
+      .split('# Synchronize approved source only.\n')[1]
+      .split('# End source synchronization.')[0]
     execFileSync('sh', ['-eu', '-c', command], {
       env: { ...process.env, staging_dir: staging, app_dir: app },
     })

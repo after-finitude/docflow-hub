@@ -231,9 +231,7 @@ export function bankStatement(index) {
   }
   const row = (item) => ({
     text: Object.values(item)
-      .map((value) =>
-        value === null ? '' : typeof value === 'number' ? value.toFixed(2) : value,
-      )
+      .map((value) => (value === null ? '' : typeof value === 'number' ? value.toFixed(2) : value))
       .join(' | '),
     size: 7,
   })

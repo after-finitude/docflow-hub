@@ -6,3 +6,6 @@ packages/core/drizzle/
 next-env.d.ts
 
 *.md
+
+# Generated evaluation artifacts.
+output/

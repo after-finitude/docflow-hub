@@ -544,15 +544,17 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                 onSave={saveTable}
                 onFocusSource={() => setActiveField(lineItemsField.name)}
               />
-            ) : lineItemsField && (
-              <LineItemsEditor
-                key={lineItemsField.rawValue ?? 'empty'}
-                value={parseLineItems(lineItemsField)}
-                disabled={busy || readOnly}
-                dirty={tableDirty}
-                onDirtyChange={setTableDirty}
-                onSave={saveTable}
-              />
+            ) : (
+              lineItemsField && (
+                <LineItemsEditor
+                  key={lineItemsField.rawValue ?? 'empty'}
+                  value={parseLineItems(lineItemsField)}
+                  disabled={busy || readOnly}
+                  dirty={tableDirty}
+                  onDirtyChange={setTableDirty}
+                  onSave={saveTable}
+                />
+              )
             )}
           </div>
         </section>

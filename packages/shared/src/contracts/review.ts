@@ -35,9 +35,7 @@ export type TableValue = z.infer<typeof tableValueSchema>
 
 /** The reserved transactions field uses statement rows; other arrays keep invoice rows. */
 export function tableValueSchemaFor(name: string) {
-  return name === 'transactions'
-    ? z.array(bankTransactionSchema)
-    : z.array(lineItemSchema.strict())
+  return name === 'transactions' ? z.array(bankTransactionSchema) : z.array(lineItemSchema.strict())
 }
 
 /**
