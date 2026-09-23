@@ -434,6 +434,52 @@ test(
           false,
         )
       }
+
+      // The statement table must scroll inside its column. Its sr-only caption and
+      // header label are absolutely positioned; once the table started below the
+      // fold they stretched the page and left a blank area under the workspace.
+      const rows = [
+        {
+          date: '2026-09-07',
+          reference: null,
+          payment_type: null,
+          description: 'Row',
+          credit: 10,
+          debit: null,
+          balance: 10,
+        },
+      ]
+      current = fixture('long-statement', 'needs_review')
+      current.documentType = 'bank_statement'
+      const [scalar] = current.fields
+      current.fields = [
+        ...Array.from({ length: 12 }, (_, i) => ({
+          ...scalar,
+          name: `field_${i}`,
+          label: `Field ${i}`,
+        })),
+        {
+          ...scalar,
+          name: 'transactions',
+          label: 'Transactions',
+          valueType: 'array',
+          rawValue: JSON.stringify(rows),
+          normalizedValue: rows,
+        },
+      ]
+      await page.goto(`${base}/documents/long-statement`)
+      await page
+        .getByRole('textbox', { name: 'Description, transaction 1', exact: true })
+        .waitFor({ state: 'attached' })
+      const { scrollHeight, clientHeight } = await page.evaluate(() => ({
+        scrollHeight: document.documentElement.scrollHeight,
+        clientHeight: document.documentElement.clientHeight,
+      }))
+      assert.ok(
+        scrollHeight <= clientHeight,
+        `the review page itself must not scroll (${scrollHeight} > ${clientHeight})`,
+      )
+
       // Live stream: the review page reloads on its events instead of polling, and
       // the inbox keeps one connection across filter changes.
       streamLive = true
