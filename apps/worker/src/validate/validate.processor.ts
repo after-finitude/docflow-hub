@@ -6,23 +6,31 @@ import {
   QUEUE,
   ValidationRunnerService,
   documents,
-  failRun,
   finishRun,
   queueConcurrency,
-  recordDeadLetter,
   beginPipelineRun,
   lockPipelineDocument,
   type PipelineJob,
+  type PipelineStage,
+  handlePipelineFailure,
+  publishStageEvent,
   type Database,
   type Env,
 } from '@docflow/core'
 import type { DocumentStatus, WorkflowState } from '@docflow/shared'
 import { Processor, WorkerHost } from '@nestjs/bullmq'
 import { Inject, Logger, type OnModuleInit } from '@nestjs/common'
-import { UnrecoverableError, type Job } from 'bullmq'
+import type { Job } from 'bullmq'
 import { eq } from 'drizzle-orm'
 
 export type ValidateJob = PipelineJob
+
+const STAGE: PipelineStage = {
+  step: 'validation',
+  queue: QUEUE.VALIDATE,
+  errorCode: 'validation_failed',
+  failureReason: 'Document validation failed. Processing can be retried manually',
+}
 
 /**
  * Final automatic stage: validation, confidence recalculation, and routing
@@ -66,67 +74,18 @@ export class ValidateProcessor extends WorkerHost implements OnModuleInit {
         await this.publish(documentId, outcome.status, 'succeeded')
       })
     } catch (error) {
-      await this.handleFailure(job, documentId, runId, error)
+      await handlePipelineFailure(
+        { db: this.db, events: this.events, logger: this.logger },
+        STAGE,
+        job,
+        runId,
+        error,
+      )
       throw error
     }
   }
 
-  private async handleFailure(
-    job: Job<ValidateJob>,
-    documentId: string,
-    runId: string,
-    error: unknown,
-  ): Promise<void> {
-    await this.db.transaction(async (db) => {
-      if (!(await lockPipelineDocument(db, job.data, 'validation'))) return
-      const detail = error instanceof Error ? error.message : String(error)
-      await failRun(db, runId, 'validation_failed', detail)
-
-      const unrecoverable = error instanceof UnrecoverableError
-      const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
-      if (!unrecoverable && attemptsLeft > 0) {
-        this.logger.warn(
-          `Document ${documentId}: validation failed; ${attemptsLeft} attempt(s) left`,
-        )
-        return
-      }
-
-      // The job will not retry automatically; it moves to the dead-letter queue
-      // for an operator to retry from the Execution Log (spec 6.10).
-      await recordDeadLetter(db, {
-        documentId,
-        runId,
-        step: 'validation',
-        queue: QUEUE.VALIDATE,
-        jobId: job.id ?? null,
-        payload: job.data,
-        errorCode: 'validation_failed',
-        error,
-        attempts: job.attemptsMade + 1,
-      })
-
-      const reason = 'Document validation failed. Processing can be retried manually'
-      await db
-        .update(documents)
-        .set({ status: 'failed', statusReason: reason, processingStep: null })
-        .where(eq(documents.id, documentId))
-      await this.publish(documentId, 'failed', 'failed')
-      this.logger.error(`Document ${documentId}: validation — ${detail}`)
-    })
-  }
-
-  private async publish(
-    documentId: string,
-    status: DocumentStatus,
-    state: WorkflowState,
-  ): Promise<void> {
-    await this.events.publish({
-      type: 'document',
-      documentId,
-      status,
-      step: 'validation',
-      state,
-      at: new Date().toISOString(),
-    })
+  private publish(documentId: string, status: DocumentStatus, state: WorkflowState) {
+    return publishStageEvent(this.events, STAGE.step, documentId, status, state)
   }
 }

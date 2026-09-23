@@ -127,7 +127,7 @@ holds `FOR UPDATE` on a document in another transaction and gets the detail back
 in 48 ms; the same read leaves a missing schema binding alone and a reject then
 repairs it.
 
-## 4. Split DocumentsService — implemented, verification pending
+## 4. Split DocumentsService — done 2026-09-23
 
 Primary files: `apps/api/src/documents/documents.service.ts` (902 lines, five
 responsibilities: list/detail, lifecycle transitions, upload and file replacement,
@@ -148,6 +148,9 @@ harness constructs the three services instead of one; no assertion changed.
 
 **Done when:** the same HTTP tests pass and each service owns exactly one of the
 responsibilities above. Line count is a symptom, not the criterion.
+
+**Verified:** commit `6687be6` passed CI with 191 tests, 0 skipped — the same count
+as before the split, with no assertion changed.
 
 ## 5. Operator actions in one table — done 2026-09-23
 
@@ -205,7 +208,7 @@ written out by hand outside the new module.
 **Verified:** commit `f5f498f` passed CI with 191 tests, 0 skipped, including the
 per-status matrix test and the unchanged conflict-status integration checks.
 
-## 6. Shared pipeline failure handling
+## 6. Shared pipeline failure handling — implemented, verification pending
 
 Primary files: `apps/worker/src/*/**.processor.ts`, `packages/core/src/db/workflow.ts`.
 
@@ -216,13 +219,25 @@ is set only once attempts are exhausted. `preprocess` has its own
 variant without the `unrecoverable` branch, because its permanent defects reject
 the document instead.
 
-- [ ] `handlePipelineFailure(ctx, job, error)` and `publishStatus(ctx, …)` as
-      functions in core, where `ctx` carries `step`, `queue`, `errorCode` and
-      `failureReason`. Processors call them; no base class. Inheritance across
-      `@Processor` decorators and Nest DI adds coupling, and `preprocess` would not
-      fit a shared `process()` skeleton anyway.
-- [ ] `preprocess` uses the same helper with unrecoverable handling disabled, or
-      keeps its variant if the difference turns out to be more than one flag.
+- [x] `handlePipelineFailure(ctx, stage, job, runId, error)` and
+      `publishStageEvent(events, step, …)` in `packages/core/src/queue/pipeline-stage.ts`.
+      Each processor declares a `STAGE` constant (`step`, `queue`, `errorCode`,
+      `failureReason`) and calls them; no base class. The worker lost ~200 lines.
+- [x] `preprocess` uses the same helper without a flag: it passes its per-failure
+      `errorCode` (`storage_unavailable`, `thumbnail_failed`), and the unrecoverable
+      branch never triggers there because those paths never throw
+      `UnrecoverableError`.
+
+Log lines are now uniform —
+`<step> failed (<errorCode>); N attempt(s) left` and
+`<step> failed (<errorCode>) — attempts exhausted|unrecoverable error: <detail>` —
+so the exhausted-attempts line now carries the error detail for every stage.
+
+The existing tests reached the handler only with a stale revision, where it
+returns early; nothing exercised the rule itself. A new PostgreSQL check calls
+`handlePipelineFailure` directly: a transient failure with attempts left keeps the
+document `processing` with no dead letter; exhausted attempts and an
+`UnrecoverableError` both set `failed` with the stage's reason and one dead letter.
 
 **Done when:** `extraction.test.mjs` and the five-stage pipeline check pass without
 changes to the tests, and the dead-letter rule exists in one place.

@@ -6,14 +6,15 @@ import {
   QUEUE,
   StorageService,
   documents,
-  failRun,
   finishRun,
   pages,
   queueConcurrency,
-  recordDeadLetter,
   beginPipelineRun,
   lockPipelineDocument,
   type PipelineJob,
+  type PipelineStage,
+  handlePipelineFailure,
+  publishStageEvent,
   validationIssues,
   writeAudit,
   externalCallRecorder,
@@ -28,11 +29,18 @@ import {
 } from '@docflow/shared'
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq'
 import { Inject, Logger, type OnModuleInit } from '@nestjs/common'
-import { Queue, UnrecoverableError, type Job } from 'bullmq'
+import { Queue, type Job } from 'bullmq'
 import { and, eq, isNull } from 'drizzle-orm'
 import { OCR_PROVIDER, type OcrProvider } from './ocr-provider'
 
 export type OcrJob = PipelineJob
+
+const STAGE: PipelineStage = {
+  step: 'ocr',
+  queue: QUEUE.OCR,
+  errorCode: 'ocr_failed',
+  failureReason: 'Document recognition failed. Processing can be retried manually',
+}
 
 /**
  * Second pipeline stage: OCR and per-page text storage with block coordinates
@@ -139,7 +147,13 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
         `Document ${documentId}: OCR (${this.provider.name}) completed, ${result.pages.length} page(s)`,
       )
     } catch (error) {
-      await this.handleFailure(job, documentId, runId, error)
+      await handlePipelineFailure(
+        { db: this.db, events: this.events, logger: this.logger },
+        STAGE,
+        job,
+        runId,
+        error,
+      )
       throw error
     }
   }
@@ -196,63 +210,7 @@ export class OcrProcessor extends WorkerHost implements OnModuleInit {
     this.logger.warn(`Document ${documentId}: ${issue.actual}`)
   }
 
-  /** Mark Failed only after attempts are exhausted or the error is unrecoverable. */
-  private async handleFailure(
-    job: Job<OcrJob>,
-    documentId: string,
-    runId: string,
-    error: unknown,
-  ): Promise<void> {
-    await this.db.transaction(async (db) => {
-      if (!(await lockPipelineDocument(db, job.data, 'ocr'))) return
-      const detail = error instanceof Error ? error.message : String(error)
-      await failRun(db, runId, 'ocr_failed', detail)
-
-      const unrecoverable = error instanceof UnrecoverableError
-      const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
-      if (!unrecoverable && attemptsLeft > 0) {
-        this.logger.warn(`Document ${documentId}: OCR failed; ${attemptsLeft} attempt(s) left`)
-        return
-      }
-
-      // The job will not retry automatically; it moves to the dead-letter queue
-      // for an operator to retry from the Execution Log (spec 6.10).
-      await recordDeadLetter(db, {
-        documentId,
-        runId,
-        step: 'ocr',
-        queue: QUEUE.OCR,
-        jobId: job.id ?? null,
-        payload: job.data,
-        errorCode: 'ocr_failed',
-        error,
-        attempts: job.attemptsMade + 1,
-      })
-
-      const reason = 'Document recognition failed. Processing can be retried manually'
-      await db
-        .update(documents)
-        .set({ status: 'failed', statusReason: reason, processingStep: null })
-        .where(eq(documents.id, documentId))
-      await this.publish(documentId, 'failed', 'failed')
-      this.logger.error(
-        `Document ${documentId}: OCR — ${unrecoverable ? 'unrecoverable error' : 'attempts exhausted'}: ${detail}`,
-      )
-    })
-  }
-
-  private async publish(
-    documentId: string,
-    status: DocumentStatus,
-    state: WorkflowState,
-  ): Promise<void> {
-    await this.events.publish({
-      type: 'document',
-      documentId,
-      status,
-      step: 'ocr',
-      state,
-      at: new Date().toISOString(),
-    })
+  private publish(documentId: string, status: DocumentStatus, state: WorkflowState) {
+    return publishStageEvent(this.events, STAGE.step, documentId, status, state)
   }
 }

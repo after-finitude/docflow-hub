@@ -9,10 +9,12 @@ import {
   failRun,
   finishRun,
   queueConcurrency,
-  recordDeadLetter,
   beginPipelineRun,
   lockPipelineDocument,
   type PipelineJob,
+  type PipelineStage,
+  handlePipelineFailure,
+  publishStageEvent,
   thumbnailKeyFor,
   writeAudit,
   type Database,
@@ -26,6 +28,13 @@ import { eq } from 'drizzle-orm'
 import { inspect } from './document-inspector'
 
 export type PreprocessJob = PipelineJob
+
+/** errorCode is per failure: storage_unavailable or thumbnail_failed. */
+const STAGE: Omit<PipelineStage, 'errorCode'> = {
+  step: 'preprocess',
+  queue: QUEUE.PREPROCESS,
+  failureReason: 'Document preparation failed. Processing can be retried manually',
+}
 
 /**
  * First pipeline stage: inspect the file, create a thumbnail, and count pages.
@@ -64,7 +73,13 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
       buffer = await this.storage.getBuffer(document.storageKey)
     } catch (error) {
       // Storage unavailability is transient, so the job should retry.
-      await this.handleTransientFailure(job, documentId, runId, 'storage_unavailable', error)
+      await handlePipelineFailure(
+        { db: this.db, events: this.events, logger: this.logger },
+        { ...STAGE, errorCode: 'storage_unavailable' },
+        job,
+        runId,
+        error,
+      )
       throw error
     }
 
@@ -125,69 +140,18 @@ export class PreprocessProcessor extends WorkerHost implements OnModuleInit {
       })
       this.logger.log(`Document ${documentId} prepared, pages: ${result.pageCount}`)
     } catch (error) {
-      await this.handleTransientFailure(job, documentId, runId, 'thumbnail_failed', error)
+      await handlePipelineFailure(
+        { db: this.db, events: this.events, logger: this.logger },
+        { ...STAGE, errorCode: 'thumbnail_failed' },
+        job,
+        runId,
+        error,
+      )
       throw error
     }
   }
 
-  /**
-   * Mark Failed only after attempts are exhausted. Until then the document
-   * remains processing so the queue does not flash an error on every retry.
-   */
-  private async handleTransientFailure(
-    job: Job<PreprocessJob>,
-    documentId: string,
-    runId: string,
-    code: string,
-    error: unknown,
-  ): Promise<void> {
-    await this.db.transaction(async (db) => {
-      if (!(await lockPipelineDocument(db, job.data, 'preprocess'))) return
-      const detail = error instanceof Error ? error.message : String(error)
-      await failRun(db, runId, code, detail)
-
-      const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
-      if (attemptsLeft > 0) {
-        this.logger.warn(`Document ${documentId}: ${code}, ${attemptsLeft} attempt(s) left`)
-        return
-      }
-
-      // The job will not retry automatically; it moves to the dead-letter queue
-      // for an operator to retry from the Execution Log (spec 6.10).
-      await recordDeadLetter(db, {
-        documentId,
-        runId,
-        step: 'preprocess',
-        queue: QUEUE.PREPROCESS,
-        jobId: job.id ?? null,
-        payload: job.data,
-        errorCode: code,
-        error,
-        attempts: job.attemptsMade + 1,
-      })
-
-      const reason = 'Document preparation failed. Processing can be retried manually'
-      await db
-        .update(documents)
-        .set({ status: 'failed', statusReason: reason, processingStep: null })
-        .where(eq(documents.id, documentId))
-      await this.publish(documentId, 'failed', 'failed')
-      this.logger.error(`Document ${documentId}: ${code} — attempts exhausted`)
-    })
-  }
-
-  private async publish(
-    documentId: string,
-    status: DocumentStatus,
-    state: WorkflowState,
-  ): Promise<void> {
-    await this.events.publish({
-      type: 'document',
-      documentId,
-      status,
-      step: 'preprocess',
-      state,
-      at: new Date().toISOString(),
-    })
+  private publish(documentId: string, status: DocumentStatus, state: WorkflowState) {
+    return publishStageEvent(this.events, STAGE.step, documentId, status, state)
   }
 }

@@ -11,6 +11,7 @@ import { MockOcrProvider } from '../apps/worker/dist/ocr/mock-ocr.provider.js'
 import { randomUUID } from 'node:crypto'
 import { test } from 'node:test'
 import { Pool } from 'pg'
+import { UnrecoverableError } from 'bullmq'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { eq } from 'drizzle-orm'
@@ -38,6 +39,9 @@ import {
   users,
   workflowRuns,
   documentExports,
+  deadLetters,
+  handlePipelineFailure,
+  startRun,
   ValidationRunnerService,
 } from '@docflow/core'
 import { DocumentsController } from '../apps/api/dist/documents/documents.controller.js'
@@ -1047,6 +1051,51 @@ test(
         'Keep until replacement succeeds',
       )
     })
+    await t.test(
+      'a stage failure marks the document failed and dead-letters it only when no retry follows',
+      async () => {
+        const logger = { warn() {}, error() {} }
+        const stage = {
+          step: 'ocr',
+          queue: 'ocr',
+          errorCode: 'ocr_failed',
+          failureReason: 'Recognition failed',
+        }
+        const fail = async (attemptsMade, error) => {
+          const id = await doc('processing', {}, 'ocr')
+          const data = { documentId: id, correlationId: randomUUID(), revision: 0 }
+          const runId = await startRun(db, id, 'ocr', data.correlationId)
+          await handlePipelineFailure(
+            { db, events, logger },
+            stage,
+            { id: 'job', data, opts: { attempts: 3 }, attemptsMade },
+            runId,
+            error,
+          )
+          const letters = await db.select().from(deadLetters).where(eq(deadLetters.documentId, id))
+          const [run] = await db.select().from(workflowRuns).where(eq(workflowRuns.id, runId))
+          return { document: await row(id), letters, run }
+        }
+
+        const retrying = await fail(1, new Error('provider 503'))
+        assert.equal(retrying.document.status, 'processing')
+        assert.equal(retrying.document.processingStep, 'ocr')
+        assert.equal(retrying.letters.length, 0)
+        assert.equal(retrying.run.state, 'failed')
+
+        for (const exhausted of [
+          await fail(2, new Error('provider 503')),
+          await fail(0, new UnrecoverableError('bad credentials')),
+        ]) {
+          assert.equal(exhausted.document.status, 'failed')
+          assert.equal(exhausted.document.statusReason, 'Recognition failed')
+          assert.equal(exhausted.document.processingStep, null)
+          assert.equal(exhausted.letters.length, 1)
+          assert.equal(exhausted.letters[0].errorCode, 'ocr_failed')
+          assert.equal(exhausted.letters[0].queue, 'ocr')
+        }
+      },
+    )
     await t.test(
       'all five processors advance their expected stage through a complete pipeline',
       async () => {

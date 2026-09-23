@@ -11,10 +11,12 @@ import {
   selectExtractionSchema,
   pages,
   queueConcurrency,
-  recordDeadLetter,
   beginPipelineRun,
   lockPipelineDocument,
   type PipelineJob,
+  type PipelineStage,
+  handlePipelineFailure,
+  publishStageEvent,
   validationIssues,
   writeAudit,
   externalCallRecorder,
@@ -24,11 +26,18 @@ import {
 import type { DocumentStatus, WorkflowState } from '@docflow/shared'
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq'
 import { Inject, Logger, type OnModuleInit } from '@nestjs/common'
-import { Queue, UnrecoverableError, type Job } from 'bullmq'
+import { Queue, type Job } from 'bullmq'
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import { LLM_PROVIDER, LlmInvalidResponseError, type LlmProvider } from '../llm/llm-provider'
 
 export type ClassifyJob = PipelineJob
+
+const STAGE: PipelineStage = {
+  step: 'classification',
+  queue: QUEUE.CLASSIFY,
+  errorCode: 'classification_failed',
+  failureReason: 'Document classification failed. Processing can be retried manually',
+}
 
 const MULTI_DOCUMENT_RULE = 'multi_document_suspected'
 
@@ -211,7 +220,13 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
         })
         return
       }
-      await this.handleFailure(job, documentId, runId, error)
+      await handlePipelineFailure(
+        { db: this.db, events: this.events, logger: this.logger },
+        STAGE,
+        job,
+        runId,
+        error,
+      )
       throw error
     }
   }
@@ -244,62 +259,7 @@ export class ClassifyProcessor extends WorkerHost implements OnModuleInit {
     }
   }
 
-  private async handleFailure(
-    job: Job<ClassifyJob>,
-    documentId: string,
-    runId: string,
-    error: unknown,
-  ): Promise<void> {
-    await this.db.transaction(async (db) => {
-      if (!(await lockPipelineDocument(db, job.data, 'classification'))) return
-      const detail = error instanceof Error ? error.message : String(error)
-      await failRun(db, runId, 'classification_failed', detail)
-
-      const unrecoverable = error instanceof UnrecoverableError
-      const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1)
-      if (!unrecoverable && attemptsLeft > 0) {
-        this.logger.warn(
-          `Document ${documentId}: classification failed; ${attemptsLeft} attempt(s) left`,
-        )
-        return
-      }
-
-      // The job will not retry automatically; it moves to the dead-letter queue
-      // for an operator to retry from the Execution Log (spec 6.10).
-      await recordDeadLetter(db, {
-        documentId,
-        runId,
-        step: 'classification',
-        queue: QUEUE.CLASSIFY,
-        jobId: job.id ?? null,
-        payload: job.data,
-        errorCode: 'classification_failed',
-        error,
-        attempts: job.attemptsMade + 1,
-      })
-
-      const reason = 'Document classification failed. Processing can be retried manually'
-      await db
-        .update(documents)
-        .set({ status: 'failed', statusReason: reason, processingStep: null })
-        .where(eq(documents.id, documentId))
-      await this.publish(documentId, 'failed', 'failed')
-      this.logger.error(`Document ${documentId}: classification — ${detail}`)
-    })
-  }
-
-  private async publish(
-    documentId: string,
-    status: DocumentStatus,
-    state: WorkflowState,
-  ): Promise<void> {
-    await this.events.publish({
-      type: 'document',
-      documentId,
-      status,
-      step: 'classification',
-      state,
-      at: new Date().toISOString(),
-    })
+  private publish(documentId: string, status: DocumentStatus, state: WorkflowState) {
+    return publishStageEvent(this.events, STAGE.step, documentId, status, state)
   }
 }
