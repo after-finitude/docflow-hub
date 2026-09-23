@@ -330,7 +330,9 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
           )}
         </section>
 
-        <section className="flex min-w-0 basis-[45%] flex-col overflow-y-auto pr-1">
+        {/* relative: absolutely positioned descendants (sr-only labels in long
+            tables) must scroll inside this column, not stretch the page. */}
+        <section className="relative flex min-w-0 basis-[45%] flex-col overflow-y-auto pr-1">
           <div className="panel mb-3 p-4">
             {processing && (
               <p role="status" className="mb-3 text-xs text-ink-2">
