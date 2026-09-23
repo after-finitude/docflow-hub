@@ -50,6 +50,8 @@ Run `npm test` for offline request-contract, page-selection, geometry, retry and
 ## Operations
 
 - `QUEUE_CONCURRENCY_DEFAULT`, `QUEUE_CONCURRENCY_OCR`, and `QUEUE_CONCURRENCY_EXTRACT` control BullMQ processing.
+- `DB_POOL_MAX=10`, `DB_CONNECTION_TIMEOUT_MS=10000` and `DB_STATEMENT_TIMEOUT_MS=30000` (0 disables) size each process's database pool. Compose sets them separately for the API and the worker from `API_DB_*` and `WORKER_DB_*`. A request that cannot get a connection within the timeout fails instead of waiting indefinitely.
+- `EXPORT_MAX_CONCURRENT=4` limits exports in one API process. Each export holds a dedicated connection through the call to the destination, so the API refuses to start unless the limit is below `DB_POOL_MAX`; a request over the limit gets 503 and can be repeated.
 - `SOURCE_SYNC_INTERVAL_SECONDS` controls source synchronization.
 - `RETENTION_DAYS=90` controls permanent deletion after deactivation; active documents remain.
 - `ORPHAN_TTL_HOURS=24` controls cleanup of unreferenced document storage objects.

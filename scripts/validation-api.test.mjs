@@ -819,6 +819,76 @@ test(
         }
       },
     )
+    await t.test(
+      'an export needs one connection and stays within its limit and lock timeout',
+      async () => {
+        const status = (code) => (error) => error.getStatus() === code
+        let hold = null
+        const limitedAdapters = [
+          {
+            destination: 'file_json',
+            async reserve(_db, id) {
+              return { kind: 'file_json', objectKey: `exports/${id}.json` }
+            },
+            async send() {
+              if (hold) {
+                hold.entered.resolve()
+                await hold.release.promise
+              }
+              return 'exports/limited.json'
+            },
+          },
+        ]
+        const opened = []
+        const exporter = (options, limit) => {
+          const limited = new Pool({
+            connectionString: url.href,
+            connectionTimeoutMillis: 2000,
+            ...options,
+          })
+          opened.push(limited)
+          const limitedDb = drizzle(limited)
+          const service = new ExportService(
+            limitedDb,
+            limitedAdapters,
+            events,
+            {},
+            new ValidationRunnerService(limitedDb, {}),
+            limited,
+            { EXPORT_DEFAULT_DESTINATION: 'file_json', EXPORT_MAX_CONCURRENT: limit },
+          )
+          return { limited, service }
+        }
+        try {
+          // The default destination is read over the export's own connection; a
+          // second checkout would time out on a one-connection pool.
+          const single = exporter({ max: 1 }, 1).service
+          assert.equal(
+            (await single.export(await doc('approved'), {}, user, {})).status,
+            'succeeded',
+          )
+
+          const { limited, service } = exporter({ max: 3, statement_timeout: 500 }, 2)
+          const id = await doc('approved')
+          const other = await doc('approved')
+          hold = { entered: deferred(), release: deferred() }
+          const sending = service.export(id, {}, user, {})
+          await hold.entered.promise
+          // Waits for the session lock until statement_timeout cancels the wait.
+          const waiting = assert.rejects(service.export(id, {}, user, {}), status(409))
+          await assert.rejects(service.export(other, {}, user, {}), status(503))
+          assert.equal((await limited.query('select 1 as ok')).rows[0].ok, 1)
+          await waiting
+          hold.release.resolve()
+          assert.equal((await sending).status, 'succeeded')
+          hold = null
+          assert.equal((await service.export(other, {}, user, {})).status, 'succeeded')
+        } finally {
+          hold?.release.resolve()
+          await Promise.all(opened.map((limited) => limited.end()))
+        }
+      },
+    )
     await t.test('edit winning the lock prevents a later export of the invalid value', async () => {
       const id = await doc('approved')
       const entered = deferred(),

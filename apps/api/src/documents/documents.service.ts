@@ -132,6 +132,8 @@ export class DocumentsService {
       .from(auditEvents)
       .where(
         and(
+          // object_type leads audit_events_object_idx; without it the table is scanned.
+          eq(auditEvents.objectType, 'document'),
           eq(auditEvents.objectId, id),
           eq(auditEvents.actorId, actorId),
           eq(auditEvents.action, 'document.review_opened'),

@@ -357,6 +357,8 @@ export const auditEvents = pgTable(
     index('audit_events_object_idx').on(t.objectType, t.objectId),
     index('audit_events_correlation_idx').on(t.correlationId),
     index('audit_events_created_at_idx').on(t.createdAt),
+    // Review metrics aggregate one action over a time window.
+    index('audit_events_action_created_at_idx').on(t.action, t.createdAt),
   ],
 )
 

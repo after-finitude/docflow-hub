@@ -25,6 +25,12 @@ const envSchema = z.object({
   // that would eventually drift from the password.
   ...postgresFields,
   APP_DB_PASSWORD: z.string().min(1),
+  // Per process: Compose passes separate API_* and WORKER_* values to each service.
+  DB_POOL_MAX: z.coerce.number().int().positive().default(10),
+  // Fail a request that cannot get a connection instead of queueing forever.
+  DB_CONNECTION_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+  // 0 disables. The limit also bounds lock waits, including the export session lock.
+  DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(0).default(30_000),
 
   REDIS_HOST: z.string().min(1),
   REDIS_PORT: z.coerce.number().int().positive(),
@@ -86,6 +92,9 @@ const envSchema = z.object({
 
   // ─── Export (spec 6.8) ────────────────────────────────────────────────────
   EXPORT_DEFAULT_DESTINATION: z.enum(['file_json', 'google_sheets']).default('file_json'),
+  // Each export holds a dedicated connection through the external call; keep
+  // them below DB_POOL_MAX so exports cannot starve every other request.
+  EXPORT_MAX_CONCURRENT: z.coerce.number().int().positive().default(4),
   // Service-account key, required for Google Sheets export.
   GOOGLE_SHEETS_KEY_FILE: z.string().trim().min(1).optional(),
   GOOGLE_SHEETS_SPREADSHEET_ID: z
@@ -183,6 +192,9 @@ export function loadEnv(
     throw new Error(
       'Google Sheets export requires GOOGLE_SHEETS_KEY_FILE and GOOGLE_SHEETS_SPREADSHEET_ID',
     )
+  }
+  if (service === 'api' && env.EXPORT_MAX_CONCURRENT >= env.DB_POOL_MAX) {
+    throw new Error('EXPORT_MAX_CONCURRENT must be below DB_POOL_MAX')
   }
   if (service === 'worker' && env.SOURCE_PROVIDER === 'local_folder' && !env.LOCAL_SOURCE_DIR) {
     throw new Error('SOURCE_PROVIDER=local_folder requires LOCAL_SOURCE_DIR')

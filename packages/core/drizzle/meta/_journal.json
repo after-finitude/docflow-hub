@@ -78,6 +78,13 @@
       "when": 1788686317511,
       "tag": "0010_rejected_upload_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790146543661,
+      "tag": "0011_audit_action_index",
+      "breakpoints": true
     }
   ]
 }

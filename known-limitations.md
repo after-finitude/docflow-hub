@@ -30,6 +30,7 @@ Google Drive and Google Sheets are temporarily disabled at the user's request on
 
 - Google Sheets and Google Drive require service-account credentials and have not been demonstrated by the mock evaluation. Sheets allocation/retry behavior is covered against PostgreSQL with a mocked Google API; a real Sheets verification is deferred at the user's request.
 - Export failures require an operator retry; there are intentionally no automatic export retries. The approved payload is frozen until delivery finishes.
+- An export holds a database connection and a session advisory lock until the destination responds. Concurrent exports per API process are therefore capped by `EXPORT_MAX_CONCURRENT` and refused with 503 above it, not queued. A second export of the same document waits for the first only up to `DB_STATEMENT_TIMEOUT_MS`, then returns 409.
 - A Sheets tab requires a consistent column layout across document types and schema versions. Changing the layout requires another tab; mismatches fail before writing.
 - Sheets row identity assumes managed rows are not inserted, deleted, moved, sorted, or edited manually; see `docs/runbook.md`.
 - Historical failed exports from before durable snapshots were introduced require destination reconciliation before a new export key is used; their unknown original writes cannot be safely guessed.

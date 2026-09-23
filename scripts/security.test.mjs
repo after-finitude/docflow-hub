@@ -99,6 +99,15 @@ test('encrypted credentials authenticate contents, reject plaintext/wrong keys, 
     assert.equal(loadEnv(env).SIGNED_URL_TTL_SECONDS, 900)
     assert.equal(loadEnv(env).RETENTION_DAYS, 90)
     assert.equal(loadEnv(env).ORPHAN_TTL_HOURS, 24)
+    assert.throws(
+      () => loadEnv({ ...env, EXPORT_MAX_CONCURRENT: '10' }, 'api'),
+      /EXPORT_MAX_CONCURRENT must be below DB_POOL_MAX/,
+    )
+    assert.equal(
+      loadEnv({ ...env, EXPORT_MAX_CONCURRENT: '10' }).EXPORT_MAX_CONCURRENT,
+      10,
+      'The worker does not export',
+    )
     assert.match(
       loadMigrationEnv({
         POSTGRES_HOST: 'localhost',

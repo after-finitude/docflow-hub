@@ -36,6 +36,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
@@ -48,6 +49,8 @@ import { EXPORT_ADAPTERS } from './export-adapter'
 @Injectable()
 export class ExportService {
   private readonly logger = new Logger(ExportService.name)
+  /** Exports in this process, each holding a pool connection; see EXPORT_MAX_CONCURRENT. */
+  private running = 0
 
   constructor(
     @Inject(DB) private readonly db: Database,
@@ -139,23 +142,37 @@ export class ExportService {
     user: SessionUser,
     origin: RequestContext,
   ): Promise<ExportDto> {
-    const client = await this.pool.connect()
-    client.on('error', () =>
-      this.logger.warn('Export database connection interrupted; retry the saved export'),
-    )
+    if (this.running >= this.env.EXPORT_MAX_CONCURRENT)
+      throw new ServiceUnavailableException('Too many exports in progress; try again shortly')
+    this.running++
     try {
-      await client.query('select pg_advisory_lock(hashtextextended($1, 0))', [
-        `docflow-export:${documentId}`,
-      ])
-      const db = drizzle(client, { schema: databaseSchema })
-      return await this.exportLocked(db, documentId, request, user, {
-        ...origin,
-        correlationId: origin.correlationId ?? randomUUID(),
-      })
+      const client = await this.pool.connect()
+      client.on('error', () =>
+        this.logger.warn('Export database connection interrupted; retry the saved export'),
+      )
+      try {
+        await client
+          .query('select pg_advisory_lock(hashtextextended($1, 0))', [
+            `docflow-export:${documentId}`,
+          ])
+          .catch((error: unknown) => {
+            // statement_timeout also cancels this wait while another request sends.
+            if ((error as { code?: string }).code === '57014')
+              throw new ConflictException('Another export of this document is still in progress')
+            throw error
+          })
+        const db = drizzle(client, { schema: databaseSchema })
+        return await this.exportLocked(db, documentId, request, user, {
+          ...origin,
+          correlationId: origin.correlationId ?? randomUUID(),
+        })
+      } finally {
+        // Closing this dedicated connection releases its session lock even after
+        // a failed SQL transaction or lost connection, without a lease timeout.
+        client.release(true)
+      }
     } finally {
-      // Closing this dedicated connection releases its session lock even after
-      // a failed SQL transaction or lost connection, without a lease timeout.
-      client.release(true)
+      this.running--
     }
   }
 
@@ -168,7 +185,7 @@ export class ExportService {
   ): Promise<ExportDto> {
     const previous = request.exportKey ? await this.findByKey(db, request.exportKey) : undefined
     const destination =
-      request.destination ?? previous?.destination ?? (await this.settings()).defaultDestination
+      request.destination ?? previous?.destination ?? (await this.settings(db)).defaultDestination
     const exportKey = request.exportKey ?? `${documentId}:${destination}`
     const adapter = this.adapters.find((candidate) => candidate.destination === destination)
 

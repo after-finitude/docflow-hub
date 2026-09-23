@@ -17,7 +17,13 @@ export type Database = NodePgDatabase<typeof schema>
       provide: DB_POOL,
       inject: [ENV],
       // Connect with the role that lacks UPDATE/DELETE on audit_events.
-      useFactory: (env: Env) => new Pool({ connectionString: env.DATABASE_URL }),
+      useFactory: (env: Env) =>
+        new Pool({
+          connectionString: env.DATABASE_URL,
+          max: env.DB_POOL_MAX,
+          connectionTimeoutMillis: env.DB_CONNECTION_TIMEOUT_MS,
+          statement_timeout: env.DB_STATEMENT_TIMEOUT_MS || false,
+        }),
     },
     {
       provide: DB,
