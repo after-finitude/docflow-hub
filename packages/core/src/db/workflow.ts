@@ -1,4 +1,4 @@
-import type { WorkflowStep } from '@docflow/shared'
+import { isInFlight, type WorkflowStep } from '@docflow/shared'
 import { ConflictException } from '@nestjs/common'
 import { and, eq, isNull } from 'drizzle-orm'
 import type { Database } from './db.module'
@@ -38,7 +38,7 @@ export async function lockPipelineDocument(db: Database, job: PipelineJob, step:
     !document.storageKey ||
     document.processingRevision !== (job.revision ?? 0) ||
     document.processingStep !== step ||
-    !['received', 'processing'].includes(document.status)
+    !isInFlight(document.status)
   )
     return null
   return { ...document, storageKey: document.storageKey }

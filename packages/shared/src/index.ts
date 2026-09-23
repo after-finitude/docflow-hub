@@ -1,5 +1,6 @@
 export * from './enums'
 export * from './constants'
+export * from './document-actions'
 export * from './contracts/auth'
 export * from './contracts/document'
 export * from './contracts/export'

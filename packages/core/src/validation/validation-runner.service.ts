@@ -5,6 +5,7 @@ import {
   decideRouting,
   buildExtractedField,
   capSourceConfidence,
+  isRoutable,
   scoreConfidence,
   validateDocument,
   type RoutingDecision,
@@ -81,7 +82,7 @@ export class ValidationRunnerService {
         actual: 'unknown',
       }
       await this.replaceIssues(db, documentId, [issue])
-      if (options.route !== false && !['exported', 'rejected'].includes(document.status)) {
+      if (options.route !== false && isRoutable(document.status)) {
         await db
           .update(documents)
           .set({ status: 'needs_review', statusReason: issue.message })
@@ -191,7 +192,7 @@ export class ValidationRunnerService {
     const status = decision.auto && autoApprove ? 'approved' : 'needs_review'
 
     // Revalidation never moves an exported document backward.
-    if (options.route !== false && !['exported', 'rejected'].includes(document.status)) {
+    if (options.route !== false && isRoutable(document.status)) {
       await db
         .update(documents)
         .set({

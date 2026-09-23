@@ -3,6 +3,8 @@
 import {
   ACCEPTED_MIME_TYPES,
   CLASSIFIABLE_DOCUMENT_TYPES,
+  canPerform,
+  isInFlight,
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_TYPE_LABELS,
   EXPORT_DESTINATIONS,
@@ -44,7 +46,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
   const [refreshFailed, setRefreshFailed] = useState(false)
   const [tableDirty, setTableDirty] = useState(false)
   const actionsDisabled = busy || tableDirty
-  const processing = document.status === 'received' || document.status === 'processing'
+  const processing = isInFlight(document.status)
 
   useEffect(() => {
     performance.clearMarks('docflow-review-ready')
@@ -88,8 +90,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
   const exportReserved = document.exports.some(
     (item) => item.status === 'pending' || item.status === 'failed',
   )
-  const readOnly =
-    exportReserved || !['needs_review', 'approved', 'failed'].includes(document.status)
+  const readOnly = exportReserved || !canPerform('editField', document.status)
 
   const issuesByField = useMemo(() => {
     const map = new Map<string, DocumentDetail['issues']>()
@@ -355,7 +356,9 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
               <select
                 className="field"
                 value={document.documentType ?? 'unknown'}
-                disabled={actionsDisabled || readOnly}
+                disabled={
+                  actionsDisabled || exportReserved || !canPerform('changeType', document.status)
+                }
                 onChange={(event) =>
                   void changeType(event.target.value as ClassifiableDocumentType)
                 }
@@ -424,7 +427,9 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
               </button>
               <button
                 type="button"
-                disabled={actionsDisabled || readOnly}
+                disabled={
+                  actionsDisabled || exportReserved || !canPerform('reject', document.status)
+                }
                 onClick={() => setRejecting(true)}
                 className="btn btn--danger"
               >
@@ -436,7 +441,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                   actionsDisabled ||
                   exportReserved ||
                   !document.hasOriginal ||
-                  ['received', 'processing', 'exported'].includes(document.status)
+                  !canPerform('reprocess', document.status)
                 }
                 onClick={() =>
                   void call(`/api/documents/${document.id}/reprocess`, { method: 'POST' })
@@ -477,7 +482,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
 
             {rejecting && <RejectForm onCancel={() => setRejecting(false)} onSubmit={reject} />}
 
-            {(document.status === 'approved' || document.status === 'exported') && (
+            {canPerform('export', document.status) && (
               <ExportPanel
                 exports={document.exports}
                 busy={actionsDisabled}

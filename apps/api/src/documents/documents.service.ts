@@ -21,6 +21,7 @@ import {
 } from '@docflow/core'
 import {
   REJECT_REASON_LABELS,
+  canPerform,
   normalizeByType,
   tableValueSchemaFor,
   capSourceConfidence,
@@ -387,7 +388,7 @@ export class DocumentsService {
       exports: await this.exports.listForDocument(id, db),
       // Any unresolved blocking issue disables approval (spec §9).
       canApprove:
-        base.status === 'needs_review' &&
+        canPerform('approve', base.status) &&
         schema !== null &&
         base.documentType === schema.documentType &&
         base.blockingIssues === 0 &&
@@ -416,7 +417,7 @@ export class DocumentsService {
     return this.db.transaction(async (db) => {
       const document = await lockDocumentForEdit(db, id)
       if (!document) throw new NotFoundException('Document not found')
-      if (!['needs_review', 'approved', 'failed'].includes(document.status)) {
+      if (!canPerform('editField', document.status)) {
         throw new ConflictException(`A document with status ${document.status} cannot be edited`)
       }
 
@@ -500,7 +501,7 @@ export class DocumentsService {
     const result = await this.db.transaction(async (db) => {
       const document = await lockDocumentForEdit(db, id)
       if (!document) throw new NotFoundException('Document not found')
-      if (document.status !== 'needs_review') {
+      if (!canPerform('approve', document.status)) {
         throw new BadRequestException(
           `A document with status ${document.status} cannot be approved`,
         )
@@ -569,7 +570,7 @@ export class DocumentsService {
     return this.db.transaction(async (db) => {
       const document = await lockDocumentForEdit(db, id)
       if (!document) throw new NotFoundException('Document not found')
-      if (!['needs_review', 'approved', 'failed'].includes(document.status)) {
+      if (!canPerform('reject', document.status)) {
         throw new ConflictException(`A document with status ${document.status} cannot be rejected`)
       }
 
@@ -628,7 +629,7 @@ export class DocumentsService {
       const row = await lockDocumentForEdit(db, id)
 
       if (!row) throw new NotFoundException('Document not found')
-      if (['received', 'processing', 'exported'].includes(row.status))
+      if (!canPerform('changeType', row.status))
         throw new ConflictException(`A document with status ${row.status} cannot change type`)
 
       const [{ pagesCount }] = await db
@@ -814,7 +815,7 @@ export class DocumentsService {
       if (!row) throw new NotFoundException('Document not found')
       if (!row.storageKey)
         throw new BadRequestException('The original was not stored. Upload a smaller file')
-      if (['received', 'processing', 'exported'].includes(row.status)) {
+      if (!canPerform('reprocess', row.status)) {
         throw new BadRequestException(`A document with status ${row.status} cannot be reprocessed`)
       }
 

@@ -93,7 +93,7 @@ returns 409 when the session-lock wait hits `statement_timeout`, and still serve
 a query from the same pool meanwhile. **Not yet verified:** `explain analyze` for
 the two audit queries on a populated table.
 
-## 3. Separate reads from writes on a document — implemented, verification pending
+## 3. Separate reads from writes on a document — done 2026-09-23
 
 Primary files: `apps/api/src/documents/documents.service.ts`.
 
@@ -122,6 +122,11 @@ before returning.
 **Done when:** the existing HTTP tests pass unmodified, plus a check that
 concurrent reads do not block a mutation.
 
+**Verified:** commit `426559a` passed CI with 188 tests, 0 skipped. The new check
+holds `FOR UPDATE` on a document in another transaction and gets the detail back
+in 48 ms; the same read leaves a missing schema binding alone and a reject then
+repairs it.
+
 ## 4. Split DocumentsService (after 3 and 5)
 
 Primary files: `apps/api/src/documents/documents.service.ts` (902 lines, five
@@ -136,7 +141,7 @@ file and thumbnail delivery, review metrics).
 **Done when:** the same HTTP tests pass and each service owns exactly one of the
 responsibilities above. Line count is a symptom, not the criterion.
 
-## 5. Operator actions in one table
+## 5. Operator actions in one table — implemented, verification pending
 
 Primary files: `packages/shared` (new module), `apps/api/src/documents`,
 `apps/api/src/runs/runs.service.ts`, `apps/api/src/export/export.service.ts`,
@@ -157,12 +162,28 @@ a worker result is stale (`workflow.ts`), whether validation may route a documen
 (`validation-runner.service.ts`), and which statuses count as in flight in the
 inbox (`IN_FLIGHT`).
 
-- [ ] `DOCUMENT_ACTIONS: Record<DocumentAction, readonly DocumentStatus[]>` and a
-      `canPerform(action, status)` predicate in `@docflow/shared`, covering operator
-      actions only.
-- [ ] Named predicates for the remaining checks (`isInFlight`, and one for "no
-      further routing"), in the same module.
-- [ ] Replace all 13 literal checks, the client ones included.
+- [x] `DOCUMENT_ACTIONS` and `canPerform(action, status)` in
+      `packages/shared/src/document-actions.ts`, covering operator actions only:
+      editField, reject, approve, changeType, reprocess, export, retryRun,
+      sendToManual. Lists are positive (allowed statuses), so a new status is
+      disallowed until someone adds it.
+- [x] Named predicates `isInFlight` and `isRoutable` in the same module.
+- [x] Replace all 13 literal checks, the client ones included, plus the
+      single-comparison copies of the same rules (`approve`, `canApprove`, the
+      review page's `processing` flag and export panel).
+
+Replacing the client lists exposed three places where server and UI disagreed;
+the UI now follows the server, whose behaviour is unchanged:
+
+- The type selector was disabled for `rejected` documents, which the server allows
+  to change type (as it allows reprocess). It is now enabled.
+- Retry and "Send to manual review" on the Execution Log ignored document status
+  and relied on a 400 from the server. They are now disabled when the server would
+  refuse.
+- Still open: original replacement. The UI allows it in the `editField` statuses;
+  the server refuses only `exported` and `processing`, so it also accepts
+  `received` and `rejected`. It is not in the table because which side is right is
+  a product decision, not a refactor.
 
 Status is not the whole condition. The client also disables actions while an export
 is reserved; the server enforces the same rule through `processingStep === 'export'`

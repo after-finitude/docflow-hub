@@ -9,6 +9,7 @@ import {
   SOURCE_TYPES,
   SOURCE_TYPE_LABELS,
   WORKFLOW_STEP_LABELS,
+  isInFlight,
   type DocumentListItem,
   type DocumentListPage,
   type DocumentStatus,
@@ -37,9 +38,6 @@ const EMPTY_FILTERS: Filters = {
   receivedTo: '',
   hasBlocking: false,
 }
-
-/** Statuses in which a document is still changing, used by the progress indicator. */
-const IN_FLIGHT: DocumentStatus[] = ['received', 'processing']
 
 /** Status badge tone. Text duplicates the color so color is not the only signal. */
 const STATUS_TONE: Record<DocumentStatus, string> = {
@@ -298,7 +296,7 @@ function StatusCell({ item }: { item: DocumentListItem }) {
           {item.statusReason}
         </div>
       )}
-      {IN_FLIGHT.includes(item.status) && <StepProgress current={item.currentStep} />}
+      {isInFlight(item.status) && <StepProgress current={item.currentStep} />}
     </div>
   )
 }

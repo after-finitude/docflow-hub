@@ -3,6 +3,7 @@
 import {
   ALL_WORKFLOW_STEPS,
   DOCUMENT_STATUS_LABELS,
+  canPerform,
   WORKFLOW_STATE_LABELS,
   WORKFLOW_STEP_LABELS,
   type RunListItem,
@@ -247,7 +248,11 @@ function Row({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={busy || !RETRYABLE.includes(run.step)}
+                disabled={
+                  busy ||
+                  !RETRYABLE.includes(run.step) ||
+                  !canPerform('retryRun', run.documentStatus)
+                }
                 title={
                   RETRYABLE.includes(run.step)
                     ? undefined
@@ -260,7 +265,7 @@ function Row({
               </button>
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || !canPerform('sendToManual', run.documentStatus)}
                 onClick={() => onAct(run, 'manual')}
                 className="btn btn--ghost btn--sm"
               >

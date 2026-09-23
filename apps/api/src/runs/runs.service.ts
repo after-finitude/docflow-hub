@@ -11,6 +11,7 @@ import {
   type Database,
 } from '@docflow/core'
 import {
+  canPerform,
   type DeadLetterDto,
   type RunListItem,
   type RunListPage,
@@ -128,10 +129,7 @@ export class RunsService {
             : `Stage ${run.step} cannot be retried`,
         )
       }
-      if (
-        run.state !== 'failed' ||
-        ['received', 'processing', 'exported'].includes(document.status)
-      ) {
+      if (run.state !== 'failed' || !canPerform('retryRun', document.status)) {
         throw new BadRequestException(
           'Only a failed stage of an idle, unexported document can be retried',
         )
@@ -202,7 +200,7 @@ export class RunsService {
       if (!document.storageKey)
         throw new BadRequestException('The original was not stored. Upload a smaller file')
       const run = await this.findRun(runId, db)
-      if (['approved', 'exported', 'rejected'].includes(document.status)) {
+      if (!canPerform('sendToManual', document.status)) {
         throw new BadRequestException('A decided document cannot be sent to manual review')
       }
 

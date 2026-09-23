@@ -22,6 +22,7 @@ import {
 } from '@docflow/core'
 import {
   buildCanonicalDocument,
+  canPerform,
   exportSettingsSchema,
   type ExportSettings,
   type CanonicalInputField,
@@ -204,7 +205,7 @@ export class ExportService {
         )
       }
       if (record?.status === 'succeeded') return { record, runId: null, status: document.status }
-      if (!['approved', 'exported'].includes(document.status)) {
+      if (!canPerform('export', document.status)) {
         throw new BadRequestException(
           `Only an approved document can be exported (current status: ${document.status})`,
         )
