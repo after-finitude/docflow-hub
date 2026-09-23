@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+  # Deploy calls this workflow as its gate, so pushes to main are not a trigger
+  # here: they would run the same checks a second time.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A reusable call runs under the calling workflow's name, so a later push to
+  # main cannot cancel the gate its own deployment is waiting on.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # scripts/validation-api.test.mjs creates and drops its own randomly named
+      # database, so this login must be allowed to CREATE DATABASE.
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      # Enables the audit-immutability subtest against the real application role.
+      TEST_APP_DB_PASSWORD: docflow_app_ci
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      # document-inspector shells out to qpdf. Without it every valid PDF reports
+      # "PDF inspection unavailable" and the preprocessing checks fail.
+      - name: Install qpdf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qpdf
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Compose creates this role in docker/postgres/init/01-app-role.sh; the
+      # test database is migrated by the owner, and 0001 grants it from there.
+      - name: Create the application database role
+        run: |
+          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE docflow_app LOGIN PASSWORD '$TEST_APP_DB_PASSWORD'"
+
+      - name: Build
+        run: npm run build
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format
+        run: npm run format:check
+
+      - name: Test
+        run: npm test
+
+      # next build is the only type check for apps/web (TypeScript 7 constraint).
+      - name: Build web
+        run: npm run build -w @docflow/web

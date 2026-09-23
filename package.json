@@ -24,6 +24,7 @@
     "test:integration": "tsc -b && node --test scripts/validation-api.test.mjs",
     "verify": "bash scripts/verify.sh",
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "db:generate": "npm run db:generate -w @docflow/core",
     "db:migrate": "npm run db:migrate -w @docflow/core",
     "db:seed": "npm run db:seed -w @docflow/core",
