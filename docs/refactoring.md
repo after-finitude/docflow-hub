@@ -208,7 +208,7 @@ written out by hand outside the new module.
 **Verified:** commit `f5f498f` passed CI with 191 tests, 0 skipped, including the
 per-status matrix test and the unchanged conflict-status integration checks.
 
-## 6. Shared pipeline failure handling — implemented, verification pending
+## 6. Shared pipeline failure handling — done 2026-09-23
 
 Primary files: `apps/worker/src/*/**.processor.ts`, `packages/core/src/db/workflow.ts`.
 
@@ -239,10 +239,13 @@ returns early; nothing exercised the rule itself. A new PostgreSQL check calls
 document `processing` with no dead letter; exhausted attempts and an
 `UnrecoverableError` both set `failed` with the stage's reason and one dead letter.
 
+**Verified:** commit `8d86bb5` passed CI with 192 tests, 0 skipped, including the
+new failure-rule check.
+
 **Done when:** `extraction.test.mjs` and the five-stage pipeline check pass without
 changes to the tests, and the dead-letter rule exists in one place.
 
-## 7. Web data layer and live updates
+## 7. Web data layer and live updates — implemented, verification pending
 
 Primary files: `apps/web/lib`, `apps/web/app/inbox/inbox-client.tsx`,
 `apps/web/app/runs/runs-client.tsx`, `apps/web/app/documents/[id]/review-workspace.tsx`.
@@ -255,12 +258,37 @@ every two seconds instead — the polling that makes the stage 3 lock hurt. In
 change tears down and recreates the connection, and once the polling fallback
 engages there is no path back to SSE.
 
-- [ ] One `EventSource` in the layout, distributed through context; drop the
-      two-second polling from the document page.
-- [ ] `lib/client.ts` with `apiCall<T>()` — one place for error text and parsing.
-- [ ] Break up `review-workspace.tsx` (744 lines) into `DocumentActions`,
-      `FieldsPanel`, `ExportPanel` — only alongside other changes to that file;
-      on its own it is churn.
+- [x] One `EventSource` for the app: `EventStreamProvider` in the root layout and
+      `useStreamEvents(listener)` in `apps/web/lib/events.tsx`. It opens only while
+      something listens (the login page never connects), survives client
+      navigation, and reconnects every 5 s after the server refuses it — the
+      browser does not retry a non-200 stream itself.
+- [x] The document page reloads on its own stream events while processing. The
+      two-second polling could not simply go: spec 5.1 requires a polling fallback,
+      so it now runs only while the stream is down, and a failed reload is retried
+      either way. The inbox loads on filter change and on (re)connect, and polls
+      every 5 s only while the stream is down; a filter change no longer touches
+      the connection.
+- [x] `apiCall<T>()` in `apps/web/lib/client.ts` for the JSON calls in the review
+      page, inbox and Execution Log. Login, logout, upload and the JSON download
+      keep their own `fetch`: cookies and redirects, form data, and a blob.
+- [x] `review-workspace.tsx` 749 → 556 lines: `ExportPanel`, `RejectForm` and
+      `ReplaceFileButton`, already separate components, moved to their own files.
+      `FieldsPanel` and `DocumentActions` were not extracted; they share most of
+      the page state and would only move it into props.
+
+`review-refresh.test.mjs` is not part of `npm test` or CI — it starts `next dev`
+and a local Chrome — so it has to be run by hand (`npm run test:review`). Its fake
+API refused the stream, so it covered only the polling path; it now also serves a
+live stream and checks that the review page makes no reads for 2.5 s while live,
+updates on an emitted event, and that inbox filter changes keep one connection.
+
+Running it showed it had been failing before this stage, on two test races
+unrelated to the stream: after "Show in document" it sampled the image before the
+viewer's page-switch effect ran, and after saving a table it sampled Approve one
+render before the dirty flag cleared. Both now wait for the expected state rather
+than sampling it. The fake stream also had to send Nest's SSE headers
+(`no-transform`); without them the Next dev proxy did not deliver events.
 
 **Done when:** `review-refresh.test.mjs` passes; changing an inbox filter does not
 drop the event stream; document status updates without polling.

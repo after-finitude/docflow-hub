@@ -11,6 +11,7 @@ import {
   type WorkflowState,
   type WorkflowStep,
 } from '@docflow/shared'
+import { apiCall } from '@/lib/client'
 import Link from 'next/link'
 import { useCallback, useState } from 'react'
 
@@ -47,26 +48,25 @@ export function RunsClient({ initial }: { initial: RunListPage }) {
     if (current.to) params.set('to', new Date(current.to).toISOString())
     params.set('page', String(page))
 
-    try {
-      const response = await fetch(`/api/runs?${params.toString()}`)
-      if (!response.ok) {
-        setError('Could not load the execution log')
-        return
-      }
-      setData((await response.json()) as RunListPage)
-      setError(null)
-    } catch {
-      setError('Service unavailable')
+    const result = await apiCall<RunListPage>(
+      `/runs?${params.toString()}`,
+      {},
+      'Could not load the execution log',
+    )
+    if (!result.ok) {
+      setError(result.message)
+      return
     }
+    setData(result.data)
+    setError(null)
   }, [])
 
   async function act(run: RunListItem, action: 'retry' | 'manual') {
     setBusy(run.id)
     try {
-      const response = await fetch(`/api/runs/${run.id}/${action}`, { method: 'POST' })
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as { message?: string } | null
-        setError(body?.message ?? 'Action failed')
+      const result = await apiCall(`/runs/${run.id}/${action}`, { method: 'POST' }, 'Action failed')
+      if (!result.ok) {
+        setError(result.message)
         return
       }
       setError(null)

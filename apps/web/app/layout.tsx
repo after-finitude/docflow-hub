@@ -6,6 +6,7 @@ import '@fontsource-variable/inter'
 import '@fontsource-variable/space-grotesk'
 import '@fontsource-variable/jetbrains-mono'
 import './globals.css'
+import { EventStreamProvider } from '@/lib/events'
 
 export const metadata: Metadata = {
   title: 'Docflow Hub',
@@ -15,7 +16,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ru">
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className="min-h-screen antialiased">
+        <EventStreamProvider>{children}</EventStreamProvider>
+      </body>
     </html>
   )
 }

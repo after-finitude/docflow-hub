@@ -1,21 +1,15 @@
 'use client'
 
 import {
-  ACCEPTED_MIME_TYPES,
   CLASSIFIABLE_DOCUMENT_TYPES,
   canPerform,
   isInFlight,
   DOCUMENT_STATUS_LABELS,
   DOCUMENT_TYPE_LABELS,
-  EXPORT_DESTINATIONS,
-  GOOGLE_WORKSPACE_ENABLED,
-  EXPORT_DESTINATION_LABELS,
   FIELD_FILTERS,
   fieldConfidenceThreshold,
   FIELD_FILTER_LABELS,
   WORKFLOW_STEP_LABELS,
-  REJECT_REASONS,
-  REJECT_REASON_LABELS,
   type ClassifiableDocumentType,
   type DocumentDetail,
   type ExportDestination,
@@ -26,14 +20,19 @@ import {
   type TableValue,
   type RejectReason,
 } from '@docflow/shared'
+import { apiCall } from '@/lib/client'
+import { useStreamEvents } from '@/lib/events'
 import { uploadFile } from '../../../lib/upload-file'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { DocumentViewer, type SourceHighlight } from './document-viewer'
 import { FieldCard } from './field-card'
 import { LineItemsEditor } from './line-items-editor'
 import { TransactionsEditor } from './transactions-editor'
+import { ExportPanel } from './export-panel'
+import { RejectForm } from './reject-form'
+import { ReplaceFileButton } from './replace-file-button'
 
 export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
   const router = useRouter()
@@ -54,38 +53,39 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
 
   useEffect(() => {
     if (document.status === 'needs_review') {
-      void fetch(`/api/documents/${document.id}/review-opened`, { method: 'POST' }).catch(() => {})
+      void apiCall(`/documents/${document.id}/review-opened`, { method: 'POST' })
     }
   }, [document.id, document.status])
+
+  // While processing, follow the document: reload on its stream events, or poll
+  // every two seconds while the stream is down (spec 5.1). A failed reload is
+  // retried either way. Once processing ends, reloads stop so edits are kept.
+  const [changes, setChanges] = useState(0)
+  const live = useStreamEvents((event) => {
+    if (processing && event.type === 'document' && event.documentId === document.id)
+      setChanges((count) => count + 1)
+  })
 
   useEffect(() => {
     if (!processing) return
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout>
     async function refresh() {
-      try {
-        const response = await fetch(`/api/documents/${document.id}`, {
-          cache: 'no-store',
-          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
-        })
-        if (!response.ok) throw new Error('Refresh failed')
-        const updated = (await response.json()) as DocumentDetail
-        if (!controller.signal.aborted) {
-          setDocument(updated)
-          setRefreshFailed(false)
-        }
-      } catch {
-        if (!controller.signal.aborted) setRefreshFailed(true)
-      } finally {
-        if (!controller.signal.aborted) timer = setTimeout(() => void refresh(), 2000)
-      }
+      const result = await apiCall<DocumentDetail>(`/documents/${document.id}`, {
+        cache: 'no-store',
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
+      })
+      if (controller.signal.aborted) return
+      if (result.ok) setDocument(result.data)
+      setRefreshFailed(!result.ok)
+      if (!live || !result.ok) timer = setTimeout(() => void refresh(), 2000)
     }
     void refresh()
     return () => {
       controller.abort()
       clearTimeout(timer)
     }
-  }, [document.id, processing])
+  }, [document.id, processing, live, changes])
 
   const exportReserved = document.exports.some(
     (item) => item.status === 'pending' || item.status === 'failed',
@@ -149,30 +149,20 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
     }
     setBusy(true)
     setError(null)
-    try {
-      const response = await fetch(path, {
-        headers: { 'Content-Type': 'application/json' },
-        ...init,
-      })
-      if (!response.ok) {
-        const detail = (await response.json().catch(() => null)) as { message?: string } | null
-        setError(detail?.message ?? `Error ${response.status}`)
-        return false
-      }
-      // Every response contains the latest document, updated issues,
-      // and current Approve availability (spec 5.2).
-      setDocument((await response.json()) as DocumentDetail)
-      return true
-    } catch {
-      setError('Service unavailable')
+    const result = await apiCall<DocumentDetail>(path, init)
+    setBusy(false)
+    if (!result.ok) {
+      setError(result.message)
       return false
-    } finally {
-      setBusy(false)
     }
+    // Every response contains the latest document, updated issues,
+    // and current Approve availability (spec 5.2).
+    setDocument(result.data)
+    return true
   }
 
   const saveField = (name: string) => async (value: string | null) => {
-    await call(`/api/documents/${document.id}/fields/${encodeURIComponent(name)}`, {
+    await call(`/documents/${document.id}/fields/${encodeURIComponent(name)}`, {
       method: 'PATCH',
       body: JSON.stringify({ value }),
     })
@@ -180,7 +170,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
 
   async function saveTable(items: TableValue) {
     if (!lineItemsField) return false
-    const saved = await call(`/api/documents/${document.id}/fields/${lineItemsField.name}`, {
+    const saved = await call(`/documents/${document.id}/fields/${lineItemsField.name}`, {
       method: 'PATCH',
       body: JSON.stringify({ value: items }),
     })
@@ -189,7 +179,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
   }
 
   async function changeType(type: ClassifiableDocumentType) {
-    await call(`/api/documents/${document.id}/type`, {
+    await call(`/documents/${document.id}/type`, {
       method: 'POST',
       body: JSON.stringify({ type }),
     })
@@ -207,17 +197,15 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
     setBusy(true)
     setError(null)
     try {
-      const response = await fetch(`/api/documents/${document.id}/export`, {
+      const exported = await apiCall<ExportDto>(`/documents/${document.id}/export`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ destination, exportKey }),
       })
-      if (!response.ok) {
-        const detail = (await response.json().catch(() => null)) as { message?: string } | null
-        setError(detail?.message ?? `Error ${response.status}`)
+      if (!exported.ok) {
+        setError(exported.message)
         return
       }
-      const result = (await response.json()) as ExportDto
+      const result = exported.data
       if (result.status === 'failed') {
         setError(`Export failed (${result.errorCode}). You can retry it`)
       }
@@ -233,10 +221,8 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
       setError(cause instanceof Error ? cause.message : 'Service unavailable')
     } finally {
       // A lost response may still have left a saved Pending export to retry.
-      const refreshed = await fetch(`/api/documents/${document.id}`)
-        .then((response) => (response.ok ? (response.json() as Promise<DocumentDetail>) : null))
-        .catch(() => null)
-      if (refreshed) setDocument(refreshed)
+      const refreshed = await apiCall<DocumentDetail>(`/documents/${document.id}`)
+      if (refreshed.ok) setDocument(refreshed.data)
       setBusy(false)
     }
   }
@@ -270,7 +256,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
 
   async function reject(reason: RejectReason, comment: string) {
     if (
-      await call(`/api/documents/${document.id}/reject`, {
+      await call(`/documents/${document.id}/reject`, {
         method: 'POST',
         body: JSON.stringify({ reason, comment: comment || undefined }),
       })
@@ -418,9 +404,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                 title={
                   document.blockingIssues > 0 ? 'There are unresolved blocking issues' : undefined
                 }
-                onClick={() =>
-                  void call(`/api/documents/${document.id}/approve`, { method: 'POST' })
-                }
+                onClick={() => void call(`/documents/${document.id}/approve`, { method: 'POST' })}
                 className="btn btn--primary"
               >
                 Approve
@@ -443,9 +427,7 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
                   !document.hasOriginal ||
                   !canPerform('reprocess', document.status)
                 }
-                onClick={() =>
-                  void call(`/api/documents/${document.id}/reprocess`, { method: 'POST' })
-                }
+                onClick={() => void call(`/documents/${document.id}/reprocess`, { method: 'POST' })}
                 className="btn btn--ghost"
               >
                 Reprocess
@@ -565,181 +547,6 @@ export function ReviewWorkspace({ initial }: { initial: DocumentDetail }) {
         </section>
       </div>
     </main>
-  )
-}
-
-function ExportPanel({
-  exports,
-  busy,
-  onExport,
-  onDownload,
-}: {
-  exports: ExportDto[]
-  busy: boolean
-  onExport: (destination: ExportDestination, exportKey?: string) => void
-  onDownload: (exportId: string) => void
-}) {
-  return (
-    <div className="mt-4 border-t border-rule pt-3">
-      <h3 className="mono text-2xs tracking-[0.06em] text-muted uppercase">Export</h3>
-
-      {exports.map((item) => (
-        <p key={item.id} className="mt-1.5 text-xs">
-          <span className="text-ink-2">{EXPORT_DESTINATION_LABELS[item.destination]}</span>{' '}
-          {item.status === 'succeeded' ? (
-            <>
-              <span className="text-ok">completed {formatWhen(item.exportedAt)}</span>
-              {item.destination === 'file_json' && (
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--sm ml-2"
-                  disabled={busy}
-                  onClick={() => onDownload(item.id)}
-                >
-                  Download JSON
-                </button>
-              )}
-            </>
-          ) : item.status === 'failed' ? (
-            <span className="text-danger">
-              failed (<span className="mono">{item.errorCode}</span>), attempts {item.attempts}
-            </span>
-          ) : (
-            <span className="text-muted">pending</span>
-          )}
-          {item.status !== 'succeeded' && (
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm ml-2"
-              disabled={busy || (item.destination === 'google_sheets' && !GOOGLE_WORKSPACE_ENABLED)}
-              title={
-                item.destination === 'google_sheets' && !GOOGLE_WORKSPACE_ENABLED
-                  ? 'Google Sheets is temporarily disabled'
-                  : undefined
-              }
-              onClick={() => onExport(item.destination, item.exportKey)}
-            >
-              Retry export
-            </button>
-          )}
-        </p>
-      ))}
-
-      <div className="mt-2 flex flex-wrap gap-2">
-        {EXPORT_DESTINATIONS.map((destination) => {
-          if (exports.some((item) => item.destination === destination)) return null
-          return (
-            <button
-              key={destination}
-              type="button"
-              disabled={busy || (destination === 'google_sheets' && !GOOGLE_WORKSPACE_ENABLED)}
-              onClick={() => onExport(destination)}
-              className="btn btn--ghost btn--sm"
-            >
-              Export to {EXPORT_DESTINATION_LABELS[destination]}
-              {destination === 'google_sheets' && !GOOGLE_WORKSPACE_ENABLED
-                ? ' (temporarily disabled)'
-                : ''}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function formatWhen(iso: string | null): string {
-  return iso
-    ? new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
-    : ''
-}
-
-/**
- * Original replacement uses a hidden input because the native file picker
- * button does not match the other panel actions.
- */
-function ReplaceFileButton({
-  disabled,
-  onSelect,
-}: {
-  disabled: boolean
-  onSelect: (file: File) => void | Promise<void>
-}) {
-  const input = useRef<HTMLInputElement>(null)
-
-  return (
-    <>
-      <input
-        ref={input}
-        type="file"
-        accept={ACCEPTED_MIME_TYPES.join(',')}
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0]
-          // Clear the value so selecting the same file again triggers change.
-          event.target.value = ''
-          if (file) void onSelect(file)
-        }}
-      />
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => input.current?.click()}
-        title="Upload a different file: this creates a new document version"
-        className="btn btn--ghost"
-      >
-        Replace file
-      </button>
-    </>
-  )
-}
-
-function RejectForm({
-  onCancel,
-  onSubmit,
-}: {
-  onCancel: () => void
-  onSubmit: (reason: RejectReason, comment: string) => Promise<void>
-}) {
-  const [reason, setReason] = useState<RejectReason>(REJECT_REASONS[0])
-  const [comment, setComment] = useState('')
-
-  return (
-    <div className="mt-3 rounded-[6px] border border-rule bg-paper-2 p-3">
-      <label className="block">
-        <span className="label mb-1">Rejection reason</span>
-        <select
-          className="field"
-          value={reason}
-          onChange={(event) => setReason(event.target.value as RejectReason)}
-        >
-          {REJECT_REASONS.map((option) => (
-            <option key={option} value={option}>
-              {REJECT_REASON_LABELS[option]}
-            </option>
-          ))}
-        </select>
-      </label>
-      <textarea
-        className="field mt-2"
-        rows={2}
-        placeholder="Comment (optional)"
-        value={comment}
-        onChange={(event) => setComment(event.target.value)}
-      />
-      <div className="mt-2 flex gap-2">
-        <button
-          type="button"
-          onClick={() => void onSubmit(reason, comment)}
-          className="btn btn--danger btn--sm"
-        >
-          Reject document
-        </button>
-        <button type="button" onClick={onCancel} className="btn btn--ghost btn--sm">
-          Cancel
-        </button>
-      </div>
-    </div>
   )
 }
 

@@ -15,10 +15,11 @@ import {
   type DocumentStatus,
   type DocumentType,
   type SourceType,
-  type StreamEvent,
 } from '@docflow/shared'
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { apiCall } from '@/lib/client'
+import { useStreamEvents } from '@/lib/events'
 import { Uploader } from './uploader'
 
 interface Filters {
@@ -53,7 +54,6 @@ const STATUS_TONE: Record<DocumentStatus, string> = {
 export function InboxClient({ initial }: { initial: DocumentListPage }) {
   const [data, setData] = useState(initial)
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
-  const [live, setLive] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [timeZone, setTimeZone] = useState('UTC')
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -78,17 +78,17 @@ export function InboxClient({ initial }: { initial: DocumentListPage }) {
 
   const load = useCallback(
     async (current: Filters, page = 1) => {
-      try {
-        const response = await fetch(`/api/documents?${buildQuery(current, page)}`)
-        if (!response.ok) {
-          setError('Could not refresh the list')
-          return
-        }
-        setData((await response.json()) as DocumentListPage)
-        setError(null)
-      } catch {
-        setError('Service unavailable')
+      const result = await apiCall<DocumentListPage>(
+        `/documents?${buildQuery(current, page)}`,
+        {},
+        'Could not refresh the list',
+      )
+      if (!result.ok) {
+        setError(result.message)
+        return
       }
+      setData(result.data)
+      setError(null)
     },
     [buildQuery],
   )
@@ -102,36 +102,29 @@ export function InboxClient({ initial }: { initial: DocumentListPage }) {
     }, 400)
   }, [filters, load])
 
-  useEffect(() => {
-    let pollTimer: ReturnType<typeof setInterval> | null = null
-    const source = new EventSource('/api/events/stream')
+  const live = useStreamEvents((event) => {
+    if (event.type === 'document') scheduleReload()
+  })
 
-    source.addEventListener('open', () => setLive(true))
-    source.addEventListener('message', (message) => {
-      const event = JSON.parse(message.data as string) as StreamEvent
-      if (event.type === 'document') scheduleReload()
-    })
-    // Fall back to polling every five seconds as required by spec 5.1.
-    source.addEventListener('error', () => {
-      setLive(false)
-      source.close()
-      if (!pollTimer) pollTimer = setInterval(() => void load(filters), 5000)
-    })
-
-    return () => {
-      source.close()
-      if (pollTimer) clearInterval(pollTimer)
+  useEffect(
+    () => () => {
       if (pending.current) clearTimeout(pending.current)
-    }
-  }, [filters, load, scheduleReload])
+    },
+    [],
+  )
 
-  function applyFilters(next: Filters) {
-    setFilters(next)
-    void load(next)
-  }
+  // Load on a filter change and when the stream goes live, which catches events
+  // missed while connecting. Without the stream, poll every five seconds
+  // (spec 5.1). The stream itself outlives filter changes.
+  useEffect(() => {
+    void load(filters)
+    if (live) return
+    const timer = setInterval(() => void load(filters), 5000)
+    return () => clearInterval(timer)
+  }, [live, filters, load])
 
   async function retry(id: string) {
-    await fetch(`/api/documents/${id}/reprocess`, { method: 'POST' })
+    await apiCall(`/documents/${id}/reprocess`, { method: 'POST' })
     void load(filters)
   }
 
@@ -139,7 +132,7 @@ export function InboxClient({ initial }: { initial: DocumentListPage }) {
     <div className="space-y-4">
       <Uploader onUploaded={() => void load(filters)} />
 
-      <FilterBar filters={filters} onChange={applyFilters} />
+      <FilterBar filters={filters} onChange={setFilters} />
 
       <div className="flex items-center justify-between gap-4 text-xs">
         <span className="text-muted">

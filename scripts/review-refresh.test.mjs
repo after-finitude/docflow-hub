@@ -61,6 +61,11 @@ const fixture = (id, status, value = '100') => ({
         ],
 })
 
+async function until(check, what) {
+  for (let i = 0; i < 100 && !check(); i++) await delay(100)
+  assert.ok(check(), what)
+}
+
 async function listen(server) {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   return server.address().port
@@ -86,6 +91,13 @@ test(
       failSave = false
     const opened = [],
       requests = []
+    // The stream is refused (polling fallback) until the live-stream section.
+    let streamLive = false,
+      streamConnections = 0
+    const streams = new Set()
+    const emit = (event) => {
+      for (const stream of streams) stream.write(`data: ${JSON.stringify(event)}\n\n`)
+    }
     let holdPageTwo,
       releasePageTwo,
       failPageTwo = false
@@ -99,7 +111,21 @@ test(
       if (path === '/auth/me') return json({ id: 'test', login: 'operator', role: 'operator' })
       if (request.method === 'GET' && path === '/documents')
         return json({ items: [current], total: 1, page: 1, pageSize: 20 })
-      if (path === '/events/stream') return json({}, 503)
+      if (path === '/events/stream') {
+        if (!streamLive) return json({}, 503)
+        streamConnections++
+        // Nest's SSE headers; without no-transform the Next proxy may buffer the body.
+        response.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          Connection: 'keep-alive',
+          'Cache-Control': 'private, no-cache, no-store, must-revalidate, max-age=0, no-transform',
+          'X-Accel-Buffering': 'no',
+        })
+        response.write(': open\n\n')
+        streams.add(response)
+        request.on('close', () => streams.delete(response))
+        return
+      }
       const imagePage = path.match(/\/pages\/(\d+)\/image$/)?.[1]
       if (imagePage) {
         if (
@@ -312,7 +338,9 @@ test(
       releasePageTwo()
       holdPageTwo = undefined
       await page.getByRole('button', { name: 'Show in document (page 2)', exact: true }).click()
-      await mainImage.waitFor({ state: 'visible' })
+      // The viewer switches pages in an effect after this render; page 1 is still
+      // visible until then, so wait for the page-2 image rather than any image.
+      await page.locator('img[src*="/pages/2/image?width=1400"]').waitFor({ state: 'visible' })
       assert.match(await mainImage.getAttribute('src'), /\/pages\/2\/image/)
       assert.equal(
         await page.getByRole('button', { name: 'Source: grand_total' }).isVisible(),
@@ -384,7 +412,13 @@ test(
         await save.click()
         await save.waitFor({ state: 'hidden' })
         assert.equal(current.fields[0].normalizedValue[0].description, 'Corrected')
-        assert.equal(await approve.isEnabled(), true)
+        // The saved value remounts the editor (hiding Save) one render before the
+        // page clears its dirty flag, so wait for Approve instead of sampling it.
+        await page.waitForFunction(
+          () =>
+            [...document.querySelectorAll('button')].find((b) => b.textContent === 'Approve')
+              ?.disabled === false,
+        )
 
         current = { ...current, status: 'approved', canApprove: false }
         await page.reload()
@@ -397,6 +431,39 @@ test(
           false,
         )
       }
+      // Live stream: the review page reloads on its events instead of polling, and
+      // the inbox keeps one connection across filter changes.
+      streamLive = true
+      current = fixture('live', 'processing')
+      let connections = streamConnections
+      await page.goto(`${base}/documents/live`)
+      await processing()
+      await until(() => streamConnections === connections + 1, 'review page opened the stream')
+      await delay(1000)
+      const liveReads = reads
+      await delay(2500)
+      assert.equal(reads, liveReads, 'no polling while the stream is live')
+      current = fixture('live', 'needs_review', '200')
+      emit({
+        type: 'document',
+        documentId: 'live',
+        status: 'needs_review',
+        step: 'validation',
+        state: 'succeeded',
+        at: new Date().toISOString(),
+      })
+      await hasValue('200')
+
+      connections = streamConnections
+      await page.goto(`${base}/inbox`)
+      await page.getByText('Live updates', { exact: true }).waitFor()
+      assert.equal(streamConnections, connections + 1)
+      await page.getByRole('combobox', { name: 'Status' }).selectOption('needs_review')
+      await page.getByRole('combobox', { name: 'Status' }).selectOption('')
+      await delay(1000)
+      assert.equal(streamConnections, connections + 1, 'filter changes keep the stream')
+      await page.getByText('Live updates', { exact: true }).waitFor()
+
       assert.deepEqual(pageErrors, [])
     } catch (error) {
       t.diagnostic(logs)
