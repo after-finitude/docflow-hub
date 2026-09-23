@@ -8,7 +8,9 @@ import cookieParser from 'cookie-parser'
 import { ENV } from '@docflow/core'
 import { SESSION_COOKIE_NAME } from '@docflow/shared'
 import { DocumentsController } from '../apps/api/dist/documents/documents.controller.js'
-import { DocumentsService } from '../apps/api/dist/documents/documents.service.js'
+import { DocumentFilesService } from '../apps/api/dist/documents/document-files.service.js'
+import { DocumentLifecycleService } from '../apps/api/dist/documents/document-lifecycle.service.js'
+import { DocumentQueryService } from '../apps/api/dist/documents/document-query.service.js'
 import { PageRenderService } from '../apps/api/dist/documents/page-render.service.js'
 import { ExportService } from '../apps/api/dist/export/export.service.js'
 import { JwtAuthGuard } from '../apps/api/dist/auth/jwt-auth.guard.js'
@@ -59,7 +61,9 @@ test('JSON download uses the saved file, requires authentication, and checks doc
   Module({
     controllers: [DocumentsController],
     providers: [
-      { provide: DocumentsService, useValue: {} },
+      { provide: DocumentQueryService, useValue: {} },
+      { provide: DocumentLifecycleService, useValue: {} },
+      { provide: DocumentFilesService, useValue: {} },
       { provide: PageRenderService, useValue: {} },
       { provide: ExportService, useValue: service },
       { provide: ENV, useValue: {} },

@@ -7,14 +7,14 @@ import {
 } from '@nestjs/common'
 import type { AcceptedMimeType } from '@docflow/shared'
 import type { Response } from 'express'
-import { DocumentsService } from './documents.service'
+import { DocumentFilesService } from './document-files.service'
 import type { UploadRequest } from './uploaded-document'
 
 /** Multer retains its memory limit; only refusal metadata reaches the database. */
 @Catch(PayloadTooLargeException)
 export class OversizedUploadFilter implements ExceptionFilter {
   private readonly logger = new Logger(OversizedUploadFilter.name)
-  constructor(private readonly documents: DocumentsService) {}
+  constructor(private readonly documents: DocumentFilesService) {}
 
   async catch(error: PayloadTooLargeException, host: ArgumentsHost): Promise<void> {
     const request = host.switchToHttp().getRequest<UploadRequest>()

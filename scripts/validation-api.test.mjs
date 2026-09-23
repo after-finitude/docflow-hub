@@ -41,7 +41,9 @@ import {
   ValidationRunnerService,
 } from '@docflow/core'
 import { DocumentsController } from '../apps/api/dist/documents/documents.controller.js'
-import { DocumentsService } from '../apps/api/dist/documents/documents.service.js'
+import { DocumentFilesService } from '../apps/api/dist/documents/document-files.service.js'
+import { DocumentLifecycleService } from '../apps/api/dist/documents/document-lifecycle.service.js'
+import { DocumentQueryService } from '../apps/api/dist/documents/document-query.service.js'
 import { PageRenderService } from '../apps/api/dist/documents/page-render.service.js'
 import { FileJsonAdapter } from '../apps/api/dist/export/file-json.adapter.js'
 import { GoogleSheetsAdapter } from '../apps/api/dist/export/google-sheets.adapter.js'
@@ -213,7 +215,9 @@ test(
       events,
       queue,
     )
-    const service = new DocumentsService(db, {}, events, validation, ingest, exports, queue, queue)
+    const queries = new DocumentQueryService(db, exports)
+    const lifecycle = new DocumentLifecycleService(db, events, validation, queries, queue, queue)
+    const files = new DocumentFilesService(db, {}, ingest, queries)
     const runs = new RunsService(db, events, queue, queue, queue, queue, queue, validation)
     // eslint-disable-next-line typescript/no-extraneous-class -- Nest module metadata.
     class TestModule {}
@@ -227,7 +231,9 @@ test(
       providers: [
         OversizedUploadFilter,
         { provide: DB, useValue: db },
-        { provide: DocumentsService, useValue: service },
+        { provide: DocumentQueryService, useValue: queries },
+        { provide: DocumentLifecycleService, useValue: lifecycle },
+        { provide: DocumentFilesService, useValue: files },
         { provide: RunsService, useValue: runs },
         { provide: PageRenderService, useValue: {} },
         { provide: ExportService, useValue: exports },
@@ -342,7 +348,7 @@ test(
       'review timing is idempotent, actor/revision specific, and metrics are administrator-only',
       async () => {
         const id = await doc('needs_review')
-        await Promise.all([service.openReview(id, user, {}), service.openReview(id, user, {})])
+        await Promise.all([lifecycle.openReview(id, user, {}), lifecycle.openReview(id, user, {})])
         let logs = await db.select().from(auditEvents).where(eq(auditEvents.objectId, id))
         assert.equal(logs.filter((log) => log.action === 'document.review_opened').length, 1)
         assert.equal((await request(id, 'approve')).status, 201)
@@ -356,14 +362,14 @@ test(
           .values({ login: 'reviewer', passwordHash: 'test', role: 'operator' })
           .returning()
         const otherActor = await doc('needs_review')
-        await service.openReview(otherActor, other, {})
+        await lifecycle.openReview(otherActor, other, {})
         assert.equal((await request(otherActor, 'approve')).status, 201)
         const otherApproval = (
           await db.select().from(auditEvents).where(eq(auditEvents.objectId, otherActor))
         ).find((log) => log.action === 'document.approved')
         assert.equal(otherApproval.after.reviewDurationMs, null)
         const stale = await doc('needs_review')
-        await service.openReview(stale, user, {})
+        await lifecycle.openReview(stale, user, {})
         await db.update(documents).set({ processingRevision: 1 }).where(eq(documents.id, stale))
         assert.equal((await request(stale, 'approve')).status, 201)
         const staleApproval = (
@@ -653,7 +659,7 @@ test(
             detail.issues.some((issue) => issue.ruleId === 'ocr_quality'),
             false,
           )
-          const storedPages = await service.pages(id)
+          const storedPages = await queries.pages(id)
           assert.deepEqual(
             storedPages.map((page) => page.pageNumber),
             [1, 2, 3, 4, 5, 6],

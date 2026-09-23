@@ -127,21 +127,29 @@ holds `FOR UPDATE` on a document in another transaction and gets the detail back
 in 48 ms; the same read leaves a missing schema binding alone and a reject then
 repairs it.
 
-## 4. Split DocumentsService (after 3 and 5)
+## 4. Split DocumentsService — implemented, verification pending
 
 Primary files: `apps/api/src/documents/documents.service.ts` (902 lines, five
 responsibilities: list/detail, lifecycle transitions, upload and file replacement,
 file and thumbnail delivery, review metrics).
 
-- [ ] `DocumentLifecycleService` — approve, reject, changeType, reprocess, updateField.
-- [ ] `DocumentQueryService` — list, findOne, pages.
-- [ ] `DocumentFilesService` — upload, replaceFile, thumbnail, signedUrl.
-- [ ] Review metrics move out; the controller stays as it is.
+- [x] `DocumentLifecycleService` (450 lines) — approve, reject, changeType,
+      reprocess, updateField, plus openReview, which shares the review-opening
+      lookup with approve.
+- [x] `DocumentQueryService` (326 lines) — list, findOne, pages, and the
+      `readDetail` that mutations call under their lock.
+- [x] `DocumentFilesService` (165 lines) — upload, replaceFile, rejectOversized,
+      thumbnail, signedFileUrl, fileLocation.
+- [x] Review metrics moved to `DocumentQueryService`, as a read. Controller routes
+      are unchanged; it injects the three services instead of one.
+
+Lifecycle and files both depend on query, never the other way round. The test
+harness constructs the three services instead of one; no assertion changed.
 
 **Done when:** the same HTTP tests pass and each service owns exactly one of the
 responsibilities above. Line count is a symptom, not the criterion.
 
-## 5. Operator actions in one table — implemented, verification pending
+## 5. Operator actions in one table — done 2026-09-23
 
 Primary files: `packages/shared` (new module), `apps/api/src/documents`,
 `apps/api/src/runs/runs.service.ts`, `apps/api/src/export/export.service.ts`,
@@ -193,6 +201,9 @@ UI agree on status, and the export reservation remains a second, explicit input.
 **Done when:** a unit test covers the action table and the predicates, the
 conflict-status integration checks pass without edits, and no status list is
 written out by hand outside the new module.
+
+**Verified:** commit `f5f498f` passed CI with 191 tests, 0 skipped, including the
+per-status matrix test and the unchanged conflict-status integration checks.
 
 ## 6. Shared pipeline failure handling
 

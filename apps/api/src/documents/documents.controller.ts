@@ -46,7 +46,9 @@ import { ENV, type Env } from '@docflow/core'
 import { Inject } from '@nestjs/common'
 import { ZodValidationPipe } from '../common/zod-validation.pipe'
 import { CurrentUser, Origin, Roles, type RequestContext } from '../auth/decorators'
-import { DocumentsService } from './documents.service'
+import { DocumentFilesService } from './document-files.service'
+import { DocumentLifecycleService } from './document-lifecycle.service'
+import { DocumentQueryService } from './document-query.service'
 import { ExportService } from '../export/export.service'
 import { PageRenderService } from './page-render.service'
 import { OversizedUploadFilter } from './oversized-upload.filter'
@@ -80,7 +82,9 @@ const UPLOAD_INTERCEPTOR_OPTIONS = {
 @UseFilters(OversizedUploadFilter)
 export class DocumentsController {
   constructor(
-    private readonly documents: DocumentsService,
+    private readonly queries: DocumentQueryService,
+    private readonly lifecycle: DocumentLifecycleService,
+    private readonly files: DocumentFilesService,
     private readonly pageRender: PageRenderService,
     private readonly exports: ExportService,
     @Inject(ENV) private readonly env: Env,
@@ -92,7 +96,7 @@ export class DocumentsController {
     @Query(new ZodValidationPipe(reviewMetricsQuerySchema)) query: { since?: string },
   ) {
     return {
-      review: await this.documents.reviewMetrics(query.since),
+      review: await this.queries.reviewMetrics(query.since),
       providers: {
         ocr: this.env.OCR_PROVIDER ?? 'mock',
         ocrModel: this.env.OCR_PROVIDER === 'openrouter' ? this.env.OCR_MODEL : null,
@@ -113,7 +117,7 @@ export class DocumentsController {
     @CurrentUser() user: SessionUser,
     @Origin() origin: RequestContext,
   ): Promise<void> {
-    return this.documents.openReview(id, user, origin)
+    return this.lifecycle.openReview(id, user, origin)
   }
 
   @Post('oversized')
@@ -122,7 +126,7 @@ export class DocumentsController {
     @CurrentUser() user: SessionUser,
     @Origin() origin: RequestContext,
   ): Promise<DocumentListItem> {
-    return this.documents.rejectOversized(body, user, origin)
+    return this.files.rejectOversized(body, user, origin)
   }
 
   @Post()
@@ -133,7 +137,7 @@ export class DocumentsController {
     @Origin() origin: RequestContext,
   ): Promise<DocumentListItem> {
     if (!file) throw new BadRequestException('No file provided')
-    return this.documents.upload(file, user, origin)
+    return this.files.upload(file, user, origin)
   }
 
   /**
@@ -148,24 +152,24 @@ export class DocumentsController {
     @Origin() origin: RequestContext,
   ): Promise<DocumentListItem> {
     if (!file) throw new BadRequestException('No file provided')
-    return this.documents.replaceFile(id, file, user, origin)
+    return this.files.replaceFile(id, file, user, origin)
   }
 
   @Get()
   list(
     @Query(new ZodValidationPipe(documentListQuerySchema)) query: DocumentListQuery,
   ): Promise<DocumentListPage> {
-    return this.documents.list(query)
+    return this.queries.list(query)
   }
 
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string): Promise<DocumentDetail> {
-    return this.documents.findOne(id)
+    return this.queries.findOne(id)
   }
 
   @Get(':id/pages')
   pages(@Param('id', ParseUUIDPipe) id: string): Promise<DocumentPage[]> {
-    return this.documents.pages(id)
+    return this.queries.pages(id)
   }
 
   /**
@@ -175,7 +179,7 @@ export class DocumentsController {
    */
   @Get(':id/thumbnail')
   async thumbnail(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response): Promise<void> {
-    const stream = await this.documents.thumbnail(id)
+    const stream = await this.files.thumbnail(id)
     res.setHeader('Content-Type', 'image/png')
     res.setHeader('Cache-Control', 'private, max-age=300')
     // If storage reading fails after headers are sent, no valid error status
@@ -188,7 +192,7 @@ export class DocumentsController {
   @Get(':id/file')
   async file(@Param('id', ParseUUIDPipe) id: string): Promise<SignedFileLink> {
     return {
-      url: await this.documents.signedFileUrl(id),
+      url: await this.files.signedFileUrl(id),
       expiresInSeconds: this.env.SIGNED_URL_TTL_SECONDS,
     }
   }
@@ -201,7 +205,7 @@ export class DocumentsController {
     @Query('width') width: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
-    const location = await this.documents.fileLocation(id)
+    const location = await this.files.fileLocation(id)
     // Cap width so clients cannot request arbitrarily expensive renders.
     const targetWidth = Math.min(Math.max(Number(width) || 1200, 120), 2400)
     const png = await this.pageRender.render(
@@ -225,7 +229,7 @@ export class DocumentsController {
     @CurrentUser() user: SessionUser,
     @Origin() origin: RequestContext,
   ): Promise<DocumentDetail> {
-    return this.documents.updateField(id, name, body.value, user, origin)
+    return this.lifecycle.updateField(id, name, body.value, user, origin)
   }
 
   @Post(':id/approve')
@@ -234,7 +238,7 @@ export class DocumentsController {
     @CurrentUser() user: SessionUser,
     @Origin() origin: RequestContext,
   ): Promise<DocumentDetail> {
-    return this.documents.approve(id, user, origin)
+    return this.lifecycle.approve(id, user, origin)
   }
 
   @Post(':id/reject')
@@ -244,7 +248,7 @@ export class DocumentsController {
     @CurrentUser() user: SessionUser,
     @Origin() origin: RequestContext,
   ): Promise<DocumentDetail> {
-    return this.documents.reject(id, body, user, origin)
+    return this.lifecycle.reject(id, body, user, origin)
   }
 
   /** Manual type change restarting extraction with the new schema (spec 6.3). */
@@ -255,7 +259,7 @@ export class DocumentsController {
     @CurrentUser() user: SessionUser,
     @Origin() origin: RequestContext,
   ): Promise<DocumentDetail> {
-    return this.documents.changeType(id, body.type, user, origin)
+    return this.lifecycle.changeType(id, body.type, user, origin)
   }
 
   /** Export an approved document, idempotent by export_key (spec 6.8, §9). */
@@ -287,6 +291,6 @@ export class DocumentsController {
     @CurrentUser() user: SessionUser,
     @Origin() origin: RequestContext,
   ): Promise<DocumentDetail> {
-    return this.documents.reprocess(id, user, origin)
+    return this.lifecycle.reprocess(id, user, origin)
   }
 }
