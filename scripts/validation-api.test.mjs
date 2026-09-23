@@ -59,6 +59,7 @@ import { LlmInvalidResponseError } from '../apps/worker/dist/llm/llm-provider.js
 // migrated and dropped; the supplied database and its document data are untouched.
 const adminUrl = process.env.TEST_DATABASE_URL
 const deferred = () => Promise.withResolvers()
+const httpStatus = (code) => (error) => error.getStatus() === code
 const specs = [
   { name: 'name', label: 'Name', type: 'string', required: true, critical: true },
   { name: 'total', label: 'Total', type: 'number', required: true, critical: false },
@@ -822,7 +823,6 @@ test(
     await t.test(
       'an export needs one connection and stays within its limit and lock timeout',
       async () => {
-        const status = (code) => (error) => error.getStatus() === code
         let hold = null
         const limitedAdapters = [
           {
@@ -848,7 +848,7 @@ test(
           })
           opened.push(limited)
           const limitedDb = drizzle(limited)
-          const service = new ExportService(
+          const limitedService = new ExportService(
             limitedDb,
             limitedAdapters,
             events,
@@ -857,32 +857,32 @@ test(
             limited,
             { EXPORT_DEFAULT_DESTINATION: 'file_json', EXPORT_MAX_CONCURRENT: limit },
           )
-          return { limited, service }
+          return { limited, limitedService }
         }
         try {
           // The default destination is read over the export's own connection; a
           // second checkout would time out on a one-connection pool.
-          const single = exporter({ max: 1 }, 1).service
+          const single = exporter({ max: 1 }, 1).limitedService
           assert.equal(
             (await single.export(await doc('approved'), {}, user, {})).status,
             'succeeded',
           )
 
-          const { limited, service } = exporter({ max: 3, statement_timeout: 500 }, 2)
+          const { limited, limitedService } = exporter({ max: 3, statement_timeout: 500 }, 2)
           const id = await doc('approved')
           const other = await doc('approved')
           hold = { entered: deferred(), release: deferred() }
-          const sending = service.export(id, {}, user, {})
+          const sending = limitedService.export(id, {}, user, {})
           await hold.entered.promise
           // Waits for the session lock until statement_timeout cancels the wait.
-          const waiting = assert.rejects(service.export(id, {}, user, {}), status(409))
-          await assert.rejects(service.export(other, {}, user, {}), status(503))
+          const waiting = assert.rejects(limitedService.export(id, {}, user, {}), httpStatus(409))
+          await assert.rejects(limitedService.export(other, {}, user, {}), httpStatus(503))
           assert.equal((await limited.query('select 1 as ok')).rows[0].ok, 1)
           await waiting
           hold.release.resolve()
           assert.equal((await sending).status, 'succeeded')
           hold = null
-          assert.equal((await service.export(other, {}, user, {})).status, 'succeeded')
+          assert.equal((await limitedService.export(other, {}, user, {})).status, 'succeeded')
         } finally {
           hold?.release.resolve()
           await Promise.all(opened.map((limited) => limited.end()))

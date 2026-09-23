@@ -39,7 +39,7 @@ Formatting had drifted in 14 files because only `--write` had ever been run. Tha
 drift is now committed, and `output/` is in `.prettierignore` as a generated
 artifact.
 
-## 2. Connection pool, export deadlock and indexes — implemented, verification pending
+## 2. Connection pool, export deadlock and indexes — done 2026-09-23 except the query-plan check
 
 Primary files: `apps/api/src/export/export.service.ts`,
 `packages/core/src/db/db.module.ts`, `packages/core/src/db/schema.ts`,
@@ -85,6 +85,13 @@ transaction holding a row lock, on every review opening and every approval.
 unrelated requests hang; `explain analyze` shows index scans for both audit
 queries on a populated table; a contended export returns a defined status, not a
 500. Existing export idempotency checks pass unchanged.
+
+**Verified:** commit `dc2d34a` passed CI with 187 tests, 0 skipped. The new
+PostgreSQL check completes an export on a one-connection pool (without the fix
+the settings read needs a second checkout; not run against the old code), refuses an export over the limit with 503,
+returns 409 when the session-lock wait hits `statement_timeout`, and still serves
+a query from the same pool meanwhile. **Not yet verified:** `explain analyze` for
+the two audit queries on a populated table.
 
 ## 3. Separate reads from writes on a document
 
