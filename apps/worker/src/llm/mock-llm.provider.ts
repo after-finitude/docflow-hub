@@ -132,7 +132,7 @@ export class MockLlmProvider implements LlmProvider {
               /^([^\r\n]+?)\s+x(\d+(?:\.\d+)?)\s+(\d+\.\d{2})(?:[ \t]+(\d+\.\d{2}))?[ \t]*$/gm,
             )) {
               items.push({
-                description: match[1].trim(),
+                description: (match[1] ?? '').trim(),
                 quantity: Number(match[2]),
                 unit_price: Number(match[3]),
                 amount: match[4] === undefined ? null : Number(match[4]),

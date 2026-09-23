@@ -290,6 +290,10 @@ viewer's page-switch effect ran, and after saving a table it sampled Approve one
 render before the dirty flag cleared. Both now wait for the expected state rather
 than sampling it. The fake stream also had to send Nest's SSE headers
 (`no-transform`); without them the Next dev proxy did not deliver events.
+A third race surfaced during stage 9 (2 of 5 local runs): the pointer still
+rested on a field card from the previous click, so the next document's card
+rendered under it, received `mouseenter`, and opened the source page on its own.
+The test now moves the pointer away before navigating; 6 of 6 runs passed after.
 
 **Verified:** commit `eb36d12` passed CI with 192 tests and `next build`; the
 browser test passed twice locally before it, and runs in CI from the next commit.
@@ -297,7 +301,7 @@ browser test passed twice locally before it, and runs in CI from the next commit
 **Done when:** `review-refresh.test.mjs` passes; changing an inbox filter does not
 drop the event stream; document status updates without polling.
 
-## 8. Shared package bundle — implemented, verification pending
+## 8. Shared package bundle — done 2026-09-23
 
 Primary files: `packages/shared/package.json`, `packages/shared/src/index.ts`.
 
@@ -337,10 +341,13 @@ labels and thresholds.
 Result: all client JS 1 027 → 677 KB raw (−34 %), 271 → 209 KB gzip (−23 %); no
 client chunk contains zod any more.
 
+**Verified:** commit `d018f22` passed CI (192 tests, `next build`, browser test) and
+the web Docker image built on deploy, so the `exports` map resolves there too.
+
 **Done when:** the measurement is recorded here, and — if the change was made —
 `next build` succeeds and the client bundle is measurably smaller.
 
-## 9. `noUncheckedIndexedAccess` (optional)
+## 9. `noUncheckedIndexedAccess` — implemented, verification pending
 
 Primary files: `tsconfig.base.json`, every package.
 
@@ -349,7 +356,26 @@ but mechanical: `const [row] = await db.select(…)` is everywhere, including
 `const [{ pagesCount }] = …`, where an empty result throws a TypeError instead of
 a clear error.
 
-- [ ] Enable the flag and fix the resulting errors package by package.
+- [x] Enabled in `tsconfig.base.json` and in `apps/web/tsconfig.json`, which does
+      not extend the base. 63 errors, all in the backend; the web had none.
+- [x] Single-row statements (~30 errors): `single(rows, what)` in
+      `packages/core/src/db/rows.ts` returns the row or throws
+      `Expected a row from <what>, got none`. Used for `insert/update … returning`
+      on rows that must exist and for aggregates (`count(*)`, review metrics) —
+      document, run, schema-version and user inserts, and the five export-record
+      updates. Reads that may legitimately find nothing keep `const [row]` and
+      their existing `if (!row)` checks.
+- [x] `lockDocument` now honestly returns `T | undefined`. That exposed the export
+      failure path publishing `document?.status`; it now throws `NotFoundException`
+      like the other paths (the export row's foreign key makes this unreachable in
+      practice).
+- [x] Fixed-length arrays: PDF.js text matrices and boxes in `pdf-text.ts` are
+      typed as tuples (`Matrix`, `Box`) instead of `number[]`; `verifyPassword`
+      destructures the six `$`-separated parts and rejects anything else; the mock
+      LLM's required regex group falls back to `''`; the LLM contract test names
+      its spec instead of indexing `specs[0]`.
+
+No non-null assertion was added.
 
 **Done when:** `npm run build` and `next build` pass with the flag on, and empty
 single-row results raise explicit errors.

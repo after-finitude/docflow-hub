@@ -4,6 +4,7 @@ import { hashPassword } from '../auth/password'
 import { loadMigrationEnv } from '../config/env'
 import * as schema from './schema'
 import { users } from './schema'
+import { single } from './rows'
 import { seedSchemas } from './schemas'
 
 /**
@@ -31,14 +32,17 @@ async function main(): Promise<void> {
     // Update password and role from configuration on conflict so a persisted
     // volume survives hash-format or SEED_*_PASSWORD changes without breaking login.
     for (const user of seedUsers) {
-      const [saved] = await db
-        .insert(users)
-        .values(user)
-        .onConflictDoUpdate({
-          target: users.login,
-          set: { passwordHash: user.passwordHash, role: user.role },
-        })
-        .returning({ login: users.login, role: users.role })
+      const saved = single(
+        await db
+          .insert(users)
+          .values(user)
+          .onConflictDoUpdate({
+            target: users.login,
+            set: { passwordHash: user.passwordHash, role: user.role },
+          })
+          .returning({ login: users.login, role: users.role }),
+        'user upsert',
+      )
 
       console.log(`User ${saved.login} (${saved.role}) updated`)
     }

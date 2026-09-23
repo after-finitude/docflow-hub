@@ -2,6 +2,7 @@ import { isInFlight, type WorkflowStep } from '@docflow/shared'
 import { ConflictException } from '@nestjs/common'
 import { and, eq, isNull } from 'drizzle-orm'
 import type { Database } from './db.module'
+import { single } from './rows'
 import { documents, workflowRuns } from './schema'
 
 export interface PipelineJob {
@@ -94,18 +95,21 @@ export async function startRun(
     return existing.id
   }
 
-  const [created] = await db
-    .insert(workflowRuns)
-    .values({
-      documentId,
-      step,
-      exportId,
-      state: 'running',
-      attempts: 1,
-      correlationId,
-      startedAt: new Date(),
-    })
-    .returning({ id: workflowRuns.id })
+  const created = single(
+    await db
+      .insert(workflowRuns)
+      .values({
+        documentId,
+        step,
+        exportId,
+        state: 'running',
+        attempts: 1,
+        correlationId,
+        startedAt: new Date(),
+      })
+      .returning({ id: workflowRuns.id }),
+    'workflow run insert',
+  )
   return created.id
 }
 

@@ -13,6 +13,7 @@ import { isDeepStrictEqual } from 'node:util'
 import type { Database } from './db.module'
 import { documentSchemas, documents, fields } from './schema'
 import { writeAudit } from './audit'
+import { single } from './rows'
 import { EXPORT_MAPPINGS } from '../export/mappings'
 import { DEFAULT_THRESHOLDS, SEED_SCHEMAS } from './seed-schemas'
 import { SEED_RULES } from './seed-rules'
@@ -162,17 +163,20 @@ export async function createSchemaVersion(
     .update(documentSchemas)
     .set({ isActive: false })
     .where(and(eq(documentSchemas.documentType, type), eq(documentSchemas.isActive, true)))
-  const [created] = await db
-    .insert(documentSchemas)
-    .values({
-      documentType: type,
-      version: (latest?.version ?? 0) + 1,
-      jsonSchema: { fields: config.fields, rules: config.rules },
-      thresholds: config.thresholds,
-      exportMapping: config.exportMapping,
-      seedFingerprint,
-    })
-    .returning()
+  const created = single(
+    await db
+      .insert(documentSchemas)
+      .values({
+        documentType: type,
+        version: (latest?.version ?? 0) + 1,
+        jsonSchema: { fields: config.fields, rules: config.rules },
+        thresholds: config.thresholds,
+        exportMapping: config.exportMapping,
+        seedFingerprint,
+      })
+      .returning(),
+    'schema version insert',
+  )
   return schemaDto(created)
 }
 

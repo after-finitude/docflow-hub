@@ -4,6 +4,7 @@ import {
   auditEvents,
   fields,
   getDocumentSchema,
+  single,
   type ActiveSchema,
   pages,
   validationIssues,
@@ -92,21 +93,24 @@ export class DocumentQueryService {
   ) {}
 
   async reviewMetrics(since?: string) {
-    const [result] = await this.db
-      .select({
-        approvals: sql<number>`count(*)::int`,
-        measured: sql<number>`count(${auditEvents.after}->>'reviewDurationMs')::int`,
-        medianMs: sql<
-          number | null
-        >`percentile_cont(0.5) within group (order by (${auditEvents.after}->>'reviewDurationMs')::double precision)`,
-      })
-      .from(auditEvents)
-      .where(
-        and(
-          eq(auditEvents.action, 'document.approved'),
-          since ? gte(auditEvents.createdAt, new Date(since)) : undefined,
+    const result = single(
+      await this.db
+        .select({
+          approvals: sql<number>`count(*)::int`,
+          measured: sql<number>`count(${auditEvents.after}->>'reviewDurationMs')::int`,
+          medianMs: sql<
+            number | null
+          >`percentile_cont(0.5) within group (order by (${auditEvents.after}->>'reviewDurationMs')::double precision)`,
+        })
+        .from(auditEvents)
+        .where(
+          and(
+            eq(auditEvents.action, 'document.approved'),
+            since ? gte(auditEvents.createdAt, new Date(since)) : undefined,
+          ),
         ),
-      )
+      'review metrics',
+    )
     return { ...result, missingOpening: result.approvals - result.measured }
   }
 

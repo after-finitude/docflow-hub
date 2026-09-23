@@ -12,6 +12,7 @@ import {
   StorageService,
   ValidationRunnerService,
   lockDocument,
+  single,
   documentExports,
   documents,
   fields,
@@ -247,24 +248,33 @@ export class ExportService {
           mappingSnapshot: (await getDocumentSchema(tx, document))!.exportMapping,
         }
         if (record) {
-          ;[record] = await tx
-            .update(documentExports)
-            .set(snapshot)
-            .where(eq(documentExports.id, record.id))
-            .returning()
+          record = single(
+            await tx
+              .update(documentExports)
+              .set(snapshot)
+              .where(eq(documentExports.id, record.id))
+              .returning(),
+            'export snapshot update',
+          )
         } else {
-          ;[record] = await tx
-            .insert(documentExports)
-            .values({ documentId, destination, exportKey, ...snapshot })
-            .returning()
+          record = single(
+            await tx
+              .insert(documentExports)
+              .values({ documentId, destination, exportKey, ...snapshot })
+              .returning(),
+            'export insert',
+          )
         }
       }
       const runId = await startRun(tx, documentId, 'export', origin.correlationId!, record.id)
-      ;[record] = await tx
-        .update(documentExports)
-        .set({ status: 'pending', errorCode: null, attempts: record.attempts + 1 })
-        .where(eq(documentExports.id, record.id))
-        .returning()
+      record = single(
+        await tx
+          .update(documentExports)
+          .set({ status: 'pending', errorCode: null, attempts: record.attempts + 1 })
+          .where(eq(documentExports.id, record.id))
+          .returning(),
+        'export attempt update',
+      )
       await tx
         .update(documents)
         .set({ processingStep: 'export', processingRevision: document.processingRevision + 1 })
@@ -304,11 +314,14 @@ export class ExportService {
       )
       const completed = await db.transaction(async (tx) => {
         await lockDocument(tx, documentId)
-        const [saved] = await tx
-          .update(documentExports)
-          .set({ status: 'succeeded', payloadRef, errorCode: null, exportedAt: new Date() })
-          .where(eq(documentExports.id, record.id))
-          .returning()
+        const saved = single(
+          await tx
+            .update(documentExports)
+            .set({ status: 'succeeded', payloadRef, errorCode: null, exportedAt: new Date() })
+            .where(eq(documentExports.id, record.id))
+            .returning(),
+          'export success update',
+        )
         await tx
           .update(documents)
           .set({ status: 'exported', statusReason: null, processingStep: null })
@@ -344,11 +357,15 @@ export class ExportService {
       // Running log survive and the next manual request replays the same target.
       const failed = await db.transaction(async (tx) => {
         const document = await lockDocument(tx, documentId)
-        const [saved] = await tx
-          .update(documentExports)
-          .set({ status: 'failed', errorCode: code })
-          .where(eq(documentExports.id, record.id))
-          .returning()
+        if (!document) throw new NotFoundException('Document not found')
+        const saved = single(
+          await tx
+            .update(documentExports)
+            .set({ status: 'failed', errorCode: code })
+            .where(eq(documentExports.id, record.id))
+            .returning(),
+          'export failure update',
+        )
         await failRun(tx, runId, code, message)
         await writeAudit(tx, {
           correlationId: origin.correlationId,
@@ -362,7 +379,7 @@ export class ExportService {
           ip: origin.ip,
           userAgent: origin.userAgent,
         })
-        return { saved, status: document?.status }
+        return { saved, status: document.status }
       })
       await this.events.publish({
         type: 'document',

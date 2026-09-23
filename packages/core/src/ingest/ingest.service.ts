@@ -8,6 +8,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { writeAudit } from '../db/audit'
 import { DB, type Database } from '../db/db.module'
 import { documents } from '../db/schema'
+import { single } from '../db/rows'
 import { failRun, finishRun, startRun } from '../db/workflow'
 import { DocumentEventsService } from '../events/document-events.service'
 import { QUEUE } from '../queue/queues'
@@ -69,20 +70,23 @@ export class IngestService {
     const reason =
       'File exceeds the 25 MB limit. Upload a smaller file; the original was not stored'
     const documentId = await this.db.transaction(async (db) => {
-      const [created] = await db
-        .insert(documents)
-        .values({
-          tenantId: DEFAULT_TENANT_ID,
-          sourceType: 'upload',
-          originalFilename: input.filename,
-          mimeType: input.mimeType,
-          sizeBytes: input.sizeBytes,
-          status: 'rejected',
-          statusReason: reason,
-          processingStep: null,
-          processedAt: new Date(),
-        })
-        .returning({ id: documents.id })
+      const created = single(
+        await db
+          .insert(documents)
+          .values({
+            tenantId: DEFAULT_TENANT_ID,
+            sourceType: 'upload',
+            originalFilename: input.filename,
+            mimeType: input.mimeType,
+            sizeBytes: input.sizeBytes,
+            status: 'rejected',
+            statusReason: reason,
+            processingStep: null,
+            processedAt: new Date(),
+          })
+          .returning({ id: documents.id }),
+        'rejected upload insert',
+      )
       const runId = await startRun(db, created.id, 'ingestion', input.correlationId)
       await failRun(db, runId, 'file_too_large', reason)
       await writeAudit(db, {
@@ -144,24 +148,27 @@ export class IngestService {
       .orderBy(documents.receivedAt)
       .limit(1)
 
-    const [created] = await this.db
-      .insert(documents)
-      .values({
-        tenantId: DEFAULT_TENANT_ID,
-        sourceType: input.sourceType,
-        sourcePath: input.sourcePath ?? null,
-        sourceMessageId: input.sourceMessageId ?? null,
-        originalFilename: input.filename,
-        mimeType: input.mimeType,
-        sizeBytes: input.sizeBytes,
-        checksum,
-        storageKey,
-        status: 'received',
-        versionNumber: decision.versionNumber,
-        previousVersionId: decision.action === 'version' ? (current?.id ?? null) : null,
-        duplicateOfId: duplicateOf?.id ?? null,
-      })
-      .returning({ id: documents.id })
+    const created = single(
+      await this.db
+        .insert(documents)
+        .values({
+          tenantId: DEFAULT_TENANT_ID,
+          sourceType: input.sourceType,
+          sourcePath: input.sourcePath ?? null,
+          sourceMessageId: input.sourceMessageId ?? null,
+          originalFilename: input.filename,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes,
+          checksum,
+          storageKey,
+          status: 'received',
+          versionNumber: decision.versionNumber,
+          previousVersionId: decision.action === 'version' ? (current?.id ?? null) : null,
+          duplicateOfId: duplicateOf?.id ?? null,
+        })
+        .returning({ id: documents.id }),
+      'document insert',
+    )
 
     if (decision.action === 'version' && current) {
       // Preserve the old version as inactive (spec 6.9). Already-started

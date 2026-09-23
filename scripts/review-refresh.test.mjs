@@ -349,6 +349,9 @@ test(
 
       failPageTwo = true
       current = { ...current, id: 'paging-error' }
+      // The pointer still rests on the field card; hovering it selects the source
+      // page, so a card rendered under it would open page 2 on its own.
+      await page.mouse.move(0, 0)
       await page.goto(`${base}/documents/paging-error`)
       await mainImage.waitFor({ state: 'visible' })
       await page.getByRole('button', { name: 'Page 2 2', exact: true }).click()

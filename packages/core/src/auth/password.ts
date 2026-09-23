@@ -28,10 +28,9 @@ export async function hashPassword(plain: string): Promise<string> {
 }
 
 export async function verifyPassword(plain: string, stored: string): Promise<boolean> {
-  const parts = stored.split('$')
-  if (parts.length !== 6 || parts[0] !== PREFIX) return false
-
-  const [, rawN, rawR, rawP, saltPart, keyPart] = parts
+  const [prefix, rawN, rawR, rawP, saltPart, keyPart, ...extra] = stored.split('$')
+  if (prefix !== PREFIX || saltPart === undefined || keyPart === undefined || extra.length)
+    return false
   const N = Number(rawN)
   const r = Number(rawR)
   const p = Number(rawP)

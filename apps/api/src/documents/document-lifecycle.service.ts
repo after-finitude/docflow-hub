@@ -7,6 +7,7 @@ import {
   auditEvents,
   fields,
   selectExtractionSchema,
+  single,
   lockDocument,
   lockDocumentForEdit,
   pages,
@@ -321,10 +322,13 @@ export class DocumentLifecycleService {
       if (!canPerform('changeType', row.status))
         throw new ConflictException(`A document with status ${row.status} cannot change type`)
 
-      const [{ pagesCount }] = await db
-        .select({ pagesCount: sql<number>`count(*)::int` })
-        .from(pages)
-        .where(eq(pages.documentId, id))
+      const { pagesCount } = single(
+        await db
+          .select({ pagesCount: sql<number>`count(*)::int` })
+          .from(pages)
+          .where(eq(pages.documentId, id)),
+        'page count',
+      )
       if (!pagesCount) {
         throw new BadRequestException('Document has not been recognized; type cannot be changed')
       }

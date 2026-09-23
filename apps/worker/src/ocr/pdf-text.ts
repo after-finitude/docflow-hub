@@ -2,6 +2,10 @@ import type { OcrBlock } from '@docflow/shared'
 import { openPdf } from '@docflow/core'
 import type { OcrPageResult } from './ocr-provider'
 
+/** PDF text matrix [a, b, c, d, e, f] and an axis-aligned [x0, y0, x1, y1] box. */
+type Matrix = [number, number, number, number, number, number]
+type Box = [number, number, number, number]
+
 /** Local text and viewport coordinates; conservative fallback for partial scan text layers. */
 export async function readPdfText(buffer: Buffer) {
   const document = await openPdf(buffer)
@@ -22,9 +26,9 @@ export async function readPdfText(buffer: Buffer) {
         const content = await page.getTextContent({ disableNormalization: true })
         const blocks: OcrBlock[] = []
         let line = '',
-          bounds: number[] = []
+          bounds: Box | null = null
         const flush = () => {
-          if (line.trim() && bounds.length) {
+          if (line.trim() && bounds) {
             const x = Math.max(0, bounds[0]),
               y = Math.max(0, bounds[1])
             const right = Math.min(width, bounds[2]),
@@ -42,12 +46,12 @@ export async function readPdfText(buffer: Buffer) {
               })
           }
           line = ''
-          bounds = []
+          bounds = null
         }
         for (const item of content.items) {
           if (!('str' in item)) continue
           if (item.str) {
-            const [a, b, c, d, e, f] = item.transform as number[]
+            const [a, b, c, d, e, f] = item.transform as Matrix
             const style = content.styles[item.fontName]
             const ascent = style?.ascent ?? 0.8,
               descent = style?.descent ?? -0.2
@@ -55,20 +59,22 @@ export async function readPdfText(buffer: Buffer) {
             const dx = (a / length) * item.width,
               dy = (b / length) * item.width
             // Text transforms are in PDF coordinates; the viewport applies CropBox and rotation.
-            const corners = [
-              [e + c * ascent, f + d * ascent],
-              [e + c * ascent + dx, f + d * ascent + dy],
-              [e + c * descent, f + d * descent],
-              [e + c * descent + dx, f + d * descent + dy],
-            ].map(([x, y]) => viewport.convertToViewportPoint(x, y))
-            const box = [
+            const corners = (
+              [
+                [e + c * ascent, f + d * ascent],
+                [e + c * ascent + dx, f + d * ascent + dy],
+                [e + c * descent, f + d * descent],
+                [e + c * descent + dx, f + d * descent + dy],
+              ] satisfies [number, number][]
+            ).map(([x, y]) => viewport.convertToViewportPoint(x, y))
+            const box: Box = [
               Math.min(...corners.map((p) => p[0])),
               Math.min(...corners.map((p) => p[1])),
               Math.max(...corners.map((p) => p[0])),
               Math.max(...corners.map((p) => p[1])),
             ]
             line += item.str
-            bounds = bounds.length
+            bounds = bounds
               ? [
                   Math.min(bounds[0], box[0]),
                   Math.min(bounds[1], box[1]),

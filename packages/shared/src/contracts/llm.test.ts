@@ -4,8 +4,15 @@ import { extractionResponseSchemaFor } from './llm'
 import type { FieldSpec } from './schema'
 import { buildExtractedField } from '../pipeline/field-builder'
 
+const totalSpec: FieldSpec = {
+  name: 'total',
+  label: 'Total',
+  type: 'number',
+  required: true,
+  critical: true,
+}
 const specs: FieldSpec[] = [
-  { name: 'total', label: 'Total', type: 'number', required: true, critical: true },
+  totalSpec,
   { name: 'line_items', label: 'Items', type: 'array', required: false, critical: false },
 ]
 const schema = extractionResponseSchemaFor(specs)
@@ -19,7 +26,7 @@ describe('schema-specific extraction contract', () => {
   it('accepts flat items and keeps scalar text verbatim until the shared builder', () => {
     const response = schema.parse({ fields })
     assert.deepEqual(response.fields, fields)
-    const total = buildExtractedField(specs[0], response.fields[0], [])
+    const total = buildExtractedField(totalSpec, response.fields[0], [])
     assert.equal(total.rawValue, '1 200,00')
     assert.equal(total.normalizedValue, 1200)
   })
@@ -67,7 +74,7 @@ describe('schema-specific extraction contract', () => {
 
   it('keeps every scalar type verbatim, leaving semantic validation to normalization', () => {
     for (const type of ['string', 'number', 'currency', 'date', 'boolean', 'enum'] as const) {
-      const scalar = extractionResponseSchemaFor([{ ...specs[0], type }])
+      const scalar = extractionResponseSchemaFor([{ ...totalSpec, type }])
       assert.ok(scalar.safeParse({ fields: [{ ...fields[0], value: 'as printed' }] }).success)
       assert.equal(scalar.safeParse({ fields: [{ ...fields[0], value: 1 }] }).success, false)
     }
