@@ -93,7 +93,7 @@ returns 409 when the session-lock wait hits `statement_timeout`, and still serve
 a query from the same pool meanwhile. **Not yet verified:** `explain analyze` for
 the two audit queries on a populated table.
 
-## 3. Separate reads from writes on a document
+## 3. Separate reads from writes on a document — implemented, verification pending
 
 Primary files: `apps/api/src/documents/documents.service.ts`.
 
@@ -105,13 +105,19 @@ row. This is a production risk of the same order as stage 2, not only structure.
 One detail response is six or more queries, and every mutation calls it again
 before returning.
 
-- [ ] Split into an unlocked `read` for GET and polling, and a `readLocked(db)`
-      used inside mutations. If the lock exists only to give the six queries a
-      consistent snapshot, a read-only `REPEATABLE READ` transaction does that
-      without blocking writers. This part ships on its own, right after stage 2.
-- [ ] Collapse the detail read to two or three queries.
-- [ ] Derive the row type from `listColumns` instead of the `as unknown as` cast
-      over 20 fields in `toListItem`; the shape is currently declared three times.
+- [x] Split into `findOne(id)` for GET and polling — a `REPEATABLE READ`,
+      `READ ONLY` transaction with no row lock — and `readDetail(db, id, { locked })`
+      used inside mutations. The lock was not only for the snapshot:
+      `getDocumentSchema` repairs a stale document-level schema binding, a write
+      that needs the lock. It now takes `{ backfill: false }` for reads; every
+      writer (validation, extraction, export, mutation responses) still repairs.
+- [ ] ~~Collapse the detail read to two or three queries.~~ Not done. Without the
+      lock the read is six short indexed queries on one connection. Going lower
+      means `json_agg` subqueries for fields, issues and exports, trading typed
+      Drizzle selects for hand-mapped JSON; not worth it until the read shows up
+      in measurements. The separate `FOR UPDATE` select is gone (seven → six).
+- [x] Derive the row type from `listColumns` (`SelectResultFields`) instead of
+      the `as unknown as` cast over 20 fields in `toListItem`.
 
 **Done when:** the existing HTTP tests pass unmodified, plus a check that
 concurrent reads do not block a mutation.

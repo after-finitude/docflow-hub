@@ -51,6 +51,7 @@ import {
 } from '@nestjs/common'
 import { Queue } from 'bullmq'
 import { and, desc, eq, exists, gte, inArray, isNull, lte, not, sql, type SQL } from 'drizzle-orm'
+import type { SelectResultFields } from 'drizzle-orm/query-builders/select.types'
 import { randomUUID } from 'node:crypto'
 import type { Readable } from 'node:stream'
 import type { RequestContext } from '../auth/decorators'
@@ -111,7 +112,7 @@ const listColumns = {
   )`.as('current_step_state'),
 }
 
-type ListRow = { [K in keyof typeof listColumns]: unknown }
+type ListRow = SelectResultFields<typeof listColumns>
 
 @Injectable()
 export class DocumentsService {
@@ -334,9 +335,24 @@ export class DocumentsService {
     }
   }
 
-  async findOne(id: string, db?: Database): Promise<DocumentDetail> {
-    if (!db) return this.db.transaction((tx) => this.findOne(id, tx))
-    const document = await lockDocument(db, id)
+  /**
+   * Detail for GET and polling. One read-only snapshot keeps fields, issues and
+   * canApprove consistent without a row lock, so polling never blocks the worker
+   * or an operator decision on the same document.
+   */
+  async findOne(id: string): Promise<DocumentDetail> {
+    return this.db.transaction((db) => this.readDetail(db, id, { locked: false }), {
+      isolationLevel: 'repeatable read',
+      accessMode: 'read only',
+    })
+  }
+
+  /** `locked`: the caller holds the document lock, so a stale schema binding is repaired. */
+  private async readDetail(
+    db: Database,
+    id: string,
+    { locked }: { locked: boolean },
+  ): Promise<DocumentDetail> {
     const [row] = await db
       .select({
         ...listColumns,
@@ -344,6 +360,8 @@ export class DocumentsService {
         sourcePath: documents.sourcePath,
         processedAt: documents.processedAt,
         pageCount: documents.pageCount,
+        schemaVersionId: documents.schemaVersionId,
+        extractionSchemaVersionId: documents.extractionSchemaVersionId,
       })
       .from(documents)
       .where(eq(documents.id, id))
@@ -352,7 +370,7 @@ export class DocumentsService {
     if (!row) throw new NotFoundException('Document not found')
 
     const base = this.toListItem(row)
-    const schema = await getDocumentSchema(db, document)
+    const schema = await getDocumentSchema(db, row, { backfill: locked })
 
     const loadedFields = await this.loadFields(id, schema, db)
     return {
@@ -425,7 +443,7 @@ export class DocumentsService {
           autoApprove: false,
           correlationId: origin.correlationId,
         })
-        return this.findOne(id, db)
+        return this.readDetail(db, id, { locked: true })
       }
 
       await writeAudit(db, {
@@ -473,7 +491,7 @@ export class DocumentsService {
         autoApprove: false,
       })
 
-      return this.findOne(id, db)
+      return this.readDetail(db, id, { locked: true })
     })
   }
 
@@ -535,7 +553,7 @@ export class DocumentsService {
       })
 
       await this.publishStatus(id, 'approved')
-      return this.findOne(id, db)
+      return this.readDetail(db, id, { locked: true })
     })
     if (result instanceof ConflictException) throw result
     return result
@@ -584,7 +602,7 @@ export class DocumentsService {
       })
 
       await this.publishStatus(id, 'rejected')
-      return this.findOne(id, db)
+      return this.readDetail(db, id, { locked: true })
     })
   }
 
@@ -673,7 +691,7 @@ export class DocumentsService {
         at: new Date().toISOString(),
       })
 
-      return this.findOne(id, db)
+      return this.readDetail(db, id, { locked: true })
     })
   }
 
@@ -820,7 +838,7 @@ export class DocumentsService {
         origin.correlationId ?? randomUUID(),
         row.processingRevision + 1,
       )
-      return this.findOne(id, db)
+      return this.readDetail(db, id, { locked: true })
     })
   }
 
@@ -852,31 +870,7 @@ export class DocumentsService {
     })
   }
 
-  private toListItem(row: ListRow): DocumentListItem {
-    const value = row as unknown as {
-      id: string
-      originalFilename: string
-      mimeType: string
-      sizeBytes: number | null
-      hasOriginal: boolean
-      sourceType: DocumentListItem['sourceType']
-      documentType: DocumentListItem['documentType']
-      typeConfidence: number | null
-      status: DocumentListItem['status']
-      statusReason: string | null
-      thumbnailKey: string | null
-      duplicateOfId: string | null
-      versionNumber: number
-      previousVersionId: string | null
-      isActive: boolean
-      receivedAt: Date
-      minCriticalConfidence: number | null
-      blockingIssues: number
-      warningIssues: number
-      currentStep: WorkflowStep | null
-      currentStepState: WorkflowState | null
-    }
-
+  private toListItem(value: ListRow): DocumentListItem {
     return {
       id: value.id,
       originalFilename: value.originalFilename,

@@ -889,6 +889,32 @@ test(
         }
       },
     )
+    await t.test(
+      'detail reads take no row lock and leave legacy binding repair to writers',
+      async () => {
+        const id = await doc()
+        // Fields keep their version; only the document-level binding is missing.
+        await db.update(documents).set({ schemaVersionId: null }).where(eq(documents.id, id))
+        const client = await pool.connect()
+        try {
+          await client.query('begin')
+          await client.query('select id from documents where id = $1 for update', [id])
+          const detail = await Promise.race([
+            read(id),
+            new Promise((resolve) => setTimeout(resolve, 2000, 'blocked')),
+          ])
+          assert.notEqual(detail, 'blocked', 'GET waited for the document row lock')
+          assert.equal(detail.schemaVersion, schema.version)
+        } finally {
+          await client.query('rollback')
+          client.release()
+        }
+        assert.equal((await row(id)).schemaVersionId, null)
+        const rejected = await request(id, 'reject', { reason: 'other', comment: 'test' })
+        assert.equal(rejected.status, 201)
+        assert.equal((await row(id)).schemaVersionId, schema.id)
+      },
+    )
     await t.test('edit winning the lock prevents a later export of the invalid value', async () => {
       const id = await doc('approved')
       const entered = deferred(),

@@ -47,8 +47,19 @@ export async function getSchemaVersion(db: Database, id: string) {
   return schemaDto(row)
 }
 
-/** Call while holding the document lock. Legacy fields are the source of truth. */
-export async function getDocumentSchema(db: Database, document: typeof documents.$inferSelect) {
+/**
+ * Legacy fields are the source of truth. By default the caller holds the document
+ * lock and a stale document-level binding is repaired; reads outside the lock pass
+ * `backfill: false` and write nothing.
+ */
+export async function getDocumentSchema(
+  db: Database,
+  document: Pick<
+    typeof documents.$inferSelect,
+    'id' | 'schemaVersionId' | 'extractionSchemaVersionId' | 'documentType'
+  >,
+  { backfill = true } = {},
+) {
   const rows = await db
     .selectDistinct({ id: fields.schemaVersionId })
     .from(fields)
@@ -64,6 +75,7 @@ export async function getDocumentSchema(db: Database, document: typeof documents
           ? await getActiveSchema(db, document.documentType)
           : null
   if (
+    backfill &&
     schema &&
     schema.id !== document.schemaVersionId &&
     (rows[0]?.id || document.extractionSchemaVersionId)
