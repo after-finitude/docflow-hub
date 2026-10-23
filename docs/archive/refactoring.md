@@ -13,7 +13,7 @@ Stages are independent except where noted: 4 depends on 3, and 4 and 5 both edit
 `documents.service.ts`, so 5 goes first to avoid rewriting the same guards twice.
 Each stage names its primary files and what proves it done. This document is about
 internal structure only; feature scope and specification compliance stay in
-`PLAN.md`, and deliberate deferrals in `known-limitations.md`.
+`docs/archive/PLAN.md`, and deliberate deferrals in `docs/known-limitations.md`.
 
 ## 1. Deployment gate — done 2026-09-23
 

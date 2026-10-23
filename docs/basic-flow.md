@@ -177,4 +177,4 @@
 | Redis / BullMQ | Очереди этапов, повторы, уведомления о статусах и регламентные задачи. |
 | MinIO | Оригиналы, миниатюры и сохранённые JSON-выгрузки. |
 
-Подробности находятся в [описании архитектуры](architecture.md), [конфигурации](configuration.md), [runbook](runbook.md) и [known limitations](../known-limitations.md).
+Подробности находятся в [описании архитектуры](architecture.md), [конфигурации](configuration.md), [runbook](runbook.md) и [known limitations](known-limitations.md).

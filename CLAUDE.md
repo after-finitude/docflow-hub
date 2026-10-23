@@ -230,14 +230,14 @@ that relies on the old JS compiler API. Consequences already handled — do not
 
 ## Working in this repository
 
-PLAN.md is the roadmap: work proceeds in numbered stages, each with a DoD and a
-record of deviations. Stages 1–2 are implemented. known-limitations.md tracks
+docs/archive/PLAN.md is the roadmap: work proceeds in numbered stages, each with a DoD and a
+record of deviations. Stages 1–2 are implemented. docs/known-limitations.md tracks
 what is deliberately deferred, mocked, or constrained by tooling — check it
 before assuming something is a bug.
 
 The spec (`Technical Specification No. 1 v2`) drives the requirements; code comments reference its
 sections (e.g. "spec 6.1") where behaviour is non-obvious. Keep decisions and
-rationale in PLAN.md and known-limitations.md.
+rationale in docs/archive/PLAN.md and docs/known-limitations.md.
 
 ## Commit messages
 
@@ -249,7 +249,7 @@ fix: signed thumbnail url unreachable from browser
 refactor: derive database urls from components
 ```
 
-- No multi-line explanations. Rationale for a decision goes into PLAN.md or
-  known-limitations.md, not into git history.
+- No multi-line explanations. Rationale for a decision goes into docs/archive/PLAN.md or
+  docs/known-limitations.md, not into git history.
 - **No `Co-Authored-By` trailer.** Claude Code adds it by default — strip it.
 - Subject under ~70 characters, imperative, lowercase after the type prefix.

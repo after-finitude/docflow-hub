@@ -6,7 +6,7 @@
     "macrostructure": "Workbench",
     "theme": "Cobalt",
     "enrichment": "none",
-    "design_system": "design.md",
+    "design_system": "docs/design.md",
     "brief": "Docflow Hub — operator console for document ingest and review: queue, review workspace, and execution log"
   }
 ]

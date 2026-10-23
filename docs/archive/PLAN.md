@@ -129,7 +129,7 @@ All 164 checks pass with the isolated PostgreSQL role and `npm test`, including 
 
 Specification: 2, 3.1, 11, 16.
 
-Primary files: `docker-compose.yml`, `example.env`, `packages/core/src/config/env.ts`, `docs/configuration.md`, `docs/runbook.md`, `README.md`, `known-limitations.md`.
+Primary files: `docker-compose.yml`, `example.env`, `packages/core/src/config/env.ts`, `docs/configuration.md`, `docs/runbook.md`, `README.md`, `docs/known-limitations.md`.
 
 - [x] Implement and document encrypted storage of integration secrets with runtime access limited to the services that need them. Mounting a plaintext file alone does not satisfy encrypted storage.
 - [x] Keep owner/migration credentials out of API and worker configuration. Verify audit-table UPDATE, DELETE, and TRUNCATE denial under the actual application role.
@@ -146,7 +146,7 @@ Verification (2026-09-07): 170 tests pass without skips against an isolated Post
 
 Live checks in `evaluation/security.json` cover authenticated/anonymous/invalid-cookie file access, cross-document export download rejection, private bucket access, the default 900-second signature, real 5-second signature expiration, operator configuration denial and the exact 24-hour orphan boundary. PostgreSQL tests cover the exact 90-day retention boundary and active-document preservation. `document.provider_call` records every Vision page/correction and LLM request/repair before sending and after success/failure; errors omit provider-controlled content. Native temporary-file failures retry and Docker uses a bounded tmpfs.
 
-Accepted decisions on 2026-09-07: retain public status-only health and optional-auth logout so invalid cookies can be cleared; replace MuPDF with PDF.js and retain Sharp. Sharp is updated to 0.35.4, Next to 16.3.4 and compatible transitive security fixes are applied. No high/critical npm audit findings remain; eight affected packages from three moderate transitive advisories are explicitly documented in `known-limitations.md` and `evaluation/dependencies.json`. No forced major downgrades were applied.
+Accepted decisions on 2026-09-07: retain public status-only health and optional-auth logout so invalid cookies can be cleared; replace MuPDF with PDF.js and retain Sharp. Sharp is updated to 0.35.4, Next to 16.3.4 and compatible transitive security fixes are applied. No high/critical npm audit findings remain; eight affected packages from three moderate transitive advisories are explicitly documented in `docs/known-limitations.md` and `evaluation/dependencies.json`. No forced major downgrades were applied.
 
 `npm run dataset` reproduces all 46 generated files byte-for-byte on repeated execution. Evaluation and performance reports were rerun after the PDF engine change. Current screenshots and `docs/demo.webm` show a blocking total, operator correction, approval, JSON export and a real failed queue stage followed by successful manual retry; `evaluation/delivery.json` records the checks. The video is a paced demonstration, not a human review-time sample. Lint, formatting, backend tests and web production builds pass. Runnable setup, verification, encryption, rotation and artifact commands are documented. Real Google/LLM connectivity and quality remain deferred by the user's earlier decision and are still open in stages 3, 5, 6 and 8; synthetic delivery does not claim that verification.
 
